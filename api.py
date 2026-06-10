@@ -32,7 +32,7 @@ BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json'
 # SUPABASE STORAGE
 # ============================================================
 
-def store_response(payload, result_type='free'):
+def store_response(payload, result_type='free', session_id=None, full_results=None):
     try:
         supabase_url = os.environ.get('SUPABASE_URL')
         supabase_key = os.environ.get('SUPABASE_KEY')
@@ -44,12 +44,23 @@ def store_response(payload, result_type='free'):
         import urllib.request
         import urllib.error
 
-        body = json.dumps({
-            'responses': payload.get('responses'),
-            'demographics': payload.get('demographics'),
+        demographics = payload.get('demographics', {})
+        record = {
             'result_type': result_type,
             'timestamp': datetime.utcnow().isoformat(),
-        }).encode('utf-8')
+            'responses': payload.get('responses'),
+            'demographics': demographics,
+            'age_group': demographics.get('age_group', ''),
+            'gender': demographics.get('gender', ''),
+            'country': demographics.get('country', ''),
+            'ai_tool_use_frequency': demographics.get('ai_tool_use_frequency', ''),
+        }
+        if session_id:
+            record['session_id'] = session_id
+        if full_results:
+            record['full_results'] = full_results
+
+        body = json.dumps(record).encode('utf-8')
 
         req = urllib.request.Request(
             f'{supabase_url}/rest/v1/assessment_responses',
@@ -164,7 +175,7 @@ def score():
             f"{time.time()}{json.dumps(demographics)}".encode()
         ).hexdigest()[:16]
 
-        store_response(request_data, result_type='free')
+        store_response(request_data, result_type='free', session_id=session_id, full_results=results)
 
         # Build dimension scores with age percentile
         dimension_scores = {}
@@ -196,6 +207,70 @@ def score():
             'success': False,
             'error': 'Scoring failed — please try again'
         }), 500
+
+
+@app.route('/get-results', methods=['GET'])
+def get_results():
+    """
+    Retrieve stored assessment results by session_id.
+    Called by the premium report page to get full_results
+    without depending on sessionStorage.
+
+    Query params:
+        session_id: the session ID from the /score response
+    """
+    try:
+        session_id = request.args.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+
+        if not supabase_url or not supabase_key:
+            return jsonify({'success': False, 'error': 'Storage not configured'}), 500
+
+        import urllib.request
+        import urllib.parse
+
+        url = (
+            f'{supabase_url}/rest/v1/assessment_responses'
+            f'?session_id=eq.{urllib.parse.quote(session_id)}'
+            f'&select=full_results,demographics'
+            f'&limit=1'
+        )
+
+        req = urllib.request.Request(
+            url,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Content-Type': 'application/json',
+            }
+        )
+
+        response = urllib.request.urlopen(req, timeout=10)
+        records = json.loads(response.read())
+
+        if not records:
+            return jsonify({'success': False, 'error': 'Session not found'}), 404
+
+        record = records[0]
+        full_results = record.get('full_results')
+
+        if not full_results:
+            return jsonify({'success': False, 'error': 'Results not stored for this session'}), 404
+
+        return jsonify({
+            'success': True,
+            'full_results': full_results,
+            'session_id': session_id,
+        })
+
+    except Exception as e:
+        print(f'Get results error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not retrieve results'}), 500
 
 
 @app.route('/premium', methods=['POST'])
