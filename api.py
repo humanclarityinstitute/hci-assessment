@@ -249,15 +249,17 @@ def score():
             'success': True,
             'session_id': session_id,
             'free_result': free_result,
-            'dimension_scores': {
-                dim: {
-                    'label': data['label'],
-                    'percentile': data['percentiles'].get('overall'),
-                    'normalised_score': data['normalised_score'],
-                }
-                for dim, data in results['dimensions'].items()
-                if data
-            },
+           'dimension_scores': {
+    dim: {
+        'label': data['label'],
+        'percentile': data['percentiles'].get('overall'),
+        'age_percentile': data['percentiles'].get('age_group'),
+        'age_label': demographics.get('age_group', ''),
+        'normalised_score': data['normalised_score'],
+    }
+    for dim, data in results['dimensions'].items()
+    if data
+},
             'patterns': results['patterns'],
             'perception_gaps': results['perception_gaps'],
             'full_results': results,  # passed back for premium report
