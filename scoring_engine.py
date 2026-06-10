@@ -1,18 +1,12 @@
 """
 HCI AI Identity & Behaviour Assessment
-Scoring Engine
+Scoring Engine — Version 2
 
-Takes a completed set of assessment responses and produces
-a full results object containing:
-- Nine dimension scores normalised to 0-100
-- Nine percentile rankings overall
-- Percentile rankings by demographic cohort
-- Dominant patterns (highest and lowest dimensions)
-- Perception gap analysis
-
-Usage:
-    from scoring_engine import score_assessment
-    results = score_assessment(responses, demographics, 'benchmark_tables.json')
+Changes from v1:
+- Added variable-level percentile calculation
+- Added find_most_distinctive_variable() function
+- Added FIXED_HIGHLIGHT_VARIABLES for disclosure and social transparency
+- Returns variable_highlights in results object
 """
 
 import json
@@ -22,8 +16,6 @@ from scipy import stats
 
 # ============================================================
 # DIMENSION CONFIGURATION
-# Each dimension maps question keys to variables
-# Reverse scored questions are flipped before scoring
 # ============================================================
 
 DIMENSIONS = {
@@ -143,32 +135,46 @@ DIMENSIONS = {
 SCALE_MAX = 7
 SCALE_MIN = 1
 
+# ============================================================
+# FIXED HIGHLIGHT VARIABLES
+# These always appear in the free report regardless of
+# individual scores — chosen for universal human interest
+# ============================================================
+
+FIXED_HIGHLIGHTS = [
+    {
+        'question_key': 'disc_q3',
+        'variable': 'disclosure_untold_things',
+        'dimension': 'disclosure',
+        'question_text': 'There are things I have told AI that I have never told another person',
+        'why_interesting': 'disclosure',
+    },
+    {
+        'question_key': 'soc_q4',
+        'variable': 'social_transparency_gap',
+        'dimension': 'social_transparency',
+        'question_text': 'There is a gap between how much I actually use AI and what I let others believe',
+        'why_interesting': 'social_transparency',
+        'reverse': True,
+    },
+]
+
 
 # ============================================================
 # CORE SCORING FUNCTIONS
 # ============================================================
 
 def reverse_score(score, scale_max=SCALE_MAX):
-    """Flip a score on the scale. 7 becomes 1, 6 becomes 2 etc."""
     return (scale_max + 1) - score
 
 
 def normalise_to_100(raw_score, n_questions):
-    """
-    Convert raw sum score to 0-100 scale.
-    Formula: (raw - min_possible) / (max_possible - min_possible) * 100
-    """
     min_possible = n_questions * SCALE_MIN
     max_possible = n_questions * SCALE_MAX
     return round((raw_score - min_possible) / (max_possible - min_possible) * 100, 1)
 
 
 def get_percentile(score_0_100, distribution_raw):
-    """
-    Get percentile of a normalised score against a raw distribution.
-    Converts distribution to 0-100 scale before comparison.
-    """
-    n_questions = 1
     dist_normalised = [
         (s - SCALE_MIN) / (SCALE_MAX - SCALE_MIN) * 100
         for s in distribution_raw
@@ -176,44 +182,62 @@ def get_percentile(score_0_100, distribution_raw):
     return round(float(stats.percentileofscore(dist_normalised, score_0_100, kind='rank')), 0)
 
 
+def get_variable_percentile_from_raw(raw_response, variable_name, benchmarks, demographics):
+    """
+    Get overall and age group percentile for a single raw question response.
+    Uses the variable's distribution directly — no normalisation needed
+    since we're comparing raw 1-7 scores against raw distributions.
+    """
+    if variable_name not in benchmarks:
+        return {'overall': None, 'age_group': None}
+
+    bench = benchmarks[variable_name]
+    result = {}
+
+    # Normalise the single response to 0-100 for comparison
+    score_normalised = (raw_response - SCALE_MIN) / (SCALE_MAX - SCALE_MIN) * 100
+
+    if bench.get('overall'):
+        result['overall'] = get_percentile(score_normalised, bench['overall'])
+
+    age = demographics.get('age_group')
+    if age and bench.get('by_age', {}).get(age):
+        result['age_group'] = get_percentile(
+            score_normalised, bench['by_age'][age]
+        )
+
+    return result
+
+
 def get_dimension_percentile(normalised_score, dimension_name, variable_name,
                               benchmarks, demographics):
-    """
-    Get overall and demographic percentiles for a dimension score.
-    Returns dict with overall and available demographic percentiles.
-    """
     if variable_name not in benchmarks:
         return {'overall': None}
 
     bench = benchmarks[variable_name]
     result = {}
 
-    # Overall percentile
     if bench.get('overall'):
         result['overall'] = get_percentile(normalised_score, bench['overall'])
 
-    # Age group percentile
     age = demographics.get('age_group')
     if age and bench.get('by_age', {}).get(age):
         result['age_group'] = get_percentile(
             normalised_score, bench['by_age'][age]
         )
 
-    # Gender percentile
     gender = demographics.get('gender')
     if gender and bench.get('by_gender', {}).get(gender):
         result['gender'] = get_percentile(
             normalised_score, bench['by_gender'][gender]
         )
 
-    # Country percentile
     country = demographics.get('country')
     if country and bench.get('by_country', {}).get(country):
         result['country'] = get_percentile(
             normalised_score, bench['by_country'][country]
         )
 
-    # Frequency percentile
     frequency = demographics.get('ai_tool_use_frequency')
     if frequency and bench.get('by_frequency', {}).get(frequency):
         result['frequency'] = get_percentile(
@@ -224,10 +248,6 @@ def get_dimension_percentile(normalised_score, dimension_name, variable_name,
 
 
 def score_dimension(dimension_name, responses, benchmarks, demographics):
-    """
-    Score a single dimension.
-    Returns normalised score, percentiles, and question-level detail.
-    """
     config = DIMENSIONS[dimension_name]
     questions = config['questions']
     variables = config['variables']
@@ -238,12 +258,10 @@ def score_dimension(dimension_name, responses, benchmarks, demographics):
 
     for i, q_key in enumerate(questions):
         raw = responses.get(q_key)
-
         if raw is None:
             return None
 
         score = int(raw)
-
         if q_key in reverse_questions:
             score = reverse_score(score)
 
@@ -259,7 +277,6 @@ def score_dimension(dimension_name, responses, benchmarks, demographics):
     n_questions = len(questions)
     normalised = normalise_to_100(raw_total, n_questions)
 
-    # Use first variable for benchmark lookup
     primary_variable = variables[0]
     percentiles = get_dimension_percentile(
         normalised, dimension_name, primary_variable, benchmarks, demographics
@@ -278,8 +295,190 @@ def score_dimension(dimension_name, responses, benchmarks, demographics):
 
 
 # ============================================================
+# VARIABLE-LEVEL HIGHLIGHT FUNCTIONS
+# ============================================================
+
+def find_most_distinctive_variable(responses, benchmarks, demographics, dimension_results):
+    """
+    Find the single question across all 39 where the participant's
+    response diverges most from the population — measured by
+    distance from 50th percentile (most extreme in either direction).
+    Returns the question key, variable name, question text, raw response,
+    and percentiles.
+    """
+    most_distinctive = None
+    max_distance = 0
+
+    # Fixed highlights to exclude from personalised slot
+    fixed_keys = {h['question_key'] for h in FIXED_HIGHLIGHTS}
+
+    for dim_name, config in DIMENSIONS.items():
+        questions = config['questions']
+        variables = config['variables']
+        reverse_questions = config['reverse']
+
+        for i, q_key in enumerate(questions):
+            if q_key in fixed_keys:
+                continue
+
+            raw = responses.get(q_key)
+            if raw is None:
+                continue
+
+            variable = variables[i]
+            if variable not in benchmarks:
+                continue
+
+            # Use raw response for percentile (scored, respecting reversal)
+            scored = int(raw)
+            if q_key in reverse_questions:
+                scored = reverse_score(scored)
+
+            score_normalised = (scored - SCALE_MIN) / (SCALE_MAX - SCALE_MIN) * 100
+
+            bench = benchmarks[variable]
+            if not bench.get('overall'):
+                continue
+
+            overall_pct = get_percentile(score_normalised, bench['overall'])
+            distance = abs(overall_pct - 50)
+
+            if distance > max_distance:
+                max_distance = distance
+
+                # Get age group percentile
+                age_pct = None
+                age = demographics.get('age_group')
+                if age and bench.get('by_age', {}).get(age):
+                    age_pct = get_percentile(score_normalised, bench['by_age'][age])
+
+                # Build question text from variable name
+                question_text = get_question_text(q_key)
+
+                most_distinctive = {
+                    'question_key': q_key,
+                    'variable': variable,
+                    'dimension': dim_name,
+                    'dimension_label': DIMENSIONS[dim_name]['label'],
+                    'question_text': question_text,
+                    'raw_response': int(raw),
+                    'scored_response': scored,
+                    'percentiles': {
+                        'overall': overall_pct,
+                        'age_group': age_pct,
+                    },
+                    'distance_from_median': distance,
+                    'type': 'personalised',
+                }
+
+    return most_distinctive
+
+
+def get_fixed_variable_highlight(highlight_config, responses, benchmarks, demographics):
+    """
+    Get population-level statistics for a fixed highlight variable.
+    Returns the participant's response plus both overall and age percentiles.
+    """
+    q_key = highlight_config['question_key']
+    variable = highlight_config['variable']
+    is_reverse = highlight_config.get('reverse', False)
+
+    raw = responses.get(q_key)
+    if raw is None:
+        return None
+
+    scored = int(raw)
+    if is_reverse:
+        scored = reverse_score(scored)
+
+    score_normalised = (scored - SCALE_MIN) / (SCALE_MAX - SCALE_MIN) * 100
+
+    bench = benchmarks.get(variable)
+    if not bench or not bench.get('overall'):
+        return None
+
+    overall_pct = get_percentile(score_normalised, bench['overall'])
+
+    age_pct = None
+    age = demographics.get('age_group')
+    if age and bench.get('by_age', {}).get(age):
+        age_pct = get_percentile(score_normalised, bench['by_age'][age])
+
+    return {
+        'question_key': q_key,
+        'variable': variable,
+        'dimension': highlight_config['dimension'],
+        'dimension_label': DIMENSIONS[highlight_config['dimension']]['label'],
+        'question_text': highlight_config['question_text'],
+        'raw_response': int(raw),
+        'scored_response': scored,
+        'percentiles': {
+            'overall': overall_pct,
+            'age_group': age_pct,
+        },
+        'type': highlight_config['why_interesting'],
+    }
+
+
+def get_question_text(q_key):
+    """
+    Map question keys to the actual question text shown to participants.
+    """
+    QUESTION_TEXTS = {
+        # Trust
+        'trust_q1': 'When AI gives me information, I generally trust it is accurate',
+        'trust_q2': 'I feel confident relying on information or recommendations generated by AI',
+        'trust_q3': 'I worry that AI will present incorrect information as if it were fact',
+        'trust_q4': 'When I feel uncertain, I am more likely to trust guidance from AI systems',
+        # Disclosure
+        'disc_q1': 'I feel comfortable sharing personal thoughts or emotions with AI that I would not share with most people',
+        'disc_q2': 'I feel emotionally safer expressing myself to AI than I do to many people in my life',
+        'disc_q3': 'There are things I have told AI that I have never told another person',
+        'disc_q4': 'I am more open with AI about some topics than I am with people in my life',
+        # Reliance
+        'rel_q1': 'I feel uneasy or restless when I cannot use AI tools for an extended period',
+        'rel_q2': 'I struggle to function effectively without assistance from digital or AI systems',
+        'rel_q3': 'I rely on AI for many everyday work or personal decisions',
+        'rel_q4': 'I often rely on AI even when I could work things out on my own',
+        'rel_q5': 'Some of my abilities have weakened because AI systems now perform those tasks for me',
+        # Decision Delegation
+        'del_q1': 'I regularly hand over decisions to AI systems that I previously made myself',
+        'del_q2': 'When I use AI for decisions, I usually accept its recommendations without making significant changes',
+        'del_q3': 'I sometimes follow AI recommendations even when they do not feel right to me',
+        'del_q4': 'I am comfortable relying on AI systems for important decisions that could significantly affect my life or work',
+        'del_q5': 'When I feel uncertain about a decision, I am more likely to rely on AI guidance',
+        # Verification
+        'ver_q1': 'I regularly double-check information provided by AI using other sources',
+        'ver_q2': 'I often skip checking AI information because it takes too much time or effort',
+        'ver_q3': 'When information feels complicated or mentally demanding, I am more likely to accept it without checking carefully',
+        'ver_q4': 'I use independent sources to confirm whether AI-generated information is accurate',
+        # Human Agency
+        'agency_q1': 'My actions feel self-directed rather than driven by external forces',
+        'agency_q2': 'I feel in control of decisions when using AI or automated systems',
+        'agency_q3': 'Using AI tools has changed how much I trust my own judgement',
+        'agency_q4': 'I sometimes feel influenced by systems without being fully aware of how',
+        'agency_q5': 'I sometimes question what is genuinely mine versus shaped by suggestions from AI tools',
+        # Emotional Regulation
+        'emot_q1': 'AI sometimes gives me a sense of relief or support when I feel emotionally overwhelmed',
+        'emot_q2': 'I receive emotional support or comfort from AI tools',
+        'emot_q3': 'Over time, my emotional or conversational boundaries with AI have become more open',
+        'emot_q4': 'When I feel stressed, anxious, or emotionally overwhelmed, I often turn to AI to help me process my thoughts',
+        # Thought Partnership
+        'thought_q1': 'I use AI as a sounding board — thinking out loud and developing ideas through conversation',
+        'thought_q2': 'I use AI to challenge or stress-test my own beliefs and assumptions',
+        'thought_q3': 'AI has changed how deeply I engage with my own thinking',
+        'thought_q4': 'I tend to use AI in ways that confirm what I already think rather than challenge it',
+        # Social Transparency
+        'soc_q1': 'I openly acknowledge when AI has contributed to my work or thinking',
+        'soc_q2': 'I downplay or hide how much I use AI when talking to friends or family',
+        'soc_q3': 'I feel comfortable telling people in my life how I really use AI',
+        'soc_q4': 'There is a gap between how much I actually use AI and what I let others believe',
+    }
+    return QUESTION_TEXTS.get(q_key, q_key)
+
+
+# ============================================================
 # PERCEPTION GAP ANALYSIS
-# Compares self-estimates against actual percentile scores
 # ============================================================
 
 PERCEPTION_MAP = {
@@ -292,10 +491,6 @@ PERCEPTION_MAP = {
 
 
 def analyse_perception_gap(perceived, actual_percentile, dimension):
-    """
-    Compare self-estimate to actual percentile.
-    Returns gap analysis with direction and magnitude.
-    """
     if not perceived or actual_percentile is None:
         return None
 
@@ -336,10 +531,6 @@ def analyse_perception_gap(perceived, actual_percentile, dimension):
 # ============================================================
 
 def identify_dominant_patterns(dimension_results):
-    """
-    Identify highest and lowest scoring dimensions.
-    Returns top 3 and bottom 3 by overall percentile.
-    """
     scored = [
         (name, data)
         for name, data in dimension_results.items()
@@ -384,10 +575,6 @@ def identify_dominant_patterns(dimension_results):
 
 
 def generate_headline(dimension_results):
-    """
-    Generate a personalised one-line headline based on
-    the most extreme dimension scores.
-    """
     patterns = identify_dominant_patterns(dimension_results)
     highest = patterns['highest'][0] if patterns['highest'] else None
     lowest = patterns['lowest'][0] if patterns['lowest'] else None
@@ -421,23 +608,9 @@ def generate_headline(dimension_results):
 def score_assessment(responses, demographics, benchmark_path='benchmark_tables.json'):
     """
     Main function — scores a complete assessment.
-
-    Args:
-        responses: dict of question_key -> score (1-7)
-                   Keys follow the pattern defined in DIMENSIONS above
-                   e.g. {'trust_q1': 5, 'trust_q2': 6, ...}
-
-        demographics: dict with keys:
-                      age_group, gender, country, ai_tool_use_frequency
-
-        benchmark_path: path to benchmark_tables.json
-
-    Returns:
-        Complete results object with all scores, percentiles,
-        patterns, and perception gap analysis
+    Now also returns variable_highlights for the free results page.
     """
 
-    # Load benchmark tables
     with open(benchmark_path, 'r') as f:
         benchmarks = json.load(f)
 
@@ -449,8 +622,6 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
 
     # Identify dominant patterns
     patterns = identify_dominant_patterns(dimension_results)
-
-    # Generate headline
     headline = generate_headline(dimension_results)
 
     # Perception gap analysis
@@ -478,6 +649,22 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
             perceived_dependence, reliance_percentile, 'reliance'
         )
 
+    # ── NEW: Variable-level highlights ──────────────────────────────────────
+    variable_highlights = []
+
+    # 1. Most distinctive personalised variable
+    most_distinctive = find_most_distinctive_variable(
+        responses, benchmarks, demographics, dimension_results
+    )
+    if most_distinctive:
+        variable_highlights.append(most_distinctive)
+
+    # 2. Fixed highlights — disclosure and social transparency
+    for fixed in FIXED_HIGHLIGHTS:
+        highlight = get_fixed_variable_highlight(fixed, responses, benchmarks, demographics)
+        if highlight:
+            variable_highlights.append(highlight)
+
     # Build complete results object
     results = {
         'demographics': demographics,
@@ -485,6 +672,7 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
         'patterns': patterns,
         'headline': headline,
         'perception_gaps': perception_gaps,
+        'variable_highlights': variable_highlights,
         'summary': {
             'dimensions_scored': len([d for d in dimension_results.values() if d]),
             'highest_dimension': patterns['highest'][0] if patterns['highest'] else None,
@@ -496,71 +684,20 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
 
 
 # ============================================================
-# TEST WITH SAMPLE RESPONSES
+# TEST
 # ============================================================
 
 if __name__ == '__main__':
-
-    # Sample responses — simulating a high trust, low verification user
     sample_responses = {
-        # Trust (high trust profile)
-        'trust_q1': 6,
-        'trust_q2': 6,
-        'trust_q3': 2,  # reverse scored — low worry = high trust
-        'trust_q4': 5,
-
-        # Disclosure (moderate)
-        'disc_q1': 4,
-        'disc_q2': 3,
-        'disc_q3': 3,
-        'disc_q4': 4,
-
-        # Reliance (moderate-high)
-        'rel_q1': 5,
-        'rel_q2': 4,
-        'rel_q3': 5,
-        'rel_q4': 4,
-        'rel_q5': 3,
-
-        # Decision Delegation (moderate)
-        'del_q1': 4,
-        'del_q2': 5,
-        'del_q3': 3,
-        'del_q4': 3,
-        'del_q5': 5,
-
-        # Verification (low — skips checking)
-        'ver_q1': 2,
-        'ver_q2': 6,  # reverse scored — high effort avoidance
-        'ver_q3': 5,  # reverse scored — proceeds without checking
-        'ver_q4': 2,
-
-        # Human Agency (moderate)
-        'agency_q1': 5,
-        'agency_q2': 4,
-        'agency_q3': 4,  # reverse scored
-        'agency_q4': 4,  # reverse scored
-        'agency_q5': 3,  # reverse scored
-
-        # Emotional Regulation (low)
-        'emot_q1': 2,
-        'emot_q2': 2,
-        'emot_q3': 2,
-        'emot_q4': 2,
-
-        # Thought Partnership (high)
-        'thought_q1': 6,
-        'thought_q2': 6,
-        'thought_q3': 6,
-        'thought_q4': 2,  # reverse scored — low echo chamber
-
-        # Social Transparency (moderate)
-        'soc_q1': 4,
-        'soc_q2': 3,  # reverse scored
-        'soc_q3': 4,
-        'soc_q4': 3,  # reverse scored
-
-        # Perceived normality
+        'trust_q1': 6, 'trust_q2': 6, 'trust_q3': 2, 'trust_q4': 5,
+        'disc_q1': 4, 'disc_q2': 3, 'disc_q3': 3, 'disc_q4': 4,
+        'rel_q1': 5, 'rel_q2': 4, 'rel_q3': 5, 'rel_q4': 4, 'rel_q5': 3,
+        'del_q1': 4, 'del_q2': 5, 'del_q3': 3, 'del_q4': 3, 'del_q5': 5,
+        'ver_q1': 2, 'ver_q2': 6, 'ver_q3': 5, 'ver_q4': 2,
+        'agency_q1': 5, 'agency_q2': 4, 'agency_q3': 4, 'agency_q4': 4, 'agency_q5': 3,
+        'emot_q1': 2, 'emot_q2': 2, 'emot_q3': 2, 'emot_q4': 2,
+        'thought_q1': 6, 'thought_q2': 6, 'thought_q3': 6, 'thought_q4': 2,
+        'soc_q1': 4, 'soc_q2': 3, 'soc_q3': 4, 'soc_q4': 3,
         'perceived_usage': 'Somewhat more than most people',
         'perceived_reliance': 'About the same as most people',
         'perceived_dependence': 'Somewhat less than most people',
@@ -576,40 +713,26 @@ if __name__ == '__main__':
     results = score_assessment(
         sample_responses,
         sample_demographics,
-        '/home/claude/benchmark_tables.json'
+        'benchmark_tables.json'
     )
 
-    print('SCORING ENGINE TEST RESULTS')
+    print('SCORING ENGINE V2 TEST')
     print('=' * 60)
     print(f'Headline: {results["headline"]}')
     print()
     print('DIMENSION SCORES:')
-    print(f'{"Dimension":<25} | {"Score":>6} | {"Percentile":>10}')
-    print('-' * 50)
     for dim_name, data in results['dimensions'].items():
         if data:
-            score = data['normalised_score']
             pct = data['percentiles'].get('overall', 'N/A')
-            label = data['label']
-            print(f'{label:<25} | {score:>6.1f} | {pct:>9}th')
+            age_pct = data['percentiles'].get('age_group', 'N/A')
+            print(f'  {data["label"]:<25} overall={pct}th  age={age_pct}th')
 
     print()
-    print('DOMINANT PATTERNS:')
-    print('Highest:')
-    for p in results['patterns']['highest']:
-        print(f"  {p['label']}: {p['percentile']}th percentile")
-    print('Lowest:')
-    for p in results['patterns']['lowest']:
-        print(f"  {p['label']}: {p['percentile']}th percentile")
-
-    print()
-    print('PERCEPTION GAPS:')
-    for key, gap in results['perception_gaps'].items():
-        if gap:
-            print(f"  {gap['dimension']}: estimated {gap['perceived_estimate']}th, actual {gap['actual_percentile']}th — {gap['description']}")
-
-    print()
-    print('DEMOGRAPHIC PERCENTILES (Trust dimension):')
-    trust_percentiles = results['dimensions']['trust']['percentiles']
-    for seg, pct in trust_percentiles.items():
-        print(f'  {seg}: {pct}th percentile')
+    print('VARIABLE HIGHLIGHTS:')
+    for h in results['variable_highlights']:
+        print(f'  [{h["type"]}] {h["question_key"]}')
+        print(f'    Text: {h["question_text"][:60]}...')
+        print(f'    Response: {h["raw_response"]}/7')
+        print(f'    Overall: {h["percentiles"]["overall"]}th percentile')
+        print(f'    Age group: {h["percentiles"].get("age_group")}th percentile')
+        print()
