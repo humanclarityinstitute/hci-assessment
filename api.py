@@ -49,7 +49,7 @@ BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json'
 # Stores responses and results for dataset building
 # ============================================================
 
-def store_response(data, result_type='free'):
+def store_response(payload, result_type='free'):
     """
     Store assessment response and result in Supabase.
     Fails silently — storage failure should not break the user flow.
@@ -65,16 +65,16 @@ def store_response(data, result_type='free'):
         import urllib.request
         import urllib.error
 
-        payload = json.dumps({
-            'responses': data.get('responses'),
-            'demographics': data.get('demographics'),
+        body = json.dumps({
+            'responses': payload.get('responses'),
+            'demographics': payload.get('demographics'),
             'result_type': result_type,
             'timestamp': datetime.utcnow().isoformat(),
         }).encode('utf-8')
 
         req = urllib.request.Request(
             f'{supabase_url}/rest/v1/assessment_responses',
-            data=payload,
+            data=body,
             headers={
                 'Content-Type': 'application/json',
                 'apikey': supabase_key,
@@ -124,16 +124,16 @@ REQUIRED_DEMOGRAPHIC_KEYS = [
 VALID_SCORE_RANGE = range(1, 8)  # 1 through 7
 
 
-def validate_request(data):
+def validate_request(request_data):
     """
     Validate incoming assessment data.
     Returns (is_valid, error_message)
     """
-    if not data:
+    if not request_data:
         return False, 'No data provided'
 
-    responses = data.get('responses', {})
-    demographics = data.get('demographics', {})
+    responses = request_data.get('responses', {})
+    demographics = request_data.get('demographics', {})
 
     # Check all required questions present
     missing_questions = [
@@ -205,22 +205,23 @@ def score():
         "success": true,
         "session_id": "abc123",
         "free_result": { ... },
-        "full_scores": { ... }  // needed for premium report generation
+        "dimension_scores": { ... },
+        "full_results": { ... }
     }
     """
     try:
-        data = request.get_json()
+        request_data = request.get_json()
 
         # Validate
-        is_valid, error = validate_request(data)
+        is_valid, error = validate_request(request_data)
         if not is_valid:
             return jsonify({
                 'success': False,
                 'error': error
             }), 400
 
-        responses = data['responses']
-        demographics = data['demographics']
+        responses = request_data['responses']
+        demographics = request_data['demographics']
 
         # Convert all scores to integers
         for key in REQUIRED_QUESTION_KEYS:
@@ -241,28 +242,28 @@ def score():
         ).hexdigest()[:16]
 
         # Store response (non-blocking)
-        store_response(data, result_type='free')
+        store_response(request_data, result_type='free')
 
-        # Return free result plus full scores
-        # Full scores stored client-side temporarily for premium generation
+        # Build dimension scores including age group percentile
+        dimension_scores = {}
+        for dim_name, dim_data in results['dimensions'].items():
+            if dim_data:
+                dimension_scores[dim_name] = {
+                    'label': dim_data['label'],
+                    'percentile': dim_data['percentiles'].get('overall'),
+                    'age_percentile': dim_data['percentiles'].get('age_group'),
+                    'age_label': demographics.get('age_group', ''),
+                    'normalised_score': dim_data['normalised_score'],
+                }
+
         return jsonify({
             'success': True,
             'session_id': session_id,
             'free_result': free_result,
-           'dimension_scores': {
-    dim: {
-        'label': data['label'],
-        'percentile': data['percentiles'].get('overall'),
-        'age_percentile': data['percentiles'].get('age_group'),
-        'age_label': demographics.get('age_group', ''),
-        'normalised_score': data['normalised_score'],
-    }
-    for dim, data in results['dimensions'].items()
-    if data
-},
+            'dimension_scores': dimension_scores,
             'patterns': results['patterns'],
             'perception_gaps': results['perception_gaps'],
-            'full_results': results,  # passed back for premium report
+            'full_results': results,
         })
 
     except Exception as e:
@@ -281,9 +282,9 @@ def premium():
 
     Request body:
     {
-        "full_results": { ... },  // from /score response
+        "full_results": { ... },
         "payment_confirmed": true,
-        "stripe_session_id": "cs_xxx"  // for verification
+        "stripe_session_id": "cs_xxx"
     }
 
     Response:
@@ -293,34 +294,29 @@ def premium():
     }
     """
     try:
-        data = request.get_json()
+        request_data = request.get_json()
 
-        # Basic validation
-        if not data:
+        if not request_data:
             return jsonify({'success': False, 'error': 'No data provided'}), 400
 
-        full_results = data.get('full_results')
+        full_results = request_data.get('full_results')
         if not full_results:
             return jsonify({'success': False, 'error': 'No results provided'}), 400
 
-        # Verify payment confirmed
-        payment_confirmed = data.get('payment_confirmed', False)
+        payment_confirmed = request_data.get('payment_confirmed', False)
         if not payment_confirmed:
             return jsonify({'success': False, 'error': 'Payment not confirmed'}), 402
 
-        # Optional: verify Stripe session
-        stripe_session_id = data.get('stripe_session_id')
+        stripe_session_id = request_data.get('stripe_session_id')
         if stripe_session_id:
             verified = verify_stripe_payment(stripe_session_id)
             if not verified:
                 return jsonify({'success': False, 'error': 'Payment verification failed'}), 402
 
-        # Generate premium report
         api_key = os.environ.get('ANTHROPIC_API_KEY')
         report = generate_premium_report(full_results, api_key=api_key)
 
-        # Store premium response
-        store_response(data, result_type='premium')
+        store_response(request_data, result_type='premium')
 
         return jsonify({
             'success': True,
@@ -374,7 +370,6 @@ if __name__ == '__main__':
     print(f'Benchmark exists: {os.path.exists(BENCHMARK_PATH)}')
     print()
 
-    # Quick self-test
     sample_data = {
         'responses': {
             'trust_q1': 6, 'trust_q2': 6, 'trust_q3': 2, 'trust_q4': 5,
@@ -399,12 +394,10 @@ if __name__ == '__main__':
     }
 
     with app.test_client() as client:
-        # Test health endpoint
         response = client.get('/health')
         print('Health check:', response.get_json())
         print()
 
-        # Test score endpoint
         response = client.post(
             '/score',
             data=json.dumps(sample_data),
@@ -415,6 +408,7 @@ if __name__ == '__main__':
         print('Success:', result.get('success'))
         print('Session ID:', result.get('session_id'))
         print()
+
         if result.get('free_result'):
             free = result['free_result']
             print('FREE RESULT:')
@@ -426,9 +420,14 @@ if __name__ == '__main__':
             print()
             if free.get('best_benchmark'):
                 print(f'  Benchmark: {free["best_benchmark"]["text"]}')
-            print()
             if free.get('perception_highlight'):
                 print(f'  Perception gap: {free["perception_highlight"]}')
+
+        if result.get('dimension_scores'):
+            print()
+            print('DIMENSION SCORES WITH AGE PERCENTILES:')
+            for dim, scores in result['dimension_scores'].items():
+                print(f'  {scores["label"]}: overall={scores["percentile"]}th, age={scores.get("age_percentile")}th ({scores.get("age_label")})')
 
     print()
     print('All tests passed.')
