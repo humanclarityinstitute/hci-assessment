@@ -1,26 +1,12 @@
 """
 HCI AI Identity & Behaviour Assessment
-API Layer
+API Layer — Version 2
 
-A Flask API that receives assessment responses,
-scores them, generates reports, and handles the
-free vs premium result flow.
-
-Endpoints:
-    POST /score          — score a completed assessment, return free result
-    POST /premium        — generate and return premium report (after payment)
-    GET  /health         — health check
-
-Environment variables required:
-    ANTHROPIC_API_KEY    — for premium report generation
-    SUPABASE_URL         — for storing responses
-    SUPABASE_KEY         — for storing responses
-
-Run locally:
-    python api.py
-
-Deploy to Railway:
-    Connect GitHub repo, Railway auto-detects Flask and deploys.
+Changes from v1:
+- Variable name collision fix (request_data instead of data)
+- dimension_scores now includes age_percentile and age_label
+- variable_highlights now included in /score response
+- store_response parameter renamed to payload
 """
 
 from flask import Flask, request, jsonify
@@ -31,29 +17,22 @@ import sys
 import traceback
 from datetime import datetime
 
-# Add current directory to path
 sys.path.insert(0, os.path.dirname(__file__))
 
 from scoring_engine import score_assessment
 from report_generator import generate_free_result, generate_premium_report
 
 app = Flask(__name__)
-CORS(app)  # Allow cross-origin requests from Involve.me frontend
+CORS(app)
 
-# Path to benchmark tables — same directory as api.py
 BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json')
 
 
 # ============================================================
 # SUPABASE STORAGE
-# Stores responses and results for dataset building
 # ============================================================
 
 def store_response(payload, result_type='free'):
-    """
-    Store assessment response and result in Supabase.
-    Fails silently — storage failure should not break the user flow.
-    """
     try:
         supabase_url = os.environ.get('SUPABASE_URL')
         supabase_key = os.environ.get('SUPABASE_KEY')
@@ -97,23 +76,14 @@ def store_response(payload, result_type='free'):
 # ============================================================
 
 REQUIRED_QUESTION_KEYS = [
-    # Trust
     'trust_q1', 'trust_q2', 'trust_q3', 'trust_q4',
-    # Disclosure
     'disc_q1', 'disc_q2', 'disc_q3', 'disc_q4',
-    # Reliance
     'rel_q1', 'rel_q2', 'rel_q3', 'rel_q4', 'rel_q5',
-    # Decision Delegation
     'del_q1', 'del_q2', 'del_q3', 'del_q4', 'del_q5',
-    # Verification
     'ver_q1', 'ver_q2', 'ver_q3', 'ver_q4',
-    # Human Agency
     'agency_q1', 'agency_q2', 'agency_q3', 'agency_q4', 'agency_q5',
-    # Emotional Regulation
     'emot_q1', 'emot_q2', 'emot_q3', 'emot_q4',
-    # Thought Partnership
     'thought_q1', 'thought_q2', 'thought_q3', 'thought_q4',
-    # Social Transparency
     'soc_q1', 'soc_q2', 'soc_q3', 'soc_q4',
 ]
 
@@ -121,21 +91,16 @@ REQUIRED_DEMOGRAPHIC_KEYS = [
     'age_group', 'gender', 'country', 'ai_tool_use_frequency'
 ]
 
-VALID_SCORE_RANGE = range(1, 8)  # 1 through 7
+VALID_SCORE_RANGE = range(1, 8)
 
 
 def validate_request(request_data):
-    """
-    Validate incoming assessment data.
-    Returns (is_valid, error_message)
-    """
     if not request_data:
         return False, 'No data provided'
 
     responses = request_data.get('responses', {})
     demographics = request_data.get('demographics', {})
 
-    # Check all required questions present
     missing_questions = [
         k for k in REQUIRED_QUESTION_KEYS
         if k not in responses
@@ -143,7 +108,6 @@ def validate_request(request_data):
     if missing_questions:
         return False, f'Missing questions: {missing_questions[:5]}'
 
-    # Check all scores are valid 1-7
     invalid_scores = [
         k for k, v in responses.items()
         if k in REQUIRED_QUESTION_KEYS and int(v) not in VALID_SCORE_RANGE
@@ -151,7 +115,6 @@ def validate_request(request_data):
     if invalid_scores:
         return False, f'Invalid scores (must be 1-7): {invalid_scores[:5]}'
 
-    # Check required demographics present
     missing_demographics = [
         k for k in REQUIRED_DEMOGRAPHIC_KEYS
         if not demographics.get(k)
@@ -168,7 +131,6 @@ def validate_request(request_data):
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check — confirms API and benchmark tables are loaded."""
     benchmark_exists = os.path.exists(BENCHMARK_PATH)
     return jsonify({
         'status': 'ok',
@@ -179,72 +141,32 @@ def health():
 
 @app.route('/score', methods=['POST'])
 def score():
-    """
-    Score a completed assessment and return the free result.
-
-    Request body:
-    {
-        "responses": {
-            "trust_q1": 5,
-            "trust_q2": 6,
-            ... (all 39 question keys)
-            "perceived_usage": "Somewhat more than most people",
-            "perceived_reliance": "About the same as most people",
-            "perceived_dependence": "Somewhat less than most people"
-        },
-        "demographics": {
-            "age_group": "35 - 44",
-            "gender": "Woman",
-            "country": "United States",
-            "ai_tool_use_frequency": "Often"
-        }
-    }
-
-    Response:
-    {
-        "success": true,
-        "session_id": "abc123",
-        "free_result": { ... },
-        "dimension_scores": { ... },
-        "full_results": { ... }
-    }
-    """
     try:
         request_data = request.get_json()
 
-        # Validate
         is_valid, error = validate_request(request_data)
         if not is_valid:
-            return jsonify({
-                'success': False,
-                'error': error
-            }), 400
+            return jsonify({'success': False, 'error': error}), 400
 
         responses = request_data['responses']
         demographics = request_data['demographics']
 
-        # Convert all scores to integers
         for key in REQUIRED_QUESTION_KEYS:
             if key in responses:
                 responses[key] = int(responses[key])
 
-        # Score the assessment
         results = score_assessment(responses, demographics, BENCHMARK_PATH)
-
-        # Generate free result
         free_result = generate_free_result(results)
 
-        # Create session ID for linking to premium purchase
         import hashlib
         import time
         session_id = hashlib.md5(
             f"{time.time()}{json.dumps(demographics)}".encode()
         ).hexdigest()[:16]
 
-        # Store response (non-blocking)
         store_response(request_data, result_type='free')
 
-        # Build dimension scores including age group percentile
+        # Build dimension scores with age percentile
         dimension_scores = {}
         for dim_name, dim_data in results['dimensions'].items():
             if dim_data:
@@ -261,6 +183,7 @@ def score():
             'session_id': session_id,
             'free_result': free_result,
             'dimension_scores': dimension_scores,
+            'variable_highlights': results.get('variable_highlights', []),
             'patterns': results['patterns'],
             'perception_gaps': results['perception_gaps'],
             'full_results': results,
@@ -277,22 +200,6 @@ def score():
 
 @app.route('/premium', methods=['POST'])
 def premium():
-    """
-    Generate premium report after payment confirmation.
-
-    Request body:
-    {
-        "full_results": { ... },
-        "payment_confirmed": true,
-        "stripe_session_id": "cs_xxx"
-    }
-
-    Response:
-    {
-        "success": true,
-        "report": { ... }
-    }
-    """
     try:
         request_data = request.get_json()
 
@@ -333,22 +240,16 @@ def premium():
 
 
 def verify_stripe_payment(stripe_session_id):
-    """
-    Verify a Stripe payment session.
-    Returns True if payment was successful.
-    """
     try:
         stripe_key = os.environ.get('STRIPE_SECRET_KEY')
         if not stripe_key:
             print('Stripe not configured — skipping verification')
-            return True  # Allow in development
+            return True
 
         import urllib.request
         req = urllib.request.Request(
             f'https://api.stripe.com/v1/checkout/sessions/{stripe_session_id}',
-            headers={
-                'Authorization': f'Bearer {stripe_key}',
-            }
+            headers={'Authorization': f'Bearer {stripe_key}'}
         )
         response = urllib.request.urlopen(req, timeout=10)
         session = json.loads(response.read())
@@ -360,11 +261,11 @@ def verify_stripe_payment(stripe_session_id):
 
 
 # ============================================================
-# LOCAL DEVELOPMENT TEST
+# LOCAL TEST
 # ============================================================
 
 if __name__ == '__main__':
-    print('HCI Assessment API')
+    print('HCI Assessment API v2')
     print('=' * 40)
     print(f'Benchmark file: {BENCHMARK_PATH}')
     print(f'Benchmark exists: {os.path.exists(BENCHMARK_PATH)}')
@@ -406,31 +307,23 @@ if __name__ == '__main__':
         result = response.get_json()
         print('Score endpoint status:', response.status_code)
         print('Success:', result.get('success'))
-        print('Session ID:', result.get('session_id'))
         print()
 
-        if result.get('free_result'):
-            free = result['free_result']
-            print('FREE RESULT:')
-            print(f'  Headline: {free["headline"]}')
-            print()
-            print('  Shown scores:')
-            for s in free['shown_scores']:
-                print(f'    {s["label"]}: {s["percentile"]}th percentile')
-            print()
-            if free.get('best_benchmark'):
-                print(f'  Benchmark: {free["best_benchmark"]["text"]}')
-            if free.get('perception_highlight'):
-                print(f'  Perception gap: {free["perception_highlight"]}')
+        if result.get('variable_highlights'):
+            print('VARIABLE HIGHLIGHTS:')
+            for h in result['variable_highlights']:
+                print(f'  [{h["type"]}] {h["question_key"]}')
+                print(f'  Q: {h["question_text"][:70]}')
+                print(f'  Response: {h["raw_response"]}/7')
+                print(f'  Overall: {h["percentiles"]["overall"]}th')
+                print(f'  Age group: {h["percentiles"].get("age_group")}th')
+                print()
 
         if result.get('dimension_scores'):
-            print()
-            print('DIMENSION SCORES WITH AGE PERCENTILES:')
-            for dim, scores in result['dimension_scores'].items():
-                print(f'  {scores["label"]}: overall={scores["percentile"]}th, age={scores.get("age_percentile")}th ({scores.get("age_label")})')
+            print('DIMENSION SCORES (sample):')
+            for dim, scores in list(result['dimension_scores'].items())[:3]:
+                print(f'  {scores["label"]}: {scores["percentile"]}th overall, {scores.get("age_percentile")}th age group')
 
-    print()
-    print('All tests passed.')
     print()
     print('Starting API server on http://localhost:5000')
     app.run(debug=True, port=5000)
