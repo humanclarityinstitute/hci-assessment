@@ -1,16 +1,9 @@
 """
 HCI AI Identity & Behaviour Assessment
-Report Generator — Version 3
+Report Generator — Version 2
 
 Generates free results and premium reports with
 empowerment-first framing and comprehensive guardrails.
-
-Premium report uses 13 focused API calls for maximum quality:
-- 1 call: Most Surprising Finding + Why Most People Miss This
-- 9 calls: Individual dimension profiles (one per dimension)
-- 1 call: Cross-dimensional patterns
-- 1 call: What Is AI Changing?
-- 1 call: Profile Directions + Human Flourishing Reflection
 
 Every report leaves the participant feeling more
 self-aware and curious — never judged or deficient.
@@ -27,57 +20,371 @@ except ImportError:
 
 # ============================================================
 # GLOBAL SYSTEM PROMPT
-# Applied to every single Claude API call
+# Applied to every single Claude API call — non-negotiable
 # ============================================================
 
 GLOBAL_SYSTEM_PROMPT = """
-You are writing sections of a personalised research report for the
-Human Clarity Institute's AI Identity & Behaviour Assessment.
+You are a warm, intelligent, and empowering guide helping people 
+understand their relationship with AI through the HCI AI Identity 
+& Behaviour Assessment.
 
-Your role is to generate genuine insight that leaves people feeling
-more self-aware and curious about themselves — never judged,
+Your role is to generate genuine insight that leaves people feeling 
+more self-aware and curious about themselves — never judged, 
 deficient, or concerned about their behaviour.
 
-INSTITUTIONAL VOICE:
-- Warm but precise. Intellectually rigorous. Never sterile.
-- Write as a thoughtful researcher who has studied this specific
-  person's data — not as a template being filled in.
-- Personal but grounded in data. Future-positive. Never alarming.
+These rules apply to every response without exception:
 
 FRAMING RULES:
-- Every score reveals something genuinely interesting.
-  There are no good or bad scores — only different patterns.
-- Never suggest someone has a problem or should change.
-- Difference from the population is always interesting, never deficit.
-- High scores and low scores have equally valid human interpretations.
-- All scores are patterns at this point in time — not fixed traits.
+- Every score reveals something genuinely interesting — there are 
+  no good or bad scores, only different patterns
+- Never suggest someone has a problem, should change, or is 
+  doing something wrong
+- Never use language that implies deficiency, lack, or being 
+  behind others
+- Difference from the population is always framed as interesting, 
+  never as deficit
+- If a pattern has implications worth noting, frame it as 
+  something worth being aware of — never as a verdict or warning
 
 TONE RULES:
-- Speak directly to the person as "you"
-- Write in second person throughout
-- Every section ends with curiosity, not concern
-- Never list problems — explore patterns
+- Warm, intelligent, curious — never clinical or diagnostic
+- Speak directly to the person as "you" 
+- Write as a thoughtful friend with expertise, not as a judge
+- Always leave the reader feeling more understood than when 
+  they started reading
 
-PERCENTILE LANGUAGE:
-- Always state scores as plain English first:
-  "Higher than 97 out of every 100 people"
-- Then percentile as supporting credential: "97th percentile"
-- Never lead with the number — lead with the human meaning
+STRUCTURE RULES:
+- Open every section by identifying what is genuinely interesting 
+  or positive about this score pattern
+- End every section with curiosity, not concern
+- Never list problems — explore patterns
+- Comparative language describes difference, not deficiency
 
 LANGUAGE TO NEVER USE:
-- concerning, worrying, problematic, at risk
-- you should, you need to, you must
-- worse than, unhealthy, excessive, too much, too little
-- loss of agency, cognitive decline, addiction, dependency problem
-- alarming, dangerous, at risk, red flag
+- "concerning", "worrying", "problematic", "at risk"
+- "you should", "you need to", "you must"
+- "worse than", "lower than", "behind"
+- "unhealthy", "excessive", "too much", "too little"
+- Any language implying the participant has failed or is lacking
 
-LANGUAGE TO USE:
-- interesting, revealing, distinctive, worth exploring
-- your pattern, your positioning, your profile
-- people with similar profiles tend to...
-- what appears worth protecting
-- raises an interesting question
+LANGUAGE TO USE INSTEAD:
+- "interesting", "revealing", "distinctive", "worth exploring"
+- "you might consider", "it's worth reflecting on"
+- "your pattern differs", "compared to most people"
+- "this suggests", "this reveals", "this indicates"
+- Language of curiosity and discovery
 """
+
+
+# ============================================================
+# DIMENSION PROMPTS
+# Each includes empowerment-first framing built into the brief
+# ============================================================
+
+DIMENSION_PROMPTS = {
+    'trust': """
+Write the Trust section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Overall percentile: {percentile}th
+- Age group percentile ({age_group}): {age_percentile}th  
+- Country percentile ({country}): {country_percentile}th
+- Score description: {score_description}
+
+WHAT THIS DIMENSION MEASURES:
+Trust captures how readily someone accepts AI-generated information 
+as reliable. High scores reflect confident, fluid engagement with AI. 
+Low scores reflect a naturally cautious, questioning approach. 
+Neither is superior — they represent genuinely different and 
+valid relationships with AI information.
+
+HIGH SCORE POSITIVE FRAMING: Confident, fluid, trusting engagement. 
+Works with AI naturally without friction or constant doubt.
+
+LOW SCORE POSITIVE FRAMING: Naturally questioning and discerning. 
+Brings healthy scepticism that keeps human judgment central.
+
+Write 180-200 words that:
+1. Open with what is genuinely interesting about their specific pattern
+2. Include one benchmark comparison that feels personally meaningful
+3. Explore what this trust pattern reveals about how they engage with AI
+4. Close with one curious, open reflection question
+
+Never suggest their trust level is wrong, excessive, or insufficient.
+No headers. Flowing prose only.
+""",
+
+    'disclosure': """
+Write the Disclosure section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Overall percentile: {percentile}th
+- Age group percentile ({age_group}): {age_percentile}th
+- Country percentile ({country}): {country_percentile}th
+- Score description: {score_description}
+
+WHAT THIS DIMENSION MEASURES:
+Disclosure captures what people share with AI — including things 
+they might not share with most people. High scores suggest AI has 
+become a uniquely safe space for personal expression. Low scores 
+suggest clear and intentional boundaries around AI interactions.
+Both patterns reflect meaningful choices about privacy and connection.
+
+HIGH SCORE POSITIVE FRAMING: AI has become a genuinely safe space 
+for authentic expression — rare and valuable.
+
+LOW SCORE POSITIVE FRAMING: Strong, intentional boundaries that 
+keep human relationships primary for personal matters.
+
+Write 180-200 words that:
+1. Open with what is genuinely interesting about their disclosure pattern
+2. Include one benchmark comparison that feels personally meaningful
+3. Explore what this pattern reveals about how they experience AI as a space
+4. Close with one curious, open reflection question
+
+Frame high disclosure as meaningful intimacy with a new kind of 
+relationship, not as oversharing. Frame low disclosure as intentional 
+boundary-keeping, not as limitation. No headers. Flowing prose only.
+""",
+
+    'reliance': """
+Write the Reliance section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Overall percentile: {percentile}th
+- Age group percentile ({age_group}): {age_percentile}th
+- Country percentile ({country}): {country_percentile}th
+- Score description: {score_description}
+
+WHAT THIS DIMENSION MEASURES:
+Reliance captures how integrated AI has become in everyday functioning.
+High scores reflect deep integration — AI as genuine infrastructure.
+Low scores reflect selective, tool-based use that stays firmly optional.
+Both represent valid and thoughtful approaches to AI adoption.
+
+HIGH SCORE POSITIVE FRAMING: Deep, fluent integration that makes 
+AI a genuine productivity and thinking partner.
+
+LOW SCORE POSITIVE FRAMING: Selective, intentional use that 
+maintains strong independent functioning.
+
+Write 180-200 words that:
+1. Open with what is genuinely interesting about their reliance pattern
+2. Include one benchmark comparison that feels personally meaningful
+3. Explore what this integration level reveals about their AI relationship
+4. Close with one curious, open reflection question
+
+Never use words like dependency, addiction, or excessive. 
+Frame high reliance as deep integration, not problematic dependence.
+No headers. Flowing prose only.
+""",
+
+    'decision_delegation': """
+Write the Decision Delegation section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Overall percentile: {percentile}th
+- Age group percentile ({age_group}): {age_percentile}th
+- Country percentile ({country}): {country_percentile}th
+- Score description: {score_description}
+
+WHAT THIS DIMENSION MEASURES:
+Decision Delegation captures how much judgement someone shares 
+with AI. High scores reflect collaborative decision-making where 
+AI is a genuine partner. Low scores reflect strong preference for 
+independent judgement with AI in a supporting role.
+Both represent thoughtful approaches to human-AI collaboration.
+
+HIGH SCORE POSITIVE FRAMING: Collaborative, partnership-oriented 
+approach to decisions — using all available intelligence.
+
+LOW SCORE POSITIVE FRAMING: Strong ownership of personal judgement 
+— AI informs but the human always decides.
+
+Write 180-200 words that:
+1. Open with what is genuinely interesting about their delegation pattern
+2. Include one benchmark comparison that feels personally meaningful
+3. Explore what this reveals about how they think about decision ownership
+4. Close with one curious, open reflection question
+
+Never suggest high delegation is irresponsible or low delegation 
+is closed-minded. No headers. Flowing prose only.
+""",
+
+    'verification': """
+Write the Verification section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Overall percentile: {percentile}th
+- Age group percentile ({age_group}): {age_percentile}th
+- Country percentile ({country}): {country_percentile}th
+- Score description: {score_description}
+
+WHAT THIS DIMENSION MEASURES:
+Verification captures how often someone checks AI outputs before 
+acting on them. High scores reflect a naturally questioning, 
+evidence-seeking approach. Low scores often reflect confidence 
+in AI, cognitive efficiency, or time pressure — not carelessness.
+Context matters enormously for this dimension.
+
+HIGH SCORE POSITIVE FRAMING: Naturally rigorous and evidence-seeking —
+brings critical thinking to AI interactions.
+
+LOW SCORE POSITIVE FRAMING: Confident and efficient — works with 
+AI fluidly without getting caught in constant verification loops.
+Often reflects genuine trust built through experience.
+
+Write 180-200 words that:
+1. Open with what is genuinely interesting about their verification pattern
+2. Include one benchmark comparison that feels personally meaningful
+3. Explore what this pattern reveals about how they work with AI information
+4. Close with one curious, open reflection question
+
+IMPORTANT: Low verification is very common and reflects many 
+valid reasons including time pressure, established trust, and 
+cognitive efficiency. Never frame it as dangerous or careless.
+No headers. Flowing prose only.
+""",
+
+    'human_agency': """
+Write the Human Agency section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Overall percentile: {percentile}th
+- Age group percentile ({age_group}): {age_percentile}th
+- Country percentile ({country}): {country_percentile}th
+- Score description: {score_description}
+
+WHAT THIS DIMENSION MEASURES:
+Human Agency captures how strongly someone feels like the author 
+of their own thoughts and decisions while using AI. High scores 
+reflect a strong, clear sense of self-direction. Lower scores 
+reflect a more fluid, collaborative experience of thinking with AI —
+where the boundaries between one's own thinking and AI influence 
+feel less defined. This fluidity is not inherently negative — 
+it reflects deep integration and a new kind of cognitive relationship.
+
+HIGH SCORE POSITIVE FRAMING: Strong, clear sense of authorship 
+and self-direction — AI serves the person, not the other way around.
+
+LOW SCORE POSITIVE FRAMING: Fluid, integrated cognitive relationship 
+with AI — thinking together rather than separately. A genuinely 
+new kind of intellectual experience.
+
+Write 180-200 words that:
+1. Open with what is genuinely interesting about their agency pattern
+2. Include one benchmark comparison that feels personally meaningful
+3. Explore what this reveals about their cognitive relationship with AI
+4. Close with one curious, open reflection question
+
+CRITICAL: Lower agency scores must never be framed as losing 
+oneself, being controlled, or at risk. Frame as a different and 
+interesting cognitive experience. No headers. Flowing prose only.
+""",
+
+    'emotional_regulation': """
+Write the Emotional Regulation section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Overall percentile: {percentile}th
+- Age group percentile ({age_group}): {age_percentile}th
+- Country percentile ({country}): {country_percentile}th
+- Score description: {score_description}
+
+WHAT THIS DIMENSION MEASURES:
+Emotional Regulation captures whether someone turns to AI when 
+managing emotional states. High scores reflect that AI has become 
+a genuine source of support and comfort — a new kind of emotional 
+resource. Low scores reflect clear separation between AI use and 
+emotional life, with human relationships and internal resources 
+remaining primary. Both reflect valid and healthy approaches.
+
+HIGH SCORE POSITIVE FRAMING: AI has become a genuine source of 
+support — available, patient, and non-judgmental in ways human 
+relationships sometimes cannot be.
+
+LOW SCORE POSITIVE FRAMING: Clear, intentional boundaries between 
+AI and emotional life — human connection remains primary.
+
+Write 180-200 words that:
+1. Open with what is genuinely interesting about their emotional pattern
+2. Include one benchmark comparison that feels personally meaningful
+3. Explore what this reveals about how they experience AI as a presence
+4. Close with one curious, open reflection question
+
+IMPORTANT: High emotional regulation with AI is not concerning — 
+it reflects AI fulfilling a genuine human need for a patient, 
+available listener. Frame with warmth not caution.
+No headers. Flowing prose only.
+""",
+
+    'thought_partnership': """
+Write the Thought Partnership section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Overall percentile: {percentile}th
+- Age group percentile ({age_group}): {age_percentile}th
+- Country percentile ({country}): {country_percentile}th
+- Score description: {score_description}
+
+WHAT THIS DIMENSION MEASURES:
+Thought Partnership captures whether someone uses AI as a genuine 
+cognitive collaborator — thinking out loud, exploring ideas, 
+stress-testing beliefs. High scores reflect deep intellectual 
+engagement with AI as a thinking partner. Low scores reflect 
+task-focused use where AI is a tool rather than a collaborator.
+Both represent valid and productive approaches.
+
+HIGH SCORE POSITIVE FRAMING: Deep intellectual engagement — AI 
+as a genuine thinking partner that expands what's possible to explore.
+
+LOW SCORE POSITIVE FRAMING: Clear, task-focused use — AI serves 
+specific purposes without blurring into the thinking process itself.
+
+Write 180-200 words that:
+1. Open with what is genuinely interesting about their thought partnership pattern
+2. Include one benchmark comparison that feels personally meaningful
+3. Explore what this reveals about how they use AI intellectually
+4. Close with one curious, open reflection question
+
+No headers. Flowing prose only.
+""",
+
+    'social_transparency': """
+Write the Social Transparency section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Overall percentile: {percentile}th
+- Age group percentile ({age_group}): {age_percentile}th
+- Country percentile ({country}): {country_percentile}th
+- Score description: {score_description}
+
+WHAT THIS DIMENSION MEASURES:
+Social Transparency captures how openly someone acknowledges their 
+AI use to others. High scores reflect comfortable openness about 
+AI involvement. Low scores often reflect social norms, professional 
+context, or a sense that AI use is private — not dishonesty.
+The gap between private AI behaviour and public acknowledgement 
+is common and reflects the evolving social norms around AI.
+
+HIGH SCORE POSITIVE FRAMING: Comfortable, open relationship with 
+AI use — no gap between private behaviour and public acknowledgement.
+
+LOW SCORE POSITIVE FRAMING: Navigating the still-evolving social 
+norms around AI — many people keep AI use private for entirely 
+valid reasons including professional context and personal preference.
+
+Write 180-200 words that:
+1. Open with what is genuinely interesting about their transparency pattern
+2. Include one benchmark comparison that feels personally meaningful
+3. Explore what this reveals about how they navigate AI's social dimensions
+4. Close with one curious, open reflection question
+
+IMPORTANT: Low transparency must never be framed as hiding, 
+dishonesty, or shame. It reflects legitimate social navigation.
+No headers. Flowing prose only.
+""",
+}
 
 
 # ============================================================
@@ -94,665 +401,87 @@ def format_percentile(p):
     return f'{p}{suffix}'
 
 
-def plain_english_percentile(p):
-    if p is None:
-        return None
-    p = int(p)
-    if p >= 50:
-        return f'Higher than {p} out of every 100 people'
-    return f'Lower than {100 - p} out of every 100 people'
-
-
 def get_score_description(percentile):
+    """
+    Convert percentile to empowerment-neutral description.
+    Avoids deficit language entirely.
+    """
     if percentile is None:
-        return 'near the population centre'
+        return 'close to average'
     p = int(percentile)
-    if p >= 96:
-        return 'exceptionally high — fewer than 4% score similarly'
-    elif p >= 86:
-        return f'notably high — only {100-p}% of participants score similarly'
-    elif p >= 71:
-        return 'above the population centre'
-    elif p >= 41:
-        return 'near the population centre'
-    elif p >= 26:
-        return 'below the population centre'
-    elif p >= 11:
-        return f'notably low — only {p}% of participants score similarly'
+    if p >= 85:
+        return 'notably higher than most people'
+    elif p >= 65:
+        return 'higher than most people'
+    elif p >= 35:
+        return 'close to the population average'
+    elif p >= 15:
+        return 'lower than most people'
     else:
-        return f'exceptionally low — fewer than {p+1}% score similarly'
+        return 'notably lower than most people'
 
 
-def get_rarity_text(percentile):
+def format_benchmark_text(percentile, label, dimension_label):
+    """
+    Format benchmark comparison text.
+    Never uses deficit framing for low scores.
+    """
     if percentile is None:
         return None
     p = int(percentile)
-    if p >= 97:
-        return f'Fewer than {100-p}% of participants score this high'
-    elif p >= 86:
-        return f'Only {100-p}% of participants score similarly'
-    elif p <= 3:
-        return f'Fewer than {p+1}% of participants score this low'
-    elif p <= 14:
-        return f'Only {p}% of participants score similarly'
-    return None
+    if p >= 50:
+        return (
+            f"Your {dimension_label} score places you higher than "
+            f"{p}% of {label}"
+        )
+    else:
+        return (
+            f"Your {dimension_label} pattern is distinctive compared to {label} — "
+            f"placing you in a group that represents {p}% of that population"
+        )
 
 
-def select_best_benchmark(dimension_data, demographics):
-    """Select the most interesting demographic benchmark."""
+def select_most_interesting_benchmark(dimension_data, demographics):
+    """Select the demographic benchmark that differs most from overall."""
     percentiles = dimension_data.get('percentiles', {})
     overall = percentiles.get('overall')
     if overall is None:
-        return None, None
+        return None, None, None
 
-    best_label = 'all participants in the benchmark population'
-    best_pct = overall
+    best_segment = 'overall'
+    best_percentile = overall
+    best_label = 'people in our research population'
     max_diff = 0
 
     segment_labels = {
         'age_group': f"people in your age group ({demographics.get('age_group', '')})",
-        'gender': f"{demographics.get('gender', 'people').lower()}s in the benchmark",
-        'frequency': 'people who use AI as frequently as you',
+        'gender': f"{demographics.get('gender', 'people').lower()}s in our research",
         'country': f"people in {demographics.get('country', 'your country')}",
+        'frequency': 'people who use AI as frequently as you',
     }
 
     for segment, label in segment_labels.items():
-        seg_pct = percentiles.get(segment)
-        if seg_pct is not None:
-            diff = abs(seg_pct - overall)
+        seg_percentile = percentiles.get(segment)
+        if seg_percentile is not None:
+            diff = abs(seg_percentile - overall)
             if diff > max_diff:
                 max_diff = diff
-                best_pct = seg_pct
+                best_segment = segment
+                best_percentile = seg_percentile
                 best_label = label
 
-    return best_pct, best_label
+    return best_percentile, best_label, best_segment
 
 
 # ============================================================
-# DIMENSION CONTEXT — what each dimension measures
-# ============================================================
-
-DIMENSION_CONTEXT = {
-    'trust': {
-        'label': 'Trust',
-        'what_it_measures': 'how readily someone accepts AI-generated information as reliable',
-        'high_framing': 'confident, fluid engagement with AI — working with it naturally without friction or constant doubt',
-        'low_framing': 'naturally questioning and discerning — bringing healthy scepticism that keeps human judgement central',
-        'human_anchor': 'epistemic confidence and reality orientation',
-        'population_pattern': 'People with similar Trust scores tend to move faster through information tasks and report lower friction in AI-assisted work.',
-    },
-    'disclosure': {
-        'label': 'Disclosure',
-        'what_it_measures': 'what someone shares with AI, including things they might not share with most people',
-        'high_framing': 'AI has become a genuinely safe space for authentic expression — rare and meaningful',
-        'low_framing': 'strong, intentional boundaries that keep human relationships primary for personal matters',
-        'human_anchor': 'authentic connection and identity coherence',
-        'population_pattern': 'People with similar Disclosure scores tend to describe AI conversations as a private thinking space rather than a social one.',
-    },
-    'reliance': {
-        'label': 'Reliance',
-        'what_it_measures': 'how integrated AI has become in everyday functioning',
-        'high_framing': 'deep, fluent integration that makes AI a genuine productivity and thinking partner',
-        'low_framing': 'selective, intentional use that maintains strong independent functioning',
-        'human_anchor': 'self-trust, autonomy, and independent judgement',
-        'population_pattern': 'People with similar Reliance scores tend to report higher task output but also higher discomfort during AI outages.',
-    },
-    'decision_delegation': {
-        'label': 'Decision Delegation',
-        'what_it_measures': 'how much judgement someone shares with AI in decision-making',
-        'high_framing': 'collaborative, partnership-oriented approach — using all available intelligence',
-        'low_framing': 'strong ownership of personal judgement — AI informs but the human always decides',
-        'human_anchor': 'autonomy, responsibility, and self-trust',
-        'population_pattern': 'People with similar Delegation scores tend to report faster decisions but are less likely to describe those decisions as fully their own.',
-    },
-    'verification': {
-        'label': 'Verification',
-        'what_it_measures': 'how often someone checks AI outputs before acting on them',
-        'high_framing': 'naturally rigorous and evidence-seeking — brings critical thinking to AI interactions',
-        'low_framing': 'confident and efficient — works with AI fluidly, often reflecting genuine trust built through experience',
-        'human_anchor': 'independent judgement and epistemic confidence',
-        'population_pattern': 'People with similar Verification scores tend to describe a stronger sense of ownership over conclusions they reach.',
-    },
-    'human_agency': {
-        'label': 'Human Agency',
-        'what_it_measures': 'how strongly someone feels like the author of their own thoughts and decisions while using AI',
-        'high_framing': 'strong, clear sense of authorship and self-direction — AI serves the person, not the other way around',
-        'low_framing': 'fluid, integrated cognitive relationship with AI — thinking together rather than separately, a genuinely new kind of intellectual experience',
-        'human_anchor': 'agency, autonomy, and intentionality',
-        'population_pattern': 'People with similar Agency scores tend to describe AI as a tool they direct, rather than a system that directs them.',
-    },
-    'emotional_regulation': {
-        'label': 'Emotional Regulation',
-        'what_it_measures': 'whether someone turns to AI when managing emotional states',
-        'high_framing': 'AI has become a genuine source of support — available, patient, and non-judgmental in ways human relationships sometimes cannot be',
-        'low_framing': 'clear, intentional boundaries between AI and emotional life — human connection remains primary',
-        'human_anchor': 'emotional stability and resilience',
-        'population_pattern': 'People with similar Emotional Regulation scores tend to describe AI as a low-judgement space that makes it easier to process difficult feelings.',
-    },
-    'thought_partnership': {
-        'label': 'Thought Partnership',
-        'what_it_measures': 'whether someone uses AI as a genuine cognitive collaborator for thinking, exploring ideas, and stress-testing beliefs',
-        'high_framing': 'deep intellectual engagement — AI as a genuine thinking partner that expands what\'s possible to explore',
-        'low_framing': 'clear, task-focused use — AI serves specific purposes without blurring into the thinking process itself',
-        'human_anchor': 'clarity, intentionality, and depth',
-        'population_pattern': 'People with similar Thought Partnership scores tend to describe their thinking process as more externally structured than it used to be.',
-    },
-    'social_transparency': {
-        'label': 'Social Transparency',
-        'what_it_measures': 'how openly someone acknowledges their AI use to others',
-        'high_framing': 'comfortable, open relationship with AI use — no gap between private behaviour and public acknowledgement',
-        'low_framing': 'navigating the still-evolving social norms around AI — many people keep AI use private for entirely valid reasons',
-        'human_anchor': 'authenticity and identity coherence',
-        'population_pattern': 'People with low Social Transparency scores tend to report social norms around AI use as a significant factor in what they disclose.',
-    },
-}
-
-
-# ============================================================
-# CALL 1: MOST SURPRISING FINDING + WHY MOST PEOPLE MISS THIS
-# ============================================================
-
-def generate_opening(results, client):
-    """
-    Generate the opening section — Most Surprising Finding and
-    Why Most People Miss This. This is what the participant
-    remembers most. Must be specific, grounded, memorable.
-    """
-    demographics = results['demographics']
-    perception_gaps = results.get('perception_gaps', {})
-    patterns = results['patterns']
-    variable_highlights = results.get('variable_highlights', [])
-
-    # Find most significant perception gap
-    significant_gaps = [
-        g for g in perception_gaps.values()
-        if g and g.get('magnitude') in ['significant', 'moderate']
-    ]
-    significant_gaps.sort(key=lambda x: x.get('abs_gap', 0), reverse=True)
-
-    # Find most extreme dimension
-    full_ranking = patterns.get('full_ranking', [])
-    most_extreme = max(full_ranking, key=lambda x: abs(x['percentile'] - 50)) if full_ranking else None
-
-    # Find most distinctive variable highlight
-    personalised_var = next((h for h in variable_highlights if h['type'] == 'personalised'), None)
-
-    gap_text = ''
-    if significant_gaps:
-        gap = significant_gaps[0]
-        direction = 'higher' if gap['underestimated'] else 'lower'
-        gap_text = (
-            f"Perception gap found: participant estimated their "
-            f"{gap['dimension'].replace('_', ' ')} was around average "
-            f"(~{gap['perceived_estimate']}th percentile). "
-            f"Actual result: {gap['actual_percentile']}th percentile — "
-            f"significantly {direction} than estimated."
-        )
-
-    extreme_text = ''
-    if most_extreme:
-        extreme_text = (
-            f"Most extreme dimension: {most_extreme['label']} at "
-            f"{format_percentile(most_extreme['percentile'])} percentile overall"
-        )
-
-    var_text = ''
-    if personalised_var:
-        var_text = (
-            f"Most distinctive individual response: \"{personalised_var['question_text']}\" "
-            f"— participant answered {personalised_var['raw_response']}/7, "
-            f"placing them at the {format_percentile(personalised_var['percentiles']['overall'])} "
-            f"percentile overall"
-        )
-
-    prompt = f"""Write the opening section of a personalised HCI AI Identity & Behaviour Report.
-
-PARTICIPANT DATA:
-{gap_text}
-{extreme_text}
-{var_text}
-Age group: {demographics.get('age_group', 'not specified')}
-Country: {demographics.get('country', 'not specified')}
-
-This section has TWO parts:
-
-PART 1 — MOST SURPRISING FINDING (~80 words)
-The single most striking finding from this participant's profile.
-Priority order: perception gap first, then extreme variable, then extreme dimension.
-Make it specific — name the actual dimension or question.
-State the finding clearly in plain English — no percentile jargon.
-This should feel like: "Wait — that's genuinely surprising."
-Do NOT start with "Your" — vary the opening.
-
-PART 2 — WHY MOST PEOPLE MISS THIS (~80 words)
-Immediately after the finding, one paragraph explaining why this gap
-or pattern is so common — grounded in population-level observation.
-This makes the finding feel legitimate and researched rather than random.
-Start this paragraph with: "Why most people don't see this:"
-Frame as population-level observation, never as individual correction.
-End with the finding feeling more interesting, not more alarming.
-
-No headers. Write Part 1 then Part 2 as connected prose.
-Speak directly to the person as "you".
-Warm, precise, intellectually curious tone throughout."""
-
-    message = client.messages.create(
-        model='claude-sonnet-4-20250514',
-        max_tokens=600,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-    )
-    return message.content[0].text.strip()
-
-
-# ============================================================
-# CALLS 2-10: INDIVIDUAL DIMENSION PROFILES
-# ============================================================
-
-def generate_dimension_profile(dim_name, dim_data, demographics,
-                                variable_highlights, client):
-    """
-    Generate a full personalised profile for one dimension.
-    Includes: plain English score, demographic comparisons,
-    rarity framing, narrative, population pattern, and
-    any relevant variable-level highlight.
-    """
-    ctx = DIMENSION_CONTEXT.get(dim_name, {})
-    percentiles = dim_data.get('percentiles', {})
-    overall = percentiles.get('overall', 50)
-    age_pct = percentiles.get('age_group')
-    gender_pct = percentiles.get('gender')
-    freq_pct = percentiles.get('frequency')
-
-    # Build demographic comparison text
-    demo_comparisons = []
-    if age_pct is not None:
-        demo_comparisons.append(
-            f"Among people in your age group ({demographics.get('age_group', '')}): "
-            f"{format_percentile(age_pct)} percentile "
-            f"({plain_english_percentile(age_pct)})"
-        )
-    if freq_pct is not None:
-        demo_comparisons.append(
-            f"Among people who use AI as frequently as you: "
-            f"{format_percentile(freq_pct)} percentile "
-            f"({plain_english_percentile(freq_pct)})"
-        )
-    if gender_pct is not None:
-        demo_comparisons.append(
-            f"Among {demographics.get('gender', 'people').lower()}s: "
-            f"{format_percentile(gender_pct)} percentile"
-        )
-
-    # Find relevant variable highlight for this dimension
-    dim_var = next(
-        (h for h in variable_highlights
-         if h['dimension'] == dim_name and h['type'] == 'personalised'),
-        None
-    )
-
-    var_text = ''
-    if dim_var:
-        var_text = (
-            f"\nMost distinctive individual response in this dimension:\n"
-            f"Question: \"{dim_var['question_text']}\"\n"
-            f"Participant answered: {dim_var['raw_response']}/7\n"
-            f"Overall percentile for this specific response: "
-            f"{format_percentile(dim_var['percentiles']['overall'])}\n"
-            f"Age group percentile: "
-            f"{format_percentile(dim_var['percentiles'].get('age_group'))}"
-        )
-
-    rarity = get_rarity_text(overall)
-
-    prompt = f"""Write the {ctx.get('label', dim_name)} dimension profile for a personalised HCI AI Identity Report.
-
-PARTICIPANT DATA:
-Overall percentile: {format_percentile(overall)} ({plain_english_percentile(overall)})
-Score description: {get_score_description(overall)}
-{f"Rarity: {rarity}" if rarity else ""}
-
-DEMOGRAPHIC COMPARISONS:
-{chr(10).join(demo_comparisons) if demo_comparisons else "No demographic breakdowns available"}
-{var_text}
-
-WHAT THIS DIMENSION MEASURES:
-{ctx.get('what_it_measures', '')}
-
-FRAMING FOR THIS SCORE LEVEL:
-{"High score framing: " + ctx.get('high_framing', '') if overall >= 50 else "Low score framing: " + ctx.get('low_framing', '')}
-
-HUMAN FOUNDATIONS ANCHOR:
-{ctx.get('human_anchor', '')}
-
-POPULATION PATTERN (Why It Matters):
-{ctx.get('population_pattern', '')}
-
-Write 160-200 words that:
-1. Open with what is genuinely interesting about their specific pattern
-   — make it personal, not generic
-2. Include the most striking demographic comparison naturally in the text
-   (e.g. "Among people your age, this places you...")
-3. If there is a notable variable-level finding, reference it specifically
-   — name the actual question behaviour, not the question itself
-4. Include the population pattern observation naturally
-5. Close with one curious, open reflection — not a recommendation
-
-IMPORTANT:
-- If overall and age group percentiles differ significantly, note both
-  — this contrast is often the most interesting finding
-- Never frame any score as a problem or something to fix
-- Write as flowing prose, no headers, no bullet points
-- Speak directly as "you" throughout"""
-
-    message = client.messages.create(
-        model='claude-sonnet-4-20250514',
-        max_tokens=450,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-    )
-    return message.content[0].text.strip()
-
-
-# ============================================================
-# CALL 11: CROSS-DIMENSIONAL PATTERNS
-# ============================================================
-
-RARE_COMBINATIONS = [
-    ('reliance', 'human_agency', 'high', 'high',
-     'High Reliance + High Agency — most people with high reliance report reduced sense of agency. This combination is unusual and distinctive.'),
-    ('trust', 'verification', 'high', 'high',
-     'High Trust + High Verification — trust and verification typically sit in tension. This combination describes confident but disciplined AI use.'),
-    ('disclosure', 'emotional_regulation', 'high', 'low',
-     'High Disclosure + Low Emotional Regulation — shares openly with AI but does not depend on it emotionally. An unusual boundary combination.'),
-    ('thought_partnership', 'decision_delegation', 'high', 'low',
-     'High Thought Partnership + Low Decision Delegation — thinks extensively with AI but retains full ownership of decisions.'),
-    ('reliance', 'verification', 'high', 'high',
-     'High Reliance + High Verification — deeply integrated with AI but cross-checks outputs consistently.'),
-    ('social_transparency', 'thought_partnership', 'low', 'high',
-     'Low Social Transparency + High Thought Partnership — uses AI extensively as a thinking partner but conceals the extent from others.'),
-]
-
-
-def find_rare_combinations(dimension_results):
-    """Identify any rare cross-dimensional combinations."""
-    found = []
-    for dim_a, dim_b, level_a, level_b, description in RARE_COMBINATIONS:
-        pct_a = dimension_results.get(dim_a, {})
-        pct_b = dimension_results.get(dim_b, {})
-        if not pct_a or not pct_b:
-            continue
-        a = pct_a.get('percentiles', {}).get('overall', 50)
-        b = pct_b.get('percentiles', {}).get('overall', 50)
-        a_matches = (level_a == 'high' and a >= 65) or (level_a == 'low' and a <= 35)
-        b_matches = (level_b == 'high' and b >= 65) or (level_b == 'low' and b <= 35)
-        if a_matches and b_matches:
-            found.append({
-                'dim_a': dim_a, 'dim_b': dim_b,
-                'pct_a': a, 'pct_b': b,
-                'description': description,
-            })
-    return found
-
-
-def generate_cross_dimensional(results, client):
-    """Generate cross-dimensional patterns section."""
-    patterns = results['patterns']
-    dimensions = results['dimensions']
-    full_ranking = patterns.get('full_ranking', [])
-
-    # Find rare combinations
-    rare = find_rare_combinations(dimensions)
-
-    # Find biggest gap between any two dimensions
-    if len(full_ranking) >= 2:
-        highest = full_ranking[0]
-        lowest = full_ranking[-1]
-        gap = highest['percentile'] - lowest['percentile']
-    else:
-        highest = lowest = None
-        gap = 0
-
-    # Build all dimension summary
-    dim_summary = '\n'.join([
-        f"  {d['label']}: {format_percentile(d['percentile'])} percentile"
-        for d in full_ranking
-    ])
-
-    rare_text = ''
-    if rare:
-        rare_text = 'RARE COMBINATIONS DETECTED:\n' + '\n'.join([
-            f"  - {r['description']} "
-            f"(This participant: {format_percentile(r['pct_a'])} and {format_percentile(r['pct_b'])})"
-            for r in rare
-        ])
-
-    prompt = f"""Write the Cross-Dimensional Patterns section of a personalised HCI AI Identity Report.
-
-ALL NINE DIMENSION SCORES:
-{dim_summary}
-
-{rare_text}
-
-BIGGEST CONTRAST:
-{f"Highest: {highest['label']} at {format_percentile(highest['percentile'])} percentile" if highest else ""}
-{f"Lowest: {lowest['label']} at {format_percentile(lowest['percentile'])} percentile" if lowest else ""}
-{f"Gap between highest and lowest: {round(gap)}th percentile points" if gap else ""}
-
-Write 200-250 words that:
-1. Open by describing the overall shape of this profile — what kind
-   of AI user does this combination of scores suggest?
-2. Identify 2-3 specific dimensional relationships that are interesting
-   — how do the scores relate to and illuminate each other?
-3. If any rare combinations exist, describe what makes them unusual
-   and why the combination is interesting
-4. Note the biggest contrast in the profile — what does it reveal
-   that individual scores alone wouldn't show?
-5. Close with a genuine observation about what this pattern suggests
-   about this person's relationship with AI — end with curiosity
-
-This section should feel like the report is seeing the whole person,
-not just individual scores. The combination tells a story.
-
-No headers. Flowing prose. Speak directly as "you"."""
-
-    message = client.messages.create(
-        model='claude-sonnet-4-20250514',
-        max_tokens=550,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-    )
-    return message.content[0].text.strip()
-
-
-# ============================================================
-# CALL 12: WHAT IS AI CHANGING?
-# ============================================================
-
-def generate_what_is_changing(results, client):
-    """
-    Generate the 'What Is AI Changing?' section.
-    This is the most important section — answers the deepest question
-    the participant carries. Must be specific to their profile.
-    Population-grounded throughout. Never predictive or prescriptive.
-    """
-    demographics = results['demographics']
-    dimensions = results['dimensions']
-    patterns = results['patterns']
-    full_ranking = patterns.get('full_ranking', [])
-
-    # Identify dimensions showing strongest alignment with observed changes
-    high_dims = [d for d in full_ranking if d['percentile'] >= 65]
-    low_dims = [d for d in full_ranking if d['percentile'] <= 35]
-
-    dim_summary = '\n'.join([
-        f"  {d['label']}: {format_percentile(d['percentile'])} percentile"
-        for d in full_ranking
-    ])
-
-    prompt = f"""Write the "What Is AI Changing?" section of a personalised HCI AI Identity Report.
-
-This is the most important section of the premium report. It answers the
-question the participant has been carrying since they started:
-What is AI actually changing in me?
-
-PARTICIPANT PROFILE:
-{dim_summary}
-
-Age group: {demographics.get('age_group', 'not specified')}
-AI usage frequency: {demographics.get('ai_tool_use_frequency', 'not specified')}
-
-DIMENSIONS SHOWING STRONG PATTERNS:
-High: {', '.join([d['label'] for d in high_dims]) if high_dims else 'None notably high'}
-Low: {', '.join([d['label'] for d in low_dims]) if low_dims else 'None notably low'}
-
-Write 220-260 words that answer these four questions,
-woven together as connected prose:
-
-1. WHICH PATTERNS ALIGN WITH OBSERVED CHANGES
-   Which of this participant's behavioural patterns match the shifts
-   HCI is observing across thousands of AI users? Be specific —
-   name their actual dimensions.
-   Frame as: "Your [dimension] pattern aligns with one of the most
-   consistent shifts HCI observes..."
-
-2. WHERE THIS PROFILE DIFFERS FROM PRE-AI BASELINES
-   Where does this profile sit relative to what HCI observed before
-   AI became embedded in daily life? What appears to have shifted?
-   Ground in population observation, never individual prediction.
-
-3. WHICH HUMAN CAPACITIES APPEAR MOST ACTIVE
-   Based on this profile, which human capacities appear most active
-   and most preserved? What does the data suggest remains strong?
-
-4. WHAT PATTERNS ALIGN WITH BROADER POPULATION CHANGES
-   What does HCI observe about people with similar profiles over time?
-   What changes do people with similar patterns describe?
-   Frame as observation, never prediction.
-
-CRITICAL RULES:
-- Never predict what will happen to this person
-- Frame everything as observed population patterns
-- Never alarm — this is illuminating, not warning
-- End with curiosity about what this means going forward
-- Speak directly as "you" throughout"""
-
-    message = client.messages.create(
-        model='claude-sonnet-4-20250514',
-        max_tokens=600,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-    )
-    return message.content[0].text.strip()
-
-
-# ============================================================
-# CALL 13: PROFILE DIRECTIONS + HUMAN FLOURISHING REFLECTION
-# ============================================================
-
-def generate_closing(results, client):
-    """
-    Generate the closing two sections:
-    1. Profile Directions — non-prescriptive, curiosity-forward
-    2. Human Flourishing Reflection — the most distinctive section
-       in any AI assessment anywhere
-
-    Combined into one call for coherence — these two sections
-    need to flow naturally into each other.
-    """
-    demographics = results['demographics']
-    patterns = results['patterns']
-    dimensions = results['dimensions']
-    full_ranking = patterns.get('full_ranking', [])
-
-    dim_summary = '\n'.join([
-        f"  {d['label']}: {format_percentile(d['percentile'])} percentile"
-        for d in full_ranking
-    ])
-
-    highest = full_ranking[0] if full_ranking else None
-    lowest = full_ranking[-1] if full_ranking else None
-
-    prompt = f"""Write the final two sections of a personalised HCI AI Identity Report.
-
-PARTICIPANT PROFILE:
-{dim_summary}
-
-Highest dimension: {highest['label'] + ' at ' + format_percentile(highest['percentile']) + ' percentile' if highest else 'N/A'}
-Lowest dimension: {lowest['label'] + ' at ' + format_percentile(lowest['percentile']) + ' percentile' if lowest else 'N/A'}
-Age group: {demographics.get('age_group', 'not specified')}
-
-Write TWO distinct sections:
-
-═══════════════════════════════════
-SECTION A: PROFILE DIRECTIONS (~150 words)
-═══════════════════════════════════
-
-Three elements — each 2-3 sentences. Non-prescriptive throughout.
-Never say "you should" or "you need to" — only observation and curiosity.
-
-STRENGTH:
-What does this profile suggest is working well?
-Ground in population data: "People with similar profiles tend to..."
-Name the specific capacity this reflects.
-
-ONE PATTERN WORTH NOTICING:
-One dimensional combination worth being aware of.
-Not a warning — an interesting observation.
-"One pattern worth noticing in your profile..."
-
-WHAT OTHERS WITH THIS PROFILE OFTEN EXPLORE:
-What do people with similar profiles find interesting to pay attention to?
-Frame as observation, never instruction.
-"People with profiles like yours often find it interesting to notice..."
-
-═══════════════════════════════════
-SECTION B: HUMAN FLOURISHING REFLECTION (~180 words)
-═══════════════════════════════════
-
-This is the most important closing section HCI produces.
-It is unlike anything in any other AI assessment.
-It does not evaluate. It observes. It asks what appears worth protecting.
-
-Answer these four questions woven as connected prose:
-
-1. What human strengths does this profile suggest are currently active?
-   Name them specifically — grounded in actual dimension scores.
-
-2. What capacities appear well-preserved in how this person relates to AI?
-   What does the data suggest remains strongly intact?
-
-3. What does this profile suggest is most worth protecting going forward?
-   Frame as observation: "What appears most worth protecting here is..."
-   Never as prescription: never "you should protect..."
-
-4. What does this profile suggest about how AI may be shaping this
-   person's experience over time?
-   Population-grounded. Open. Never alarming. End with genuine curiosity.
-
-CRITICAL: Section B must end with a sentence that leaves the participant
-feeling more curious about themselves than when they started reading.
-This is the last thing they read. Make it count.
-
-Write Section A then Section B. Use clear section headers:
-"Profile Directions" and "Human Flourishing Reflection"
-Then flowing prose within each. Speak as "you" throughout."""
-
-    message = client.messages.create(
-        model='claude-sonnet-4-20250514',
-        max_tokens=800,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-    )
-    return message.content[0].text.strip()
-
-
-# ============================================================
-# FREE RESULT GENERATOR (unchanged)
+# FREE RESULT GENERATOR
 # ============================================================
 
 def generate_free_result(results):
-    """Generate free result page content. Pure maths — no API call."""
+    """
+    Generate free result page content.
+    Pure maths — no API call needed.
+    """
     dimensions = results['dimensions']
     demographics = results['demographics']
     patterns = results['patterns']
@@ -801,19 +530,11 @@ def generate_free_result(results):
     if primary_dim:
         dim_data = dimensions.get(primary_dim['dimension'])
         if dim_data:
-            pct, label = select_best_benchmark(dim_data, demographics)
+            pct, label, segment = select_most_interesting_benchmark(dim_data, demographics)
             if pct is not None:
-                if pct >= 50:
-                    benchmark_text = (
-                        f"Your {primary_dim['label']} score places you higher than "
-                        f"{int(pct)}% of {label}"
-                    )
-                else:
-                    benchmark_text = (
-                        f"Your {primary_dim['label']} pattern is distinctive compared "
-                        f"to {label} — placing you in a group that represents "
-                        f"{int(pct)}% of that population"
-                    )
+                benchmark_text = format_benchmark_text(
+                    pct, label, primary_dim['label']
+                )
                 best_benchmark = {
                     'dimension': primary_dim['label'],
                     'percentile': pct,
@@ -821,7 +542,7 @@ def generate_free_result(results):
                     'text': benchmark_text,
                 }
 
-    # Perception gap
+    # Perception gap — reframed positively
     perception_highlight = None
     gaps = results.get('perception_gaps', {})
     significant_gaps = [
@@ -852,15 +573,138 @@ def generate_free_result(results):
 
 
 # ============================================================
-# PREMIUM REPORT GENERATOR — 13 FOCUSED API CALLS
+# PREMIUM REPORT GENERATOR
 # ============================================================
 
-def generate_premium_report(results, api_key=None, progress_callback=None):
-    """
-    Generate the complete premium report using 13 focused API calls.
+def generate_dimension_narrative(dimension_name, dimension_data, demographics, client):
+    """Generate personalised narrative for one dimension."""
+    percentiles = dimension_data.get('percentiles', {})
+    overall = percentiles.get('overall', 50)
+    age_percentile = percentiles.get('age_group', overall)
+    country_percentile = percentiles.get('country', overall)
 
-    progress_callback: optional function(step, total, message) for
-    streaming progress updates to the frontend.
+    prompt = DIMENSION_PROMPTS[dimension_name].format(
+        percentile=int(overall),
+        age_group=demographics.get('age_group', 'your age group'),
+        age_percentile=int(age_percentile),
+        country=demographics.get('country', 'your country'),
+        country_percentile=int(country_percentile),
+        score_description=get_score_description(overall),
+    )
+
+    message = client.messages.create(
+        model='claude-sonnet-4-6',
+        max_tokens=400,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+    )
+
+    return message.content[0].text.strip()
+
+
+def generate_pattern_narrative(results, client):
+    """Generate the dominant pattern section."""
+    patterns = results['patterns']
+    demographics = results['demographics']
+    highest = patterns['highest'][:2]
+    lowest = patterns['lowest'][:2]
+
+    highest_text = ' and '.join([
+        f"{p['label']} ({format_percentile(p['percentile'])} percentile)"
+        for p in highest
+    ])
+    lowest_text = ' and '.join([
+        f"{p['label']} ({format_percentile(p['percentile'])} percentile)"
+        for p in lowest
+    ])
+
+    prompt = f"""
+Write the Dominant Patterns section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Strongest patterns: {highest_text}
+- Most distinctive lower patterns: {lowest_text}
+- Age group: {demographics.get('age_group', 'not specified')}
+- Country: {demographics.get('country', 'not specified')}
+
+Write 200-250 words that:
+1. Open by naming their overall AI identity pattern in warm, honest language
+2. Explain what the specific combination of high and low dimensions reveals
+3. Note what makes this combination interesting or distinctive
+4. Frame this as a starting point for self-understanding — not a verdict
+
+The combination of patterns should be presented as a coherent and 
+interesting picture of this person's unique AI identity — not as 
+a list of strengths and weaknesses.
+
+No headers. Flowing prose. Speak directly to the person as "you".
+"""
+
+    message = client.messages.create(
+        model='claude-sonnet-4-6',
+        max_tokens=500,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+    )
+
+    return message.content[0].text.strip()
+
+
+def generate_perception_gap_narrative(results, client):
+    """Generate perception gap section if significant gaps exist."""
+    gaps = results.get('perception_gaps', {})
+    significant = [
+        g for g in gaps.values()
+        if g and g.get('magnitude') in ['moderate', 'significant']
+    ]
+
+    if not significant:
+        return None
+
+    gap_descriptions = []
+    for gap in significant:
+        direction = 'higher' if gap['underestimated'] else 'lower'
+        gap_descriptions.append(
+            f"{gap['dimension'].replace('_', ' ')}: "
+            f"estimated around {gap['perceived_estimate']}th percentile, "
+            f"actual result {gap['actual_percentile']}th percentile "
+            f"({direction} than estimated)"
+        )
+
+    prompt = f"""
+Write the Self-Awareness section of a personalised HCI AI Identity Report.
+
+PARTICIPANT DATA:
+- Perception gaps found: {chr(10).join(gap_descriptions)}
+
+Write 150-180 words that:
+1. Open by noting that most people's estimates of their own AI behaviour 
+   differ from their actual results — this is completely normal and interesting
+2. Name their specific perception gap with warmth and curiosity
+3. Explore what this gap might reveal about self-awareness of AI habits
+4. Frame this as one of the most fascinating aspects of the assessment —
+   that our AI behaviour often develops in ways we haven't consciously noticed
+
+This section should feel like a moment of genuine discovery — 
+not a correction or a concern. The gap is interesting, not worrying.
+
+No headers. Flowing prose. Speak directly to the person as "you".
+"""
+
+    message = client.messages.create(
+        model='claude-sonnet-4-6',
+        max_tokens=350,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+    )
+
+    return message.content[0].text.strip()
+
+
+def generate_premium_report(results, api_key=None):
+    """
+    Generate the complete premium report.
+    Calls Claude API with empowerment-first guardrails on every call.
     """
     if not ANTHROPIC_AVAILABLE:
         raise ImportError('anthropic package required. pip install anthropic')
@@ -870,108 +714,64 @@ def generate_premium_report(results, api_key=None, progress_callback=None):
     demographics = results['demographics']
     dimensions = results['dimensions']
     patterns = results['patterns']
-    variable_highlights = results.get('variable_highlights', [])
 
-    total_steps = 13
-    step = 0
+    print('Generating premium report...')
 
-    def progress(message):
-        nonlocal step
-        step += 1
-        print(f'  [{step}/{total_steps}] {message}')
-        if progress_callback:
-            progress_callback(step, total_steps, message)
+    print('  Generating dominant pattern narrative...')
+    pattern_narrative = generate_pattern_narrative(results, client)
 
-    print('Generating premium report — 13 focused calls...')
+    print('  Generating perception gap narrative...')
+    perception_narrative = generate_perception_gap_narrative(results, client)
 
-    # ── Call 1: Opening ──────────────────────────────────────────────────────
-    progress('Identifying your most surprising finding...')
-    opening = generate_opening(results, client)
-
-    # ── Calls 2-10: Nine dimension profiles ──────────────────────────────────
-    dimension_profiles = {}
-    dim_order = [
-        'reliance', 'trust', 'verification', 'decision_delegation',
-        'human_agency', 'disclosure', 'emotional_regulation',
-        'thought_partnership', 'social_transparency'
-    ]
-
-    dim_labels = {
-        'reliance': 'Reliance', 'trust': 'Trust',
-        'verification': 'Verification', 'decision_delegation': 'Decision Delegation',
-        'human_agency': 'Human Agency', 'disclosure': 'Disclosure',
-        'emotional_regulation': 'Emotional Regulation',
-        'thought_partnership': 'Thought Partnership',
-        'social_transparency': 'Social Transparency',
-    }
-
-    for dim_name in dim_order:
-        dim_data = dimensions.get(dim_name)
+    dimension_narratives = {}
+    for dim_name, dim_data in dimensions.items():
         if dim_data:
-            progress(f'Writing your {dim_labels.get(dim_name, dim_name)} profile...')
-            narrative = generate_dimension_profile(
-                dim_name, dim_data, demographics, variable_highlights, client
+            print(f'  Generating {dim_name} narrative...')
+            narrative = generate_dimension_narrative(
+                dim_name, dim_data, demographics, client
             )
-            dimension_profiles[dim_name] = {
+            dimension_narratives[dim_name] = {
                 'label': dim_data['label'],
-                'subtitle': dim_data.get('subtitle', ''),
+                'subtitle': dim_data['subtitle'],
                 'percentile': dim_data['percentiles'].get('overall'),
-                'age_percentile': dim_data['percentiles'].get('age_group'),
                 'normalised_score': dim_data['normalised_score'],
                 'percentiles': dim_data['percentiles'],
                 'narrative': narrative,
-                'plain_english': plain_english_percentile(
-                    dim_data['percentiles'].get('overall')
-                ),
-                'rarity': get_rarity_text(dim_data['percentiles'].get('overall')),
             }
 
-    # ── Call 11: Cross-dimensional patterns ──────────────────────────────────
-    progress('Analysing cross-dimensional patterns...')
-    cross_dimensional = generate_cross_dimensional(results, client)
-
-    # ── Call 12: What Is AI Changing? ────────────────────────────────────────
-    progress('Writing What Is AI Changing section...')
-    what_is_changing = generate_what_is_changing(results, client)
-
-    # ── Call 13: Profile Directions + Human Flourishing ──────────────────────
-    progress('Writing your Human Flourishing Reflection...')
-    closing = generate_closing(results, client)
-
-    # ── Assemble report ──────────────────────────────────────────────────────
     report = {
         'metadata': {
             'demographics': demographics,
             'generated_by': 'HCI AI Identity & Behaviour Assessment',
-            'version': '3.0',
-            'total_api_calls': 13,
+            'version': '2.0',
         },
         'headline': results.get('headline'),
-        'opening': opening,
-        'dimension_profiles': dimension_profiles,
-        'dimension_ranking': patterns.get('full_ranking', []),
-        'cross_dimensional': cross_dimensional,
-        'what_is_changing': what_is_changing,
-        'closing': closing,
-        'variable_highlights': variable_highlights,
-        'perception_gaps': results.get('perception_gaps', {}),
+        'pattern_narrative': pattern_narrative,
+        'perception_narrative': perception_narrative,
+        'dimensions': dimension_narratives,
+        'summary': {
+            'highest': patterns['highest'],
+            'lowest': patterns['lowest'],
+            'full_ranking': patterns['full_ranking'],
+        },
+        'closing_note': (
+            "Every pattern in this report reflects something genuine and interesting "
+            "about your relationship with AI — not a verdict on how you use it. "
+            "AI behaviour is personal, contextual, and constantly evolving. "
+            "We hope this report leaves you feeling more curious about yourself "
+            "than when you started."
+        ),
         'methodology_note': (
             "This report is based on your responses to the HCI AI Identity & "
-            "Behaviour Assessment — a research-based behavioural instrument "
-            "benchmarked against data drawn from more than 10,000 participants "
-            "across multiple studies conducted by the Human Clarity Institute. "
-            "Scores represent your positioning within the benchmark population. "
-            "They describe patterns, not traits. They reflect how you responded "
-            "at this point in time and may change as your relationship with AI "
-            "evolves. This assessment is designed for personal insight and "
-            "reflection. It is not a clinical instrument and should not be used "
-            "for diagnosis, professional evaluation, or any purpose beyond "
-            "individual self-understanding. Benchmark data and methodology are "
-            "publicly available at github.com/humanclarityinstitute."
+            "Behaviour Assessment, benchmarked against data from nearly 10,000 "
+            "participants across multiple research studies conducted by the Human "
+            "Clarity Institute. Percentile rankings show where your scores sit "
+            "relative to this population. Results reflect self-reported behaviour "
+            "and are designed for personal insight and reflection."
         ),
     }
 
-    print(f'Premium report generation complete. ({total_steps} API calls)')
+    print('Premium report generation complete.')
     return report
 
 
@@ -981,18 +781,56 @@ def generate_premium_report(results, api_key=None, progress_callback=None):
 
 if __name__ == '__main__':
     import sys
-    import os
+    sys.path.insert(0, '/home/claude')
+    from scoring_engine import score_assessment
 
-    print('Report Generator v3 — Test')
-    print('Free result generator: ready (no API key needed)')
-    print('Premium generator: requires ANTHROPIC_API_KEY')
+    sample_responses = {
+        'trust_q1': 6, 'trust_q2': 6, 'trust_q3': 2, 'trust_q4': 5,
+        'disc_q1': 4, 'disc_q2': 3, 'disc_q3': 3, 'disc_q4': 4,
+        'rel_q1': 5, 'rel_q2': 4, 'rel_q3': 5, 'rel_q4': 4, 'rel_q5': 3,
+        'del_q1': 4, 'del_q2': 5, 'del_q3': 3, 'del_q4': 3, 'del_q5': 5,
+        'ver_q1': 2, 'ver_q2': 6, 'ver_q3': 5, 'ver_q4': 2,
+        'agency_q1': 5, 'agency_q2': 4, 'agency_q3': 4, 'agency_q4': 4, 'agency_q5': 3,
+        'emot_q1': 2, 'emot_q2': 2, 'emot_q3': 2, 'emot_q4': 2,
+        'thought_q1': 6, 'thought_q2': 6, 'thought_q3': 6, 'thought_q4': 2,
+        'soc_q1': 4, 'soc_q2': 3, 'soc_q3': 4, 'soc_q4': 3,
+        'perceived_usage': 'Somewhat more than most people',
+        'perceived_reliance': 'About the same as most people',
+        'perceived_dependence': 'Somewhat less than most people',
+    }
+
+    sample_demographics = {
+        'age_group': '35 - 44',
+        'gender': 'Woman',
+        'country': 'United States',
+        'ai_tool_use_frequency': 'Often',
+    }
+
+    results = score_assessment(
+        sample_responses,
+        sample_demographics,
+        '/home/claude/benchmark_tables.json'
+    )
+
+    free = generate_free_result(results)
+
+    print('FREE RESULT — VERSION 2')
+    print('=' * 60)
+    print(f'Headline: {free["headline"]}')
     print()
-    print('Structure: 13 focused API calls')
-    print('  1: Most Surprising Finding + Why Most People Miss This')
-    print('  2-10: Nine dimension profiles (one per dimension)')
-    print('  11: Cross-dimensional patterns')
-    print('  12: What Is AI Changing?')
-    print('  13: Profile Directions + Human Flourishing Reflection')
+    print('Shown scores:')
+    for s in free['shown_scores']:
+        print(f'  [{s["framing"]}] {s["label"]}: '
+              f'{format_percentile(s["percentile"])} percentile')
+        print(f'  → {s["description"]}')
     print()
-    print('Estimated generation time: 40-70 seconds')
-    print('Estimated cost per report: ~$0.08-0.12')
+    if free['best_benchmark']:
+        print(f'Benchmark: {free["best_benchmark"]["text"]}')
+    print()
+    if free['perception_highlight']:
+        print(f'Perception gap: {free["perception_highlight"]}')
+    print()
+    print('Hidden dimensions:', free['hidden_dimensions'])
+    print()
+    print('Guardrails active — all framing empowerment-first.')
+    print('Premium report generation requires ANTHROPIC_API_KEY.')
