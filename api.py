@@ -1,0 +1,503 @@
+"""
+HCI AI Identity & Behaviour Assessment
+API Layer — Version 4
+
+Changes from v3:
+- get_stored_report() — retrieve cached premium report from Supabase
+- store_premium_report() — save generated report to Supabase
+- /premium endpoint checks cache before generating (prevents duplicate generation on refresh)
+- /premium stores report after generation
+- /premium sends email via Resend after generation
+- /get-results endpoint for session-based retrieval
+- store_response updated to save session_id, full_results, report_email
+"""
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import json
+import os
+import sys
+import traceback
+from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+from scoring_engine import score_assessment
+from report_generator import generate_free_result, generate_premium_report
+from email_template import send_report_email
+
+app = Flask(__name__)
+CORS(app)
+
+BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json')
+
+
+# ============================================================
+# SUPABASE STORAGE
+# ============================================================
+
+def store_response(payload, result_type='free', session_id=None,
+                   full_results=None, report_email=None):
+    """
+    Store assessment response in Supabase.
+    Fails silently — storage failure should not break the user flow.
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+
+        if not supabase_url or not supabase_key:
+            print('Supabase not configured — skipping storage')
+            return None
+
+        import urllib.request
+
+        demographics = payload.get('demographics', {})
+        record = {
+            'result_type': result_type,
+            'timestamp': datetime.utcnow().isoformat(),
+            'responses': payload.get('responses'),
+            'demographics': demographics,
+            'age_group': demographics.get('age_group', ''),
+            'gender': demographics.get('gender', ''),
+            'country': demographics.get('country', ''),
+            'ai_tool_use_frequency': demographics.get('ai_tool_use_frequency', ''),
+        }
+        if session_id:
+            record['session_id'] = session_id
+        if full_results:
+            record['full_results'] = full_results
+        if report_email:
+            record['report_email'] = report_email
+
+        body = json.dumps(record).encode('utf-8')
+
+        req = urllib.request.Request(
+            f'{supabase_url}/rest/v1/assessment_responses',
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Prefer': 'return=minimal',
+            },
+            method='POST'
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return True
+
+    except Exception as e:
+        print(f'Storage failed (non-critical): {e}')
+        return None
+
+
+def get_stored_report(session_id):
+    """
+    Retrieve a cached premium report from Supabase by session_id.
+    Returns the report object if found, None otherwise.
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+
+        if not supabase_url or not supabase_key:
+            return None
+
+        import urllib.request
+        import urllib.parse
+
+        url = (
+            f'{supabase_url}/rest/v1/assessment_responses'
+            f'?session_id=eq.{urllib.parse.quote(session_id)}'
+            f'&select=premium_report'
+            f'&limit=1'
+        )
+        req = urllib.request.Request(
+            url,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+            }
+        )
+        response = urllib.request.urlopen(req, timeout=10)
+        records = json.loads(response.read())
+
+        if records and records[0].get('premium_report'):
+            print(f'Cached report found for session {session_id}')
+            return records[0]['premium_report']
+        return None
+
+    except Exception as e:
+        print(f'Report retrieval failed (non-critical): {e}')
+        return None
+
+
+def store_premium_report(session_id, report):
+    """
+    Save a generated premium report to Supabase against the session_id.
+    Uses PATCH to update the existing row created during /score.
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+
+        if not supabase_url or not supabase_key:
+            return False
+
+        import urllib.request
+        import urllib.parse
+
+        body = json.dumps({
+            'premium_report': report,
+            'report_generated_at': datetime.utcnow().isoformat(),
+        }).encode('utf-8')
+
+        url = (
+            f'{supabase_url}/rest/v1/assessment_responses'
+            f'?session_id=eq.{urllib.parse.quote(session_id)}'
+        )
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Prefer': 'return=minimal',
+            },
+            method='PATCH'
+        )
+        urllib.request.urlopen(req, timeout=10)
+        print(f'Premium report stored for session {session_id}')
+        return True
+
+    except Exception as e:
+        print(f'Report storage failed (non-critical): {e}')
+        return False
+
+
+# ============================================================
+# VALIDATION
+# ============================================================
+
+REQUIRED_QUESTION_KEYS = [
+    'trust_q1', 'trust_q2', 'trust_q3', 'trust_q4',
+    'disc_q1', 'disc_q2', 'disc_q3', 'disc_q4',
+    'rel_q1', 'rel_q2', 'rel_q3', 'rel_q4', 'rel_q5',
+    'del_q1', 'del_q2', 'del_q3', 'del_q4', 'del_q5',
+    'ver_q1', 'ver_q2', 'ver_q3', 'ver_q4',
+    'agency_q1', 'agency_q2', 'agency_q3', 'agency_q4', 'agency_q5',
+    'emot_q1', 'emot_q2', 'emot_q3', 'emot_q4',
+    'thought_q1', 'thought_q2', 'thought_q3', 'thought_q4',
+    'soc_q1', 'soc_q2', 'soc_q3', 'soc_q4',
+]
+
+REQUIRED_DEMOGRAPHIC_KEYS = [
+    'age_group', 'gender', 'country', 'ai_tool_use_frequency'
+]
+
+VALID_SCORE_RANGE = range(1, 8)
+
+
+def validate_request(request_data):
+    if not request_data:
+        return False, 'No data provided'
+
+    responses = request_data.get('responses', {})
+    demographics = request_data.get('demographics', {})
+
+    missing_questions = [
+        k for k in REQUIRED_QUESTION_KEYS if k not in responses
+    ]
+    if missing_questions:
+        return False, f'Missing questions: {missing_questions[:5]}'
+
+    invalid_scores = [
+        k for k, v in responses.items()
+        if k in REQUIRED_QUESTION_KEYS and int(v) not in VALID_SCORE_RANGE
+    ]
+    if invalid_scores:
+        return False, f'Invalid scores (must be 1-7): {invalid_scores[:5]}'
+
+    missing_demographics = [
+        k for k in REQUIRED_DEMOGRAPHIC_KEYS if not demographics.get(k)
+    ]
+    if missing_demographics:
+        return False, f'Missing demographics: {missing_demographics}'
+
+    return True, None
+
+
+# ============================================================
+# API ENDPOINTS
+# ============================================================
+
+@app.route('/health', methods=['GET'])
+def health():
+    benchmark_exists = os.path.exists(BENCHMARK_PATH)
+    return jsonify({
+        'status': 'ok',
+        'benchmark_loaded': benchmark_exists,
+        'timestamp': datetime.utcnow().isoformat(),
+    })
+
+
+@app.route('/score', methods=['POST'])
+def score():
+    """
+    Score a completed assessment and return the free result.
+    Stores session_id, full_results, and report_email in Supabase.
+    """
+    try:
+        request_data = request.get_json()
+
+        is_valid, error = validate_request(request_data)
+        if not is_valid:
+            return jsonify({'success': False, 'error': error}), 400
+
+        responses = request_data['responses']
+        demographics = request_data['demographics']
+
+        for key in REQUIRED_QUESTION_KEYS:
+            if key in responses:
+                responses[key] = int(responses[key])
+
+        results = score_assessment(responses, demographics, BENCHMARK_PATH)
+        free_result = generate_free_result(results)
+
+        import hashlib
+        import time
+        session_id = hashlib.md5(
+            f"{time.time()}{json.dumps(demographics)}".encode()
+        ).hexdigest()[:16]
+
+        # Get report email if provided
+        report_email = request_data.get('report_email') or \
+                       demographics.get('report_email')
+
+        store_response(
+            request_data,
+            result_type='free',
+            session_id=session_id,
+            full_results=results,
+            report_email=report_email,
+        )
+
+        # Build dimension scores with age percentile
+        dimension_scores = {}
+        for dim_name, dim_data in results['dimensions'].items():
+            if dim_data:
+                dimension_scores[dim_name] = {
+                    'label': dim_data['label'],
+                    'percentile': dim_data['percentiles'].get('overall'),
+                    'age_percentile': dim_data['percentiles'].get('age_group'),
+                    'age_label': demographics.get('age_group', ''),
+                    'normalised_score': dim_data['normalised_score'],
+                }
+
+        return jsonify({
+            'success': True,
+            'session_id': session_id,
+            'free_result': free_result,
+            'dimension_scores': dimension_scores,
+            'variable_highlights': results.get('variable_highlights', []),
+            'patterns': results['patterns'],
+            'perception_gaps': results['perception_gaps'],
+            'full_results': results,
+        })
+
+    except Exception as e:
+        print(f'Score endpoint error: {e}')
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Scoring failed — please try again'
+        }), 500
+
+
+@app.route('/get-results', methods=['GET'])
+def get_results():
+    """
+    Retrieve stored full_results by session_id.
+    Called by the premium report page when sessionStorage is unavailable.
+    """
+    try:
+        session_id = request.args.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+
+        if not supabase_url or not supabase_key:
+            return jsonify({'success': False, 'error': 'Storage not configured'}), 500
+
+        import urllib.request
+        import urllib.parse
+
+        url = (
+            f'{supabase_url}/rest/v1/assessment_responses'
+            f'?session_id=eq.{urllib.parse.quote(session_id)}'
+            f'&select=full_results,demographics,report_email'
+            f'&limit=1'
+        )
+        req = urllib.request.Request(
+            url,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+            }
+        )
+        response = urllib.request.urlopen(req, timeout=10)
+        records = json.loads(response.read())
+
+        if not records:
+            return jsonify({'success': False, 'error': 'Session not found'}), 404
+
+        record = records[0]
+        full_results = record.get('full_results')
+
+        if not full_results:
+            return jsonify({
+                'success': False,
+                'error': 'Results not stored for this session'
+            }), 404
+
+        return jsonify({
+            'success': True,
+            'full_results': full_results,
+            'session_id': session_id,
+            'report_email': record.get('report_email'),
+        })
+
+    except Exception as e:
+        print(f'Get results error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not retrieve results'}), 500
+
+
+@app.route('/premium', methods=['POST'])
+def premium():
+    """
+    Generate premium report after payment confirmation.
+
+    - Checks Supabase cache first — returns instantly if already generated
+    - Generates fresh report if not cached
+    - Stores report in Supabase immediately after generation
+    - Sends email via Resend if report_email provided
+    """
+    try:
+        request_data = request.get_json()
+
+        if not request_data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        full_results = request_data.get('full_results')
+        if not full_results:
+            return jsonify({'success': False, 'error': 'No results provided'}), 400
+
+        payment_confirmed = request_data.get('payment_confirmed', False)
+        if not payment_confirmed:
+            return jsonify({'success': False, 'error': 'Payment not confirmed'}), 402
+
+        stripe_session_id = request_data.get('stripe_session_id')
+        if stripe_session_id:
+            verified = verify_stripe_payment(stripe_session_id)
+            if not verified:
+                return jsonify({
+                    'success': False,
+                    'error': 'Payment verification failed'
+                }), 402
+
+        session_id = request_data.get('session_id')
+        report_email = request_data.get('report_email')
+
+        # Check cache — return immediately if report already exists
+        if session_id:
+            existing_report = get_stored_report(session_id)
+            if existing_report:
+                print(f'Returning cached report for session {session_id}')
+                return jsonify({
+                    'success': True,
+                    'report': existing_report,
+                    'cached': True,
+                })
+
+        # Generate new report
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        report = generate_premium_report(full_results, api_key=api_key)
+
+        # Store immediately so refresh works
+        if session_id:
+            store_premium_report(session_id, report)
+
+        # Send email
+        if report_email:
+            resend_key = os.environ.get('RESEND_API_KEY')
+            if resend_key:
+                demographics = full_results.get('demographics', {})
+                send_report_email(report_email, report, demographics, resend_key)
+                print(f'Report email sent to {report_email}')
+            else:
+                print('RESEND_API_KEY not configured — skipping email')
+        else:
+            print('No report_email provided — skipping email')
+
+        store_response(request_data, result_type='premium')
+
+        return jsonify({
+            'success': True,
+            'report': report,
+        })
+
+    except Exception as e:
+        print(f'Premium endpoint error: {e}')
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Report generation failed — please contact support'
+        }), 500
+
+
+def verify_stripe_payment(stripe_session_id):
+    """Verify a Stripe payment session."""
+    try:
+        stripe_key = os.environ.get('STRIPE_SECRET_KEY')
+        if not stripe_key:
+            print('Stripe not configured — skipping verification')
+            return True
+
+        import urllib.request
+        req = urllib.request.Request(
+            f'https://api.stripe.com/v1/checkout/sessions/{stripe_session_id}',
+            headers={'Authorization': f'Bearer {stripe_key}'}
+        )
+        response = urllib.request.urlopen(req, timeout=10)
+        session = json.loads(response.read())
+        return session.get('payment_status') == 'paid'
+
+    except Exception as e:
+        print(f'Stripe verification error: {e}')
+        return False
+
+
+# ============================================================
+# LOCAL TEST
+# ============================================================
+
+if __name__ == '__main__':
+    print('HCI Assessment API — Version 4')
+    print('=' * 40)
+    print(f'Benchmark file: {BENCHMARK_PATH}')
+    print(f'Benchmark exists: {os.path.exists(BENCHMARK_PATH)}')
+    print()
+    print('New in v4:')
+    print('  - get_stored_report() — cache retrieval')
+    print('  - store_premium_report() — cache storage')
+    print('  - /premium checks cache before generating')
+    print('  - /premium stores report after generating')
+    print('  - /premium sends email via Resend')
+    print('  - /get-results returns report_email too')
+    print()
+    print('Starting API server on http://localhost:5000')
+    app.run(debug=True, port=5000)
