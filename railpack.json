@@ -1,5 +1,5 @@
 {
-  "python": {
-    "version": "3.12"
+  "packages": {
+    "python": "3.12"
   }
 }
