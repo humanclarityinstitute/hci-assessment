@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from scoring_engine import score_assessment
 from report_generator import generate_free_result, generate_premium_report
+from email_template import send_report_email
 
 app = Flask(__name__)
 CORS(app)
@@ -139,6 +140,79 @@ def validate_request(request_data):
 # ============================================================
 # API ENDPOINTS
 # ============================================================
+
+def get_stored_report(session_id):
+    """Retrieve a stored premium report from Supabase by session_id."""
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+        if not supabase_url or not supabase_key:
+            return None
+
+        import urllib.request
+        import urllib.parse
+
+        url = (
+            f'{supabase_url}/rest/v1/assessment_responses'
+            f'?session_id=eq.{urllib.parse.quote(session_id)}'
+            f'&select=premium_report,demographics'
+            f'&limit=1'
+        )
+        req = urllib.request.Request(
+            url,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+            }
+        )
+        response = urllib.request.urlopen(req, timeout=10)
+        records = json.loads(response.read())
+        if records and records[0].get('premium_report'):
+            return records[0]['premium_report']
+        return None
+    except Exception as e:
+        print(f'Report retrieval failed: {e}')
+        return None
+
+
+def store_premium_report(session_id, report):
+    """Store generated premium report in Supabase."""
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+        if not supabase_url or not supabase_key:
+            return False
+
+        import urllib.request
+        import urllib.parse
+
+        body = json.dumps({
+            'premium_report': report,
+            'report_generated_at': datetime.utcnow().isoformat(),
+        }).encode('utf-8')
+
+        url = (
+            f'{supabase_url}/rest/v1/assessment_responses'
+            f'?session_id=eq.{urllib.parse.quote(session_id)}'
+        )
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Prefer': 'return=minimal',
+            },
+            method='PATCH'
+        )
+        urllib.request.urlopen(req, timeout=10)
+        print(f'Premium report stored for session {session_id}')
+        return True
+    except Exception as e:
+        print(f'Report storage failed (non-critical): {e}')
+        return False
+
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -295,8 +369,32 @@ def premium():
             if not verified:
                 return jsonify({'success': False, 'error': 'Payment verification failed'}), 402
 
+        session_id = request_data.get('session_id')
+
+        # Check if report already exists — return immediately if so
+        if session_id:
+            existing_report = get_stored_report(session_id)
+            if existing_report:
+                print(f'Returning cached report for session {session_id}')
+                return jsonify({'success': True, 'report': existing_report, 'cached': True})
+
+        # Generate new report
         api_key = os.environ.get('ANTHROPIC_API_KEY')
         report = generate_premium_report(full_results, api_key=api_key)
+
+        # Store report in Supabase immediately
+        if session_id:
+            store_premium_report(session_id, report)
+
+        # Send email if address provided
+        report_email = request_data.get('report_email')
+        if report_email:
+            resend_key = os.environ.get('RESEND_API_KEY')
+            if resend_key:
+                demographics = full_results.get('demographics', {})
+                send_report_email(report_email, report, demographics, resend_key)
+            else:
+                print('RESEND_API_KEY not configured — skipping email')
 
         store_response(request_data, result_type='premium')
 
