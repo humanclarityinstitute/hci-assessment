@@ -3,7 +3,7 @@ HCI Premium Report Email Template
 Generates HTML email with full report content
 """
 
-def generate_report_email(report, demographics):
+def generate_report_email(report, demographics, session_id=None):
     """Generate HTML email for the premium report."""
     
     age_group = demographics.get('age_group', '')
@@ -49,6 +49,24 @@ def generate_report_email(report, demographics):
     changing = report.get('what_is_changing', '').replace('\n\n', '</p><p style="margin:0 0 14px;color:rgba(255,255,255,0.85);font-size:14px;line-height:1.75;">').replace('\n', '<br>')
     closing = report.get('closing', '').replace('\n\n', '</p><p style="margin:0 0 14px;color:#1B2A4A;font-size:14px;line-height:1.75;">').replace('\n', '<br>')
     methodology = report.get('methodology_note', '')
+
+    # AI Reflection Prompt (proof layer) — comes from the report dict
+    reflection_intro = report.get('ai_reflection_intro', '')
+    reflection_prompt_html = report.get('ai_reflection_prompt', '').replace('\n', '<br>')
+
+    # Permanent link back to the web version of the report
+    report_link_block = ''
+    if session_id:
+        report_url = (
+            'https://humanclarityinstitute.com/ai-assessment/report'
+            f'?session_id={session_id}'
+        )
+        report_link_block = f"""
+  <!-- Return to report -->
+  <tr><td style="background:#ffffff;padding:4px 40px 28px;text-align:center;">
+    <a href="{report_url}" style="display:inline-block;background:#4054B2;color:#ffffff;font-size:14px;font-weight:700;padding:13px 30px;border-radius:8px;text-decoration:none;">View your report online anytime →</a>
+    <p style="margin:12px 0 0;color:#9CA3AF;font-size:11px;">Bookmark this link to return to your report whenever you like.</p>
+  </td></tr>"""
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -107,6 +125,16 @@ def generate_report_email(report, demographics):
     <p style="margin:0 0 14px;color:#1B2A4A;font-size:14px;line-height:1.75;">{closing}</p>
   </td></tr>
 
+  <!-- AI Reflection Prompt (proof layer) -->
+  <tr><td style="background:#1B2A4A;padding:32px 40px;">
+    <p style="margin:0 0 8px;color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Verify this report yourself</p>
+    <h2 style="margin:0 0 14px;color:#ffffff;font-size:20px;font-weight:800;">Put it to the test</h2>
+    <p style="margin:0 0 18px;color:rgba(255,255,255,0.85);font-size:14px;line-height:1.75;">{reflection_intro}</p>
+    <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);border-radius:8px;padding:20px 22px;">
+      <p style="margin:0;color:#E8EDF5;font-size:13px;line-height:1.8;font-family:'Courier New',Courier,monospace;">{reflection_prompt_html}</p>
+    </div>
+  </td></tr>
+{report_link_block}
   <!-- Methodology -->
   <tr><td style="background:#ffffff;border-radius:0 0 12px 12px;padding:24px 40px;border-top:1px solid #E2E6EF;">
     <p style="margin:0 0 8px;color:#9CA3AF;font-size:11px;line-height:1.7;">{methodology}</p>
@@ -128,12 +156,12 @@ def generate_report_email(report, demographics):
     return html
 
 
-def send_report_email(to_email, report, demographics, resend_api_key):
+def send_report_email(to_email, report, demographics, resend_api_key, session_id=None):
     """Send the premium report via Resend."""
     import urllib.request
     import json
 
-    html_content = generate_report_email(report, demographics)
+    html_content = generate_report_email(report, demographics, session_id)
     
     payload = json.dumps({
         'from': 'reports@updates.humanclarityinstitute.com',
