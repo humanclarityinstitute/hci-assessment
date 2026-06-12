@@ -194,15 +194,77 @@ def get_percentile_from_distribution(score, distribution):
     return round(float(stats.percentileofscore(distribution, score, kind='rank')), 1)
 
 
+# ============================================================
+# DATA INTEGRITY GUARD
+# Standard items use the full 1-7 Likert scale. Any item that
+# does NOT (e.g. a recoded categorical) must be registered below,
+# so the integrity check can tell a deliberate sparse scale apart
+# from silent corruption.
+#
+# ai_boundaries_change_over_time is a recoded 3-category item:
+#   stronger -> 1, no_change -> 4, weaker -> 7  ("not sure" excluded).
+# Registering its allowed set {1,4,7} also means that if it is ever
+# re-cleaned back onto the wrong scale (e.g. the old 1/3/5), the
+# stray values get flagged loudly instead of slipping through.
+# ============================================================
+
+EXPECTED_SCALE = set(range(1, 8))
+
+SPECIAL_SCALES = {
+    'ai_boundaries_change_over_time': {1, 4, 7},
+}
+
+
+def bin_counts(scores, scale_min=1, scale_max=7):
+    """Compact 1-7 distribution: a list of counts for each scale point."""
+    counts = [0] * (scale_max - scale_min + 1)
+    for s in scores:
+        v = int(round(s))
+        if scale_min <= v <= scale_max:
+            counts[v - scale_min] += 1
+    return counts
+
+
+def validate_variable(variable_name, scores):
+    """
+    Return a list of human-readable integrity warnings for one variable.
+    Catches out-of-scale values and unexpectedly sparse Likert items —
+    the two signatures of the kind of cleaning corruption we have hit before.
+    """
+    warnings = []
+    values = {int(round(s)) for s in scores}
+    allowed = SPECIAL_SCALES.get(variable_name, EXPECTED_SCALE)
+
+    out_of_range = sorted(values - allowed)
+    if out_of_range:
+        warnings.append(
+            f'{variable_name}: values {out_of_range} outside the allowed scale '
+            f'{sorted(allowed)} — possible mis-coding'
+        )
+
+    if variable_name not in SPECIAL_SCALES and len(values) < 5:
+        warnings.append(
+            f'{variable_name}: only {len(values)} distinct values {sorted(values)} '
+            f'— unexpectedly sparse for a 1-7 item, check coding'
+        )
+
+    return warnings
+
+
 def build_variable_benchmarks(df, variable_name):
     """
     Build percentile lookup tables for one variable.
-    Returns dict with overall and demographic distributions.
+    Returns dict with overall and demographic distributions, the compact
+    1-7 distributions used by the front-end histograms, and prints any
+    integrity warnings.
     """
     scores = pd.to_numeric(df['response'], errors='coerce').dropna().tolist()
 
     if len(scores) < MIN_SAMPLE:
         return None
+
+    for w in validate_variable(variable_name, scores):
+        print(f'  \u26a0 WARNING  {w}')
 
     benchmarks = {
         'variable': variable_name,
@@ -210,10 +272,15 @@ def build_variable_benchmarks(df, variable_name):
         'mean': round(float(np.mean(scores)), 3),
         'std': round(float(np.std(scores)), 3),
         'overall': scores,
+        'dist_overall': bin_counts(scores),
         'by_age': {},
         'by_gender': {},
         'by_country': {},
         'by_frequency': {},
+        'dist_by_age': {},
+        'dist_by_gender': {},
+        'dist_by_country': {},
+        'dist_by_frequency': {},
     }
 
     # By age group
@@ -224,6 +291,7 @@ def build_variable_benchmarks(df, variable_name):
             ).dropna().tolist()
             if len(subset) >= MIN_SAMPLE:
                 benchmarks['by_age'][age] = subset
+                benchmarks['dist_by_age'][age] = bin_counts(subset)
 
     # By gender
     if 'gender' in df.columns:
@@ -233,6 +301,7 @@ def build_variable_benchmarks(df, variable_name):
             ).dropna().tolist()
             if len(subset) >= MIN_SAMPLE:
                 benchmarks['by_gender'][gender] = subset
+                benchmarks['dist_by_gender'][gender] = bin_counts(subset)
 
     # By country
     if 'country' in df.columns:
@@ -242,6 +311,7 @@ def build_variable_benchmarks(df, variable_name):
             ).dropna().tolist()
             if len(subset) >= MIN_SAMPLE:
                 benchmarks['by_country'][country] = subset
+                benchmarks['dist_by_country'][country] = bin_counts(subset)
 
     # By AI usage frequency
     if 'ai_tool_use_frequency' in df.columns:
@@ -251,6 +321,7 @@ def build_variable_benchmarks(df, variable_name):
             ).dropna().tolist()
             if len(subset) >= MIN_SAMPLE:
                 benchmarks['by_frequency'][freq] = subset
+                benchmarks['dist_by_frequency'][freq] = bin_counts(subset)
 
     return benchmarks
 
