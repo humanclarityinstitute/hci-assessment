@@ -1,6 +1,6 @@
 """
 HCI AI Identity & Behaviour Assessment
-Report Generator — Version 3
+Report Generator — Version 4
 
 Generates free results and premium reports with
 empowerment-first framing and comprehensive guardrails.
@@ -11,6 +11,14 @@ Premium report uses 13 focused API calls for maximum quality:
 - 1 call: Cross-dimensional patterns
 - 1 call: What Is AI Changing?
 - 1 call: Profile Directions + Human Flourishing Reflection
+
+Then appended (no API call): the AI Reflection Prompt — the proof layer
+the participant pastes into their own AI to verify the report.
+
+Changes from v3:
+- Adds the AI Reflection Prompt as a fixed final section of every report.
+- Corrects dataset claim language (no "benchmarked against 10,000"); adds
+  a system-prompt guardrail so generated prose can't reintroduce it.
 
 Every report leaves the participant feeling more
 self-aware and curious — never judged or deficient.
@@ -77,7 +85,47 @@ LANGUAGE TO USE:
 - people with similar profiles tend to...
 - what appears worth protecting
 - raises an interesting question
+
+DATASET CLAIMS (accuracy — never overstate):
+- HCI's research base is described as "drawn from more than 10,000
+  participants across multiple studies." Use that phrasing if referring
+  to it at all.
+- NEVER say a score is "benchmarked against 10,000 people." Each answer
+  is compared only to the participants who answered that same question
+  (hundreds to a few thousand per question), and dimension positions
+  combine those per-question comparisons.
+- Do NOT invent participant counts, sample sizes, percentages of the
+  population, correlations between dimensions, or study details. Only use
+  the numbers provided in the prompt.
 """
+
+
+# ============================================================
+# AI REFLECTION PROMPT (the proof layer)
+# A FIXED, engineered prompt appended to every premium report.
+# The participant pastes it — together with their results — into the
+# AI they use most, which can then verify the report against their
+# real conversation history. No API call; this text is static.
+# ============================================================
+
+AI_REFLECTION_INTRO = (
+    "No other assessment lets you check its findings against the evidence. "
+    "This one does. The AI you use most has seen your questions, your "
+    "decisions, and your patterns over time — so it can tell you how well "
+    "this report actually matches how you behave. Paste your results into "
+    "that AI, followed by the prompt below, and ask it to be honest with you."
+)
+
+AI_REFLECTION_PROMPT = """Here are my HCI AI Identity & Behaviour Report results.
+Based on our conversation history, how accurately does this describe how I actually use you?
+
+1. Which specific examples from our interactions support the findings in this report?
+2. Where do you see evidence that contradicts or complicates what the report suggests?
+3. What patterns in how I use you does this report appear to have missed entirely?
+4. Based on this profile, what are the three most specific ways I could adjust how I use AI to strengthen my own judgement and independent thinking?
+5. What would you suggest I stop asking you to do — and do myself instead?
+
+Be direct and honest. I can handle uncomfortable observations."""
 
 
 # ============================================================
@@ -943,7 +991,7 @@ def generate_premium_report(results, api_key=None, progress_callback=None):
         'metadata': {
             'demographics': demographics,
             'generated_by': 'HCI AI Identity & Behaviour Assessment',
-            'version': '3.0',
+            'version': '4.0',
             'total_api_calls': 13,
         },
         'headline': results.get('headline'),
@@ -955,19 +1003,22 @@ def generate_premium_report(results, api_key=None, progress_callback=None):
         'closing': closing,
         'variable_highlights': variable_highlights,
         'perception_gaps': results.get('perception_gaps', {}),
+        'ai_reflection_intro': AI_REFLECTION_INTRO,
+        'ai_reflection_prompt': AI_REFLECTION_PROMPT,
         'methodology_note': (
             "This report is based on your responses to the HCI AI Identity & "
-            "Behaviour Assessment — a research-based behavioural instrument "
-            "benchmarked against data drawn from more than 10,000 participants "
-            "across multiple studies conducted by the Human Clarity Institute. "
-            "Scores represent your positioning within the benchmark population. "
-            "They describe patterns, not traits. They reflect how you responded "
-            "at this point in time and may change as your relationship with AI "
-            "evolves. This assessment is designed for personal insight and "
-            "reflection. It is not a clinical instrument and should not be used "
-            "for diagnosis, professional evaluation, or any purpose beyond "
-            "individual self-understanding. Benchmark data and methodology are "
-            "publicly available at github.com/humanclarityinstitute."
+            "Behaviour Assessment — a research-based behavioural instrument drawn "
+            "from the responses of more than 10,000 participants across multiple "
+            "studies conducted by the Human Clarity Institute. Each of your answers "
+            "is positioned against the participants who answered that same question, "
+            "and your dimension scores combine those positions. They describe "
+            "patterns, not traits. They reflect how you responded at this point in "
+            "time and may change as your relationship with AI evolves. This "
+            "assessment is designed for personal insight and reflection. It is not "
+            "a clinical instrument and should not be used for diagnosis, professional "
+            "evaluation, or any purpose beyond individual self-understanding. "
+            "Benchmark data and methodology are publicly available at "
+            "github.com/humanclarityinstitute."
         ),
     }
 
