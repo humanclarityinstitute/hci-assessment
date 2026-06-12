@@ -1,6 +1,21 @@
 """
 HCI AI Identity & Behaviour Assessment
-API Layer — Version 4
+API Layer — Version 5
+
+Changes from v4:
+- No structural change to the /score response: it already forwards
+  variable_highlights and dimension percentiles. v5 documents the new
+  upstream contract from scoring_engine / benchmark_builder:
+    * variable_highlights is now POPULATED (1 personalised + 2 fixed cards).
+      Each card carries: type, variable, question_text, raw_response,
+      percentiles {overall, age_group}, distribution {overall, age_group}
+      (the 1-7 counts the results-page histograms draw from), and n.
+    * dimension percentiles now use the average-of-percentiles method
+      (reverse-aware), replacing the previous single-variable lookup.
+    * benchmark_tables.json now also carries compact dist_* tables.
+  No payload fields added or removed — existing consumers are unaffected.
+- /premium now passes session_id into send_report_email() so the report
+  email links back to the web report (pairs with email_template's session_id).
 
 Changes from v3:
 - get_stored_report() — retrieve cached premium report from Supabase
@@ -436,7 +451,7 @@ def premium():
             resend_key = os.environ.get('RESEND_API_KEY')
             if resend_key:
                 demographics = full_results.get('demographics', {})
-                send_report_email(report_email, report, demographics, resend_key)
+                send_report_email(report_email, report, demographics, resend_key, session_id=session_id)
                 print(f'Report email sent to {report_email}')
             else:
                 print('RESEND_API_KEY not configured — skipping email')
@@ -486,18 +501,14 @@ def verify_stripe_payment(stripe_session_id):
 # ============================================================
 
 if __name__ == '__main__':
-    print('HCI Assessment API — Version 4')
+    print('HCI Assessment API — Version 5')
     print('=' * 40)
     print(f'Benchmark file: {BENCHMARK_PATH}')
     print(f'Benchmark exists: {os.path.exists(BENCHMARK_PATH)}')
     print()
-    print('New in v4:')
-    print('  - get_stored_report() — cache retrieval')
-    print('  - store_premium_report() — cache storage')
-    print('  - /premium checks cache before generating')
-    print('  - /premium stores report after generating')
-    print('  - /premium sends email via Resend')
-    print('  - /get-results returns report_email too')
+    print('v5: documents new scoring_engine contract (variable_highlights now')
+    print('    populated with histogram distributions; average-of-percentiles')
+    print('    dimension scoring). No /score payload change.')
     print()
     print('Starting API server on http://localhost:5000')
     app.run(debug=True, port=5000)
