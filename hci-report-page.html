@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your AI Identity Report — Human Clarity Institute</title>
+<style>
+
+/* ── Astra overrides ── */
+.entry-content,
+.entry-content > div,
+.ast-container,
+.site-content .ast-container,
+.ast-article-single,
+.ast-article-single > .entry-content,
+.page-content,
+.entry-header {
+  max-width: 100% !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+:root {
+  --navy:     #1B2A4A;
+  --brand:    #4054B2;
+  --brand2:   #2C5F8A;
+  --bg:       #F4F6FB;
+  --surface:  #FFFFFF;
+  --text:     #1A1A1A;
+  --muted:    #6B7280;
+  --light:    #E8EDF5;
+  --border:   #E2E6EF;
+  --rare-bg:  #EDEBFB;
+  --rare:     #3D2B8C;
+  --warm-bg:  #F9F7F2;
+  --warm-bd:  #D9CEBD;
+  --change-bg:#F0F7F4;
+  --change:   #1A5C3A;
+  --r:        12px;
+  --r-sm:     8px;
+  --font:     'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --max:      860px;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.65;-webkit-font-smoothing:antialiased}
+
+/* ══ PAGE WRAP ═════════════════════════════════════════════════════ */
+.hci-page{max-width:var(--max);margin:0 auto;padding:56px 32px 100px}
+
+/* ══ GENERATING STATE ══════════════════════════════════════════════ */
+#hci-generating{
+  min-height:80vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:0;
+}
+.hci-gen-logo{
+  animation:hci-spin 3s linear infinite;
+  transform-origin:center;
+  margin-bottom:40px;
+}
+@keyframes hci-spin{to{transform:rotate(360deg)}}
+.hci-gen-title{
+  font-size:22px;
+  font-weight:700;
+  color:var(--navy);
+  letter-spacing:-.3px;
+  margin-bottom:10px;
+  text-align:center;
+}
+.hci-gen-subtitle{
+  font-size:15px;
+  color:var(--muted);
+  text-align:center;
+  margin-bottom:48px;
+  max-width:420px;
+  line-height:1.6;
+}
+.hci-gen-steps{
+  width:100%;
+  max-width:440px;
+  display:flex;
+  flex-direction:column;
+  gap:0;
+}
+.hci-gen-step{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  padding:14px 0;
+  border-bottom:1px solid var(--border);
+  opacity:.3;
+  transition:opacity .4s ease;
+}
+.hci-gen-step:last-child{border-bottom:none}
+.hci-gen-step.active{opacity:1}
+.hci-gen-step.done{opacity:.6}
+.hci-gen-step-icon{
+  width:32px;height:32px;
+  border-radius:50%;
+  background:var(--light);
+  border:2px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;
+  flex-shrink:0;
+  transition:all .3s ease;
+}
+.hci-gen-step.active .hci-gen-step-icon{
+  background:var(--brand);
+  border-color:var(--brand);
+  animation:hci-pulse 1.5s ease-in-out infinite;
+}
+.hci-gen-step.done .hci-gen-step-icon{
+  background:var(--change);
+  border-color:var(--change);
+  animation:none;
+}
+@keyframes hci-pulse{0%,100%{box-shadow:0 0 0 0 rgba(64,84,178,.4)}50%{box-shadow:0 0 0 6px rgba(64,84,178,0)}}
+.hci-gen-step-text{font-size:14px;color:var(--navy);font-weight:500}
+.hci-gen-step.active .hci-gen-step-text{color:var(--brand);font-weight:600}
+.hci-gen-step.done .hci-gen-step-text{color:var(--muted)}
+
+/* ══ ERROR STATE ════════════════════════════════════════════════════ */
+#hci-error{
+  display:none;
+  min-height:60vh;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  gap:12px;
+}
+.hci-error-title{font-size:20px;font-weight:700;color:var(--navy)}
+.hci-error-body{font-size:14px;color:var(--muted);max-width:420px;line-height:1.6}
+.hci-ghost-btn{
+  display:inline-block;margin-top:8px;
+  padding:10px 22px;border:1.5px solid var(--border);
+  border-radius:var(--r-sm);font-size:14px;font-weight:500;
+  color:var(--navy);text-decoration:none;
+}
+
+/* ══ REPORT ════════════════════════════════════════════════════════ */
+#hci-report{display:none}
+
+/* ── Report header ── */
+.hci-report-header{
+  background:var(--navy);
+  border-radius:var(--r);
+  padding:40px 44px;
+  margin-bottom:40px;
+  position:relative;
+  overflow:hidden;
+}
+.hci-report-header::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(circle,rgba(255,255,255,.04) 1px,transparent 1px);
+  background-size:22px 22px;pointer-events:none;
+}
+.hci-report-header::after{
+  content:'';position:absolute;top:-80px;right:-80px;
+  width:320px;height:320px;
+  background:radial-gradient(circle,rgba(64,84,178,.25),transparent 65%);
+  pointer-events:none;
+}
+.hci-report-eyebrow{
+  font-size:10px;font-weight:700;letter-spacing:.16em;
+  text-transform:uppercase;color:rgba(255,255,255,.35);
+  margin-bottom:14px;position:relative;z-index:1;
+}
+.hci-report-title{
+  font-size:32px;font-weight:800;color:#fff;
+  letter-spacing:-.5px;line-height:1.15;
+  margin-bottom:12px;position:relative;z-index:1;
+}
+.hci-report-meta{
+  display:flex;gap:20px;flex-wrap:wrap;
+  position:relative;z-index:1;
+}
+.hci-report-meta-item{
+  font-size:12px;color:rgba(255,255,255,.4);
+  display:flex;align-items:center;gap:6px;
+}
+.hci-report-meta-dot{
+  width:4px;height:4px;
+  background:rgba(255,255,255,.25);
+  border-radius:50%;
+}
+
+/* ── Section wrapper ── */
+.hci-report-section{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  margin-bottom:24px;
+  overflow:hidden;
+  box-shadow:0 1px 4px rgba(27,42,74,.05);
+}
+.hci-section-header{
+  padding:20px 28px 16px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:14px;
+}
+.hci-section-icon{
+  width:36px;height:36px;
+  border-radius:var(--r-sm);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;flex-shrink:0;
+}
+.hci-section-icon.navy{background:var(--navy)}
+.hci-section-icon.brand{background:var(--rare-bg)}
+.hci-section-icon.change{background:var(--change-bg)}
+.hci-section-icon.warm{background:var(--warm-bg)}
+.hci-section-title{
+  font-size:16px;font-weight:700;color:var(--navy);letter-spacing:-.1px;
+}
+.hci-section-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.hci-section-body{padding:24px 28px}
+.hci-section-prose{
+  font-size:15px;color:var(--text);line-height:1.8;
+}
+.hci-section-prose p{margin-bottom:16px}
+.hci-section-prose p:last-child{margin-bottom:0}
+
+/* ── Opening section (navy) ── */
+.hci-opening{
+  background:var(--warm-bg);
+  border:1px solid var(--warm-bd);
+  border-radius:var(--r);
+  padding:32px 36px;
+  margin-bottom:24px;
+}
+.hci-opening-eyebrow{
+  font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:14px;
+}
+.hci-opening-prose{
+  font-size:16px;color:var(--navy);line-height:1.75;font-weight:500;
+}
+.hci-opening-prose p{margin-bottom:14px}
+.hci-opening-prose p:last-child{margin-bottom:0}
+
+/* ── Dimension grid ── */
+.hci-dim-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+  margin-bottom:24px;
+}
+.hci-dim-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  overflow:hidden;
+  box-shadow:0 1px 4px rgba(27,42,74,.05);
+}
+.hci-dim-card-header{
+  background:transparent;
+  padding:18px 20px 8px;
+  display:flex;align-items:flex-start;
+  justify-content:space-between;gap:14px;
+}
+.hci-dim-card-name{
+  font-size:17px;font-weight:700;color:var(--navy);
+  letter-spacing:-.2px;
+}
+.hci-dim-card-pos{font-size:12.5px;font-weight:600;color:var(--brand);margin-top:4px}
+.hci-dim-card-plain{font-size:17px;font-weight:800;color:var(--navy);text-align:right;line-height:1.15;letter-spacing:-.2px;flex-shrink:0}
+
+.hci-dim-card-body{padding:6px 20px 18px}
+.hci-dim-plain{
+  font-size:13px;font-weight:600;color:var(--brand);
+  margin-bottom:10px;
+}
+.hci-dim-rare{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--rare-bg);color:var(--rare);
+  font-size:10px;font-weight:600;padding:3px 8px;
+  border-radius:20px;margin-bottom:10px;
+}
+.hci-dim-rare-dot{width:4px;height:4px;background:var(--rare);border-radius:50%}
+.hci-dim-bar-track{
+  height:6px;background:var(--border);border-radius:3px;
+  margin-bottom:8px;position:relative;overflow:visible;
+}
+.hci-dim-bar-fill{
+  height:100%;border-radius:3px;width:0;
+  background:linear-gradient(90deg,var(--brand2),var(--brand));
+  transition:width 1.2s cubic-bezier(.4,0,.2,1);
+}
+.hci-dim-avg-tick{
+  position:absolute;left:50%;top:-3px;
+  width:1.5px;height:12px;background:#B0BAC8;
+  border-radius:1px;transform:translateX(-50%);
+}
+.hci-dim-demo-row{
+  display:flex;align-items:center;gap:8px;margin-bottom:6px;
+}
+.hci-dim-demo-label{font-size:10px;color:var(--muted);width:100px;flex-shrink:0;font-weight:500}
+.hci-dim-demo-label.age{color:#6D28D9;font-weight:600}
+.hci-dim-demo-track{flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.hci-dim-demo-fill{height:100%;border-radius:3px;width:0;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+.hci-dim-demo-fill.all{background:linear-gradient(90deg,var(--brand2),var(--brand))}
+.hci-dim-demo-fill.age{background:linear-gradient(90deg,#5B21B6,#8B5CF6)}
+.hci-dim-demo-pct{font-size:10px;font-weight:700;color:var(--navy);width:28px;text-align:right;flex-shrink:0}
+.hci-dim-demo-pct.age{color:#6D28D9}
+.hci-dim-narrative{
+  font-size:13px;color:var(--text);line-height:1.7;
+  margin-top:14px;padding-top:14px;
+  border-top:1px solid var(--border);
+}
+/* Dual-marker demographic track (matches results page) */
+.hci-dim-pos{margin:2px 0 2px}
+.hci-dim-pos-track{height:46px;border-radius:8px;position:relative;overflow:hidden;border:1px solid var(--border);background:linear-gradient(90deg,#EDF0F6 0%,#E6EBF3 25%,#DFE5EF 50%,#E6EBF3 75%,#EDF0F6 100%)}
+.hci-dim-pos-band{position:absolute;top:0;bottom:0;width:1px;background:rgba(27,42,74,.06)}
+.hci-dim-pos-centre{position:absolute;left:50%;top:0;bottom:0;width:2px;background:#AEB8C7;transform:translateX(-50%)}
+.hci-dim-pos-centre-label{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#9AA5B5;white-space:nowrap;pointer-events:none}
+.hci-dim-pos-marker{position:absolute;top:50%;border-radius:50%;transform:translate(-50%,-50%);left:50%;transition:left 1.2s cubic-bezier(.4,0,.2,1)}
+.hci-dim-pos-marker.everyone{width:16px;height:16px;background:#fff;border:2.5px solid #9AA5B5;box-shadow:0 1px 3px rgba(27,42,74,.18);z-index:2}
+.hci-dim-pos-marker.age{width:22px;height:22px;background:var(--brand);border:3px solid #fff;box-shadow:0 0 0 1px var(--brand),0 3px 8px rgba(27,42,74,.3);z-index:3}
+.hci-dim-pos-scale{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);font-weight:500;margin-top:6px}
+.hci-dim-pos-legend{display:flex;gap:14px;margin-top:9px;flex-wrap:wrap}
+.hci-dim-pos-leg{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);font-weight:500}
+.hci-dim-pos-leg-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.hci-dim-pos-leg-dot.everyone{background:#fff;border:2px solid #9AA5B5}
+.hci-dim-pos-leg-dot.age{background:var(--brand);border:2px solid var(--brand)}
+.hci-dim-pos-leg strong{color:var(--navy);font-weight:600}
+.hci-dim-readout{font-size:11.5px;color:var(--text);line-height:1.55;margin-top:10px}
+.hci-dim-readout strong{color:var(--navy);font-weight:700}
+.hci-dim-readout em{font-style:normal;color:var(--brand);font-weight:600}
+/* Per-question distinctive charts under each dimension */
+.hci-dim-questions{margin-top:16px;padding-top:14px;border-top:1px dashed var(--border)}
+.hci-dim-q-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand);margin-bottom:10px}
+/* Single overlaid question histogram (static) */
+.hci-q{margin:0 0 12px;padding:13px 14px;background:var(--bg);border:1px solid var(--border);border-radius:10px}
+.hci-q:last-child{margin-bottom:0}
+.hci-q-text{font-size:12.5px;color:var(--navy);font-weight:600;line-height:1.45;margin-bottom:12px}
+.hci-q-chart{display:flex;align-items:flex-end;gap:5px;height:62px;padding-top:14px}
+.hci-q-col{flex:1;display:flex;align-items:flex-end;justify-content:center;height:100%}
+.hci-q-bars{position:relative;width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center}
+.hci-q-bar-pop{width:100%;min-height:2px;background:#DCE3F0;border-radius:3px 3px 0 0}
+.hci-q-bar-age{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:52%;min-height:2px;background:linear-gradient(180deg,var(--brand),var(--brand2));border-radius:3px 3px 0 0;opacity:.95}
+.hci-q-col.you .hci-q-bar-pop{background:#BFD0EA;box-shadow:0 0 0 1.5px var(--brand) inset}
+.hci-q-you-mark{position:absolute;top:-13px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:800;letter-spacing:.08em;color:var(--brand);white-space:nowrap}
+.hci-q-axis{display:flex;gap:5px;margin-top:5px}
+.hci-q-axis span{flex:1;text-align:center;font-size:9px;color:var(--muted);font-weight:600}
+.hci-q-axis span.you{color:var(--brand);font-weight:800}
+.hci-q-scale{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:3px}
+.hci-q-legend{display:flex;gap:12px;margin-top:9px;flex-wrap:wrap}
+.hci-q-legend span{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--muted);font-weight:500}
+.hci-q-legend i{width:10px;height:10px;border-radius:2px;display:inline-block;flex-shrink:0}
+.hci-q-legend i.pop{background:#DCE3F0}
+.hci-q-legend i.age{background:var(--brand)}
+.hci-q-legend i.you{background:#BFD0EA;box-shadow:0 0 0 1.5px var(--brand) inset}
+.hci-q-readout{font-size:11.5px;color:var(--text);line-height:1.5;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.hci-q-readout strong{color:var(--navy);font-weight:700}
+/* Appendix — full response breakdown */
+.hci-appendix{margin-bottom:24px}
+.hci-appendix-intro{font-size:13.5px;color:var(--text);line-height:1.65;margin-bottom:18px}
+.hci-appendix-dim{margin-bottom:22px}
+.hci-appendix-dim-label{font-size:13px;font-weight:700;color:var(--navy);letter-spacing:.02em;padding-bottom:7px;margin-bottom:12px;border-bottom:2px solid var(--brand)}
+
+/* ── Section label ── */
+.hci-section-label{
+  font-size:11px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);
+  margin-bottom:16px;
+}
+
+/* ── What Is AI Changing band ── */
+.hci-change-section{
+  background:var(--navy);
+  border-radius:var(--r);
+  padding:36px 40px;
+  margin-bottom:24px;
+  position:relative;overflow:hidden;
+}
+.hci-change-section::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(circle,rgba(255,255,255,.04) 1px,transparent 1px);
+  background-size:22px 22px;pointer-events:none;
+}
+.hci-change-eyebrow{
+  font-size:10px;font-weight:700;letter-spacing:.16em;
+  text-transform:uppercase;color:rgba(255,255,255,.35);
+  margin-bottom:12px;position:relative;z-index:1;
+}
+.hci-change-title{
+  font-size:22px;font-weight:800;color:#fff;
+  letter-spacing:-.3px;line-height:1.2;
+  margin-bottom:20px;position:relative;z-index:1;
+}
+.hci-change-prose{
+  font-size:15px;color:rgba(255,255,255,.8);
+  line-height:1.75;position:relative;z-index:1;
+}
+.hci-change-prose p{margin-bottom:14px}
+.hci-change-prose p:last-child{margin-bottom:0}
+
+/* ── Flourishing section ── */
+.hci-flourishing{
+  background:var(--warm-bg);
+  border:1px solid var(--warm-bd);
+  border-radius:var(--r);
+  padding:32px 36px;
+  margin-bottom:24px;
+}
+.hci-flourishing-eyebrow{
+  font-size:10px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:12px;
+}
+.hci-flourishing-prose{
+  font-size:15px;color:var(--navy);line-height:1.75;
+}
+.hci-flourishing-prose p{margin-bottom:14px}
+.hci-flourishing-prose p:last-child{margin-bottom:0}
+
+/* ── Methodology ── */
+.hci-method{
+  border-top:1px solid var(--border);
+  padding-top:28px;margin-top:40px;
+}
+.hci-method p{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:8px}
+.hci-method a{color:var(--brand);text-decoration:none}
+.hci-method a:hover{text-decoration:underline}
+
+/* ── Print button ── */
+.hci-print-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 0;margin-bottom:32px;
+  border-bottom:1px solid var(--border);
+}
+.hci-print-label{font-size:13px;color:var(--muted)}
+.hci-print-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:8px 18px;
+  border:1.5px solid var(--border);
+  border-radius:var(--r-sm);
+  font-size:13px;font-weight:600;
+  color:var(--navy);
+  background:var(--surface);
+  cursor:pointer;
+  transition:border-color .15s,background .15s;
+}
+.hci-print-btn:hover{border-color:var(--brand);background:var(--rare-bg)}
+
+/* ══ RESPONSIVE ════════════════════════════════════════════════════ */
+@media(max-width:720px){
+  .hci-page{padding:32px 16px 72px}
+  .hci-report-header{padding:28px 24px}
+  .hci-report-title{font-size:24px}
+  .hci-dim-grid{grid-template-columns:1fr}
+  .hci-opening{padding:24px}
+  .hci-change-section{padding:28px 24px}
+  .hci-flourishing{padding:24px}
+  .hci-section-body{padding:20px}
+}
+@media print{
+  .hci-print-bar{display:none}
+  .hci-gen-steps{display:none}
+  body{background:#fff}
+  .hci-report-section{box-shadow:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .hci-gen-logo,.hci-gen-step.active .hci-gen-step-icon{animation:none}
+  .hci-dim-bar-fill,.hci-dim-demo-fill{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="hci-page">
+
+  <!-- Generating state -->
+  <div id="hci-generating">
+    <svg class="hci-gen-logo" width="56" height="56" viewBox="0 0 56 56" fill="none">
+      <circle cx="28" cy="28" r="24" stroke="#E2E6EF" stroke-width="2.5"/>
+      <circle cx="28" cy="4" r="3" fill="#4054B2"/>
+      <circle cx="48.5" cy="14" r="2.5" fill="#4054B2" opacity=".8"/>
+      <circle cx="52" cy="28" r="2" fill="#4054B2" opacity=".65"/>
+      <circle cx="48.5" cy="42" r="1.5" fill="#4054B2" opacity=".5"/>
+      <circle cx="28" cy="52" r="1.5" fill="#4054B2" opacity=".35"/>
+      <circle cx="7.5" cy="42" r="1.5" fill="#4054B2" opacity=".25"/>
+      <circle cx="4" cy="28" r="1.5" fill="#4054B2" opacity=".15"/>
+      <circle cx="7.5" cy="14" r="2" fill="#4054B2" opacity=".08"/>
+    </svg>
+    <div class="hci-gen-title">Generating your AI Identity Report</div>
+    <div class="hci-gen-subtitle">Your report is being written specifically for your profile. This takes about 45–60 seconds.</div>
+    <div class="hci-gen-steps" id="hci-gen-steps">
+      <div class="hci-gen-step" id="step-0">
+        <div class="hci-gen-step-icon">◎</div>
+        <div class="hci-gen-step-text">Identifying your most surprising finding</div>
+      </div>
+      <div class="hci-gen-step" id="step-1">
+        <div class="hci-gen-step-icon">◈</div>
+        <div class="hci-gen-step-text">Writing your Reliance profile</div>
+      </div>
+      <div class="hci-gen-step" id="step-2">
+        <div class="hci-gen-step-icon">◈</div>
+        <div class="hci-gen-step-text">Writing your Trust profile</div>
+      </div>
+      <div class="hci-gen-step" id="step-3">
+        <div class="hci-gen-step-icon">◈</div>
+        <div class="hci-gen-step-text">Writing your Verification profile</div>
+      </div>
+      <div class="hci-gen-step" id="step-4">
+        <div class="hci-gen-step-icon">◈</div>
+        <div class="hci-gen-step-text">Writing your Decision Delegation profile</div>
+      </div>
+      <div class="hci-gen-step" id="step-5">
+        <div class="hci-gen-step-icon">◈</div>
+        <div class="hci-gen-step-text">Writing your Human Agency profile</div>
+      </div>
+      <div class="hci-gen-step" id="step-6">
+        <div class="hci-gen-step-icon">◈</div>
+        <div class="hci-gen-step-text">Writing your Disclosure profile</div>
+      </div>
+      <div class="hci-gen-step" id="step-7">
+        <div class="hci-gen-step-icon">◈</div>
+        <div class="hci-gen-step-text">Writing your Emotional Regulation profile</div>
+      </div>
+      <div class="hci-gen-step" id="step-8">
+        <div class="hci-gen-step-icon">◈</div>
+        <div class="hci-gen-step-text">Writing your Thought Partnership profile</div>
+      </div>
+      <div class="hci-gen-step" id="step-9">
+        <div class="hci-gen-step-icon">◈</div>
+        <div class="hci-gen-step-text">Writing your Social Transparency profile</div>
+      </div>
+      <div class="hci-gen-step" id="step-10">
+        <div class="hci-gen-step-icon">⟺</div>
+        <div class="hci-gen-step-text">Analysing cross-dimensional patterns</div>
+      </div>
+      <div class="hci-gen-step" id="step-11">
+        <div class="hci-gen-step-icon">◐</div>
+        <div class="hci-gen-step-text">Writing What Is AI Changing?</div>
+      </div>
+      <div class="hci-gen-step" id="step-12">
+        <div class="hci-gen-step-icon">✦</div>
+        <div class="hci-gen-step-text">Writing your Human Flourishing Reflection</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error state -->
+  <div id="hci-error">
+    <div class="hci-error-title">Unable to generate your report</div>
+    <div class="hci-error-body">Something went wrong while generating your report. Please email <a href="mailto:support@humanclarityinstitute.com">support@humanclarityinstitute.com</a> and we'll get it sorted within 24 hours.</div>
+    <a href="/ai-assessment/results" class="hci-ghost-btn">Back to your results</a>
+  </div>
+
+  <!-- Report -->
+  <div id="hci-report">
+
+    <!-- Header -->
+    <div class="hci-report-header">
+      <div class="hci-report-eyebrow">Human Clarity Institute · AI Identity & Behaviour Assessment</div>
+      <div class="hci-report-title">Your AI Identity Report</div>
+      <div class="hci-report-meta" id="hci-report-meta"></div>
+    </div>
+
+    <!-- Print bar -->
+    <div class="hci-print-bar">
+      <div class="hci-print-label">Your complete personalised report — benchmarked against more than 10,000 participants</div>
+      <button class="hci-print-btn" onclick="window.print()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Save or print
+      </button>
+    </div>
+
+    <!-- Opening: Most Surprising Finding -->
+    <div class="hci-opening" id="hci-opening">
+      <div class="hci-opening-eyebrow">Most surprising finding & why most people miss this</div>
+      <div class="hci-opening-prose" id="hci-opening-prose"></div>
+    </div>
+
+    <!-- Your AI Identity — Overview -->
+    <div class="hci-report-section">
+      <div class="hci-section-header">
+        <div class="hci-section-icon brand">◆</div>
+        <div>
+          <div class="hci-section-title">Your AI Identity — Overview</div>
+          <div class="hci-section-sub">The overall shape of your profile across all nine dimensions</div>
+        </div>
+      </div>
+      <div class="hci-section-body">
+        <div class="hci-section-prose" id="hci-overview-prose"></div>
+      </div>
+    </div>
+
+    <!-- Nine dimension profiles (each followed by its distinctive question charts) -->
+    <div class="hci-section-label">Your nine dimension profiles</div>
+    <div class="hci-dim-grid" id="hci-dim-grid"></div>
+
+    <!-- Cross-dimensional patterns -->
+    <div class="hci-report-section">
+      <div class="hci-section-header">
+        <div class="hci-section-icon brand">⟺</div>
+        <div>
+          <div class="hci-section-title">Cross-Dimensional Patterns</div>
+          <div class="hci-section-sub">Interesting combinations across your nine scores</div>
+        </div>
+      </div>
+      <div class="hci-section-body">
+        <div class="hci-section-prose" id="hci-cross-prose"></div>
+      </div>
+    </div>
+
+    <!-- Perception Gap Analysis -->
+    <div class="hci-report-section">
+      <div class="hci-section-header">
+        <div class="hci-section-icon brand">◑</div>
+        <div>
+          <div class="hci-section-title" id="hci-perception-title">Perception Gap Analysis</div>
+          <div class="hci-section-sub">How your self-estimate compares with your benchmarked position</div>
+        </div>
+      </div>
+      <div class="hci-section-body">
+        <div class="hci-section-prose" id="hci-perception-prose"></div>
+      </div>
+    </div>
+
+    <!-- Putting This to Work + Human Flourishing -->
+    <div class="hci-flourishing" id="hci-closing-section">
+      <div class="hci-flourishing-eyebrow">Putting this to work &amp; human flourishing</div>
+      <div class="hci-flourishing-prose" id="hci-closing-prose"></div>
+    </div>
+
+    <!-- Population Context -->
+    <div class="hci-report-section">
+      <div class="hci-section-header">
+        <div class="hci-section-icon brand">◎</div>
+        <div>
+          <div class="hci-section-title">Population Context</div>
+          <div class="hci-section-sub">Where you sit within the benchmark population</div>
+        </div>
+      </div>
+      <div class="hci-section-body">
+        <div class="hci-section-prose" id="hci-population-prose"></div>
+      </div>
+    </div>
+
+    <!-- Appendix: full question breakdown -->
+    <div class="hci-appendix" id="hci-appendix-section">
+      <div class="hci-section-label">Appendix — your full response breakdown</div>
+      <div class="hci-appendix-intro">Every question in the assessment, grouped by dimension, showing how you answered against the benchmark population.</div>
+      <div id="hci-appendix-body"></div>
+    </div>
+
+    <!-- Methodology -->
+    <div class="hci-method" id="hci-method"></div>
+
+  </div><!-- /report -->
+</div><!-- /page -->
+
+<script>
+(function(){
+'use strict';
+
+const API = 'https://web-production-381d3.up.railway.app';
+
+function ordinal(n){
+  const s=['th','st','nd','rd'],v=n%100;
+  return (s[(v-20)%10]||s[v]||s[0]);
+}
+function plainEnglish(p){
+  if(!p&&p!==0)return'';
+  p=parseInt(p);
+  if(p>=50)return`Higher than ${p} out of every 100 people`;
+  return`Lower than ${100-p} out of every 100 people`;
+}
+function getRarity(p){
+  if(!p&&p!==0)return null;
+  p=parseInt(p);
+  if(p>=97)return`Fewer than ${100-p}% of participants score this high`;
+  if(p>=86)return`Only ${100-p}% of participants score similarly`;
+  if(p<=3)return`Fewer than ${p+1}% of participants score this low`;
+  if(p<=14)return`Only ${p}% of participants score similarly`;
+  return null;
+}
+function ppPhrase(p){return p>=50?`higher than <strong>${p}%</strong>`:`lower than <strong>${100-p}%</strong>`;}
+function dimReadout(overall,age){
+  if(age===null||age===undefined)return '';
+  const d=age-overall;
+  if(Math.abs(d)<=7)return `Among people your age you sit in much the same place — ${ppPhrase(age)} of them, and ${ppPhrase(overall)} of everyone.`;
+  if(d<0)return `You're more typical for your age than the overall figure suggests — ${ppPhrase(age)} of people your age, versus ${ppPhrase(overall)} of everyone.`;
+  return `You stand out <em>more</em> within your own age group — ${ppPhrase(age)} of people your age, versus ${ppPhrase(overall)} of everyone.`;
+}
+
+// Section 3 positional language — exact v2.1 scale, no number
+function posLabel(p){
+  if(p>=96)return'Exceptionally high';if(p>=86)return'Notably high';
+  if(p>=71)return'Above the population centre';if(p>=41)return'Near the population centre';
+  if(p>=26)return'Below the population centre';if(p>=11)return'Notably low';
+  return'Exceptionally low';
+}
+
+// One-line readout for a per-question chart
+function qReadout(q){
+  const a=q.answer, po=q.pct_overall;
+  const ov = po>=50?`higher than <strong>${po}</strong> of 100 people`:`lower than <strong>${100-po}</strong> of 100 people`;
+  let s=`You answered <strong>${a}</strong> out of 7 — ${ov}`;
+  if(q.pct_age!==null && q.pct_age!==undefined){
+    const pa=q.pct_age;
+    s += pa>=50?`, and higher than <strong>${pa}</strong> of people your age` : `, and lower than <strong>${100-pa}</strong> of people your age`;
+  }
+  return s+'.';
+}
+
+// Build a single overlaid question histogram (static)
+function qChart(q){
+  const po=q.dist_overall||[];
+  const ag=q.dist_age||null;
+  const sp=po.reduce((a,b)=>a+b,0)||1;
+  const sa=ag?ag.reduce((a,b)=>a+b,0):0;
+  const pop=po.map(v=>v/sp);
+  const age=(ag&&sa)?ag.map(v=>v/sa):null;
+  let mx=Math.max(...pop, ...(age||[0])); if(mx<=0)mx=1;
+  const ans=parseInt(q.answer)||0;
+  let cols='';
+  for(let i=0;i<7;i++){
+    const you=(i+1)===ans;
+    const ph=Math.round(pop[i]/mx*100);
+    const ah=age?Math.round(age[i]/mx*100):0;
+    cols+=`<div class="hci-q-col${you?' you':''}">
+      <div class="hci-q-bars">
+        ${you?'<div class="hci-q-you-mark">YOU</div>':''}
+        <div class="hci-q-bar-pop" style="height:${ph}%"></div>
+        ${age?`<div class="hci-q-bar-age" style="height:${ah}%"></div>`:''}
+      </div></div>`;
+  }
+  let axis='';
+  for(let i=1;i<=7;i++) axis+=`<span class="${i===ans?'you':''}">${i}</span>`;
+  const legend = age
+    ? `<div class="hci-q-legend"><span><i class="pop"></i>Everyone</span><span><i class="age"></i>People your age</span><span><i class="you"></i>Your answer</span></div>`
+    : `<div class="hci-q-legend"><span><i class="pop"></i>Everyone</span><span><i class="you"></i>Your answer</span></div>`;
+  return `<div class="hci-q">
+    <div class="hci-q-text">${q.text}</div>
+    <div class="hci-q-chart">${cols}</div>
+    <div class="hci-q-axis">${axis}</div>
+    <div class="hci-q-scale"><span>Strongly disagree</span><span>Strongly agree</span></div>
+    ${legend}
+    <div class="hci-q-readout">${qReadout(q)}</div>
+  </div>`;
+}
+
+// Animate bars after a short delay
+function animateBars(){
+  setTimeout(()=>{
+    document.querySelectorAll('[data-fill]').forEach(el=>{el.style.width=el.dataset.fill+'%';});
+    document.querySelectorAll('[data-pos]').forEach(el=>{el.style.left=el.dataset.pos+'%';});
+  },400);
+}
+
+// Format prose text — split on newlines into paragraphs
+function formatProse(text){
+  if(!text)return'';
+  return text.split(/\n\n+/).map(p=>`<p>${p.trim()}</p>`).join('');
+}
+
+// Progress step animation
+let currentStep = -1;
+function setStep(n){
+  if(currentStep>=0){
+    const prev=document.getElementById(`step-${currentStep}`);
+    if(prev){prev.classList.remove('active');prev.classList.add('done');prev.querySelector('.hci-gen-step-icon').textContent='✓';}
+  }
+  currentStep=n;
+  const el=document.getElementById(`step-${n}`);
+  if(el)el.classList.add('active');
+}
+
+// Build dimension card HTML
+function dimCard(dim, extra){
+  const pct=parseInt(dim.percentile)||0;
+  const agePct=dim.age_percentile?parseInt(dim.age_percentile):null;
+  const plain=plainEnglish(pct);
+  const pos=posLabel(pct);
+  const rarity=getRarity(pct);
+  const markers = agePct!==null
+    ? `<div class="hci-dim-pos-marker everyone" data-pos="${pct}"></div><div class="hci-dim-pos-marker age" data-pos="${agePct}"></div>`
+    : `<div class="hci-dim-pos-marker age" data-pos="${pct}"></div>`;
+  const legend = agePct!==null ? `<div class="hci-dim-pos-legend">
+        <div class="hci-dim-pos-leg"><span class="hci-dim-pos-leg-dot age"></span><strong>You</strong> vs people your age</div>
+        <div class="hci-dim-pos-leg"><span class="hci-dim-pos-leg-dot everyone"></span>You vs everyone</div>
+      </div>` : '';
+  const readout = agePct!==null ? `<div class="hci-dim-readout">${dimReadout(pct, agePct)}</div>` : '';
+
+  return `
+  <div class="hci-dim-card">
+    <div class="hci-dim-card-header">
+      <div>
+        <div class="hci-dim-card-name">${dim.label}</div>
+        <div class="hci-dim-card-pos">${pos}</div>
+      </div>
+      <div class="hci-dim-card-plain">${plain}</div>
+    </div>
+    <div class="hci-dim-card-body">
+      ${rarity?`<div class="hci-dim-rare"><span class="hci-dim-rare-dot"></span>${rarity}</div>`:''}
+      <div class="hci-dim-pos">
+        <div class="hci-dim-pos-track">
+          <div class="hci-dim-pos-band" style="left:15%"></div>
+          <div class="hci-dim-pos-band" style="left:40%"></div>
+          <div class="hci-dim-pos-band" style="left:60%"></div>
+          <div class="hci-dim-pos-band" style="left:85%"></div>
+          <div class="hci-dim-pos-centre"></div>
+          <div class="hci-dim-pos-centre-label">Population centre</div>
+          ${markers}
+        </div>
+        <div class="hci-dim-pos-scale"><span>Lower than most</span><span>Higher than most</span></div>
+        ${legend}
+      </div>
+      ${readout}
+      <div class="hci-dim-narrative">${dim.narrative||''}</div>
+      ${extra||''}
+    </div>
+  </div>`;
+}
+
+// Render the complete report
+function renderReport(report){
+  const demo = report.metadata?.demographics || {};
+  const date = new Date().toLocaleDateString('en-NZ',{year:'numeric',month:'long',day:'numeric'});
+
+  // Header meta
+  document.getElementById('hci-report-meta').innerHTML = [
+    demo.age_group?`<div class="hci-report-meta-item"><span class="hci-report-meta-dot"></span>${demo.age_group}</div>`:'',
+    demo.country?`<div class="hci-report-meta-item"><span class="hci-report-meta-dot"></span>${demo.country}</div>`:'',
+    demo.ai_tool_use_frequency?`<div class="hci-report-meta-item"><span class="hci-report-meta-dot"></span>${demo.ai_tool_use_frequency} AI user</div>`:'',
+    `<div class="hci-report-meta-item"><span class="hci-report-meta-dot"></span>${date}</div>`,
+  ].filter(Boolean).join('');
+
+  // Opening
+  document.getElementById('hci-opening-prose').innerHTML = formatProse(report.opening);
+
+  // Overview
+  document.getElementById('hci-overview-prose').innerHTML = formatProse(report.overview);
+
+  // Dimension profiles — ordered, each followed by its distinctive question charts
+  const dimOrder = ['reliance','trust','verification','decision_delegation',
+    'human_agency','disclosure','emotional_regulation','thought_partnership','social_transparency'];
+  const qb = report.question_breakdown || {};
+  const grid = document.getElementById('hci-dim-grid');
+  grid.innerHTML = dimOrder
+    .filter(k => report.dimension_profiles?.[k])
+    .map(k => {
+      const bd = qb[k];
+      let extra = '';
+      if(bd && bd.questions){
+        const dis = bd.questions.filter(q=>q.distinctive);
+        if(dis.length){
+          extra = `<div class="hci-dim-questions">
+            <div class="hci-dim-q-label">Your most distinctive ${dis.length>1?'responses':'response'} here</div>
+            ${dis.map(qChart).join('')}
+          </div>`;
+        }
+      }
+      return dimCard(report.dimension_profiles[k], extra);
+    })
+    .join('');
+
+  // Cross-dimensional
+  document.getElementById('hci-cross-prose').innerHTML = formatProse(report.cross_dimensional);
+
+  // Perception Gap (auto-title to Alignment if the generator produced an alignment note)
+  const perc = report.perception_gap || '';
+  document.getElementById('hci-perception-prose').innerHTML = formatProse(perc);
+  if(/perception alignment|broadly consistent|are consistent|tell a consistent/i.test(perc)){
+    const pt=document.getElementById('hci-perception-title'); if(pt) pt.textContent='Perception Alignment';
+  }
+
+  // Closing (Putting This to Work + Human Flourishing)
+  document.getElementById('hci-closing-prose').innerHTML = formatProse(report.closing);
+
+  // Population Context
+  document.getElementById('hci-population-prose').innerHTML = formatProse(report.population_context);
+
+  // Appendix — every question, grouped by dimension
+  const appBody = document.getElementById('hci-appendix-body');
+  const appSection = document.getElementById('hci-appendix-section');
+  const appKeys = dimOrder.filter(k => qb[k] && qb[k].questions && qb[k].questions.length);
+  if(appKeys.length){
+    appBody.innerHTML = appKeys.map(k=>`
+      <div class="hci-appendix-dim">
+        <div class="hci-appendix-dim-label">${qb[k].label||k}</div>
+        ${qb[k].questions.map(qChart).join('')}
+      </div>`).join('');
+  } else if(appSection){ appSection.style.display='none'; }
+
+  // Methodology
+  document.getElementById('hci-method').innerHTML =
+    `<p>${formatProse(report.methodology_note||'')}</p>
+     <p>Benchmark data and methodology: <a href="https://github.com/humanclarityinstitute" target="_blank" rel="noopener">github.com/humanclarityinstitute</a></p>`;
+
+  // Animate bars
+  animateBars();
+
+  // Show report
+  document.getElementById('hci-generating').style.display='none';
+  document.getElementById('hci-report').style.display='block';
+
+  // Scroll to top
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// Show error
+function showError(msg){
+  console.error('HCI Report error:', msg);
+  document.getElementById('hci-generating').style.display='none';
+  document.getElementById('hci-error').style.display='flex';
+}
+
+// Main — generate report
+async function init(){
+  // Get session_id from URL (passed by Stripe) or sessionStorage fallback
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session_id') || sessionStorage.getItem('hci_session_id');
+
+  let fullResults = null;
+
+  // Try sessionStorage first (same-tab flow)
+  const fullResultsRaw = sessionStorage.getItem('hci_full_results');
+  if(fullResultsRaw){
+    try{ fullResults = JSON.parse(fullResultsRaw); }catch(e){}
+  }
+
+  // If not in sessionStorage, fetch from Railway using session_id
+  if(!fullResults && sessionId){
+    try{
+      const res = await fetch(`${API}/get-results?session_id=${encodeURIComponent(sessionId)}`);
+      if(res.ok){
+        const data = await res.json();
+        if(data.success && data.full_results){
+          fullResults = data.full_results;
+        }
+      }
+    }catch(e){
+      console.error('Could not fetch results from server:', e);
+    }
+  }
+
+  if(!fullResults){
+    showError('No results found');
+    return;
+  }
+
+  // Start progress animation
+  setStep(0);
+
+  // Simulate progress steps while waiting for API
+  // The API takes ~45-70 seconds — we animate through steps
+  // to give the participant visual feedback
+  const stepMessages = [
+    'Identifying your most surprising finding...',
+    'Writing your Reliance profile...',
+    'Writing your Trust profile...',
+    'Writing your Verification profile...',
+    'Writing your Decision Delegation profile...',
+    'Writing your Human Agency profile...',
+    'Writing your Disclosure profile...',
+    'Writing your Emotional Regulation profile...',
+    'Writing your Thought Partnership profile...',
+    'Writing your Social Transparency profile...',
+    'Analysing cross-dimensional patterns...',
+    'Writing What Is AI Changing?',
+    'Writing your Human Flourishing Reflection...',
+  ];
+
+  // Advance steps every ~4 seconds to match expected generation time
+  let stepTimer = 0;
+  const stepInterval = setInterval(()=>{
+    stepTimer++;
+    if(stepTimer < stepMessages.length){
+      setStep(stepTimer);
+    }
+  }, 4000);
+
+  try{
+    // Call premium endpoint
+    const sessionId = urlParams.get('session_id') || sessionStorage.getItem('hci_session_id');
+    const reportEmail = sessionStorage.getItem('hci_report_email');
+
+    const response = await fetch(`${API}/premium`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        full_results: fullResults,
+        payment_confirmed: true,
+        session_id: sessionId,
+        report_email: reportEmail,
+        // stripe_session_id: urlParams.get('session_id'), // uncomment when Stripe live
+      }),
+    });
+
+    clearInterval(stepInterval);
+
+    if(!response.ok){
+      const errData = await response.json().catch(()=>({}));
+      throw new Error(errData.error || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if(!data.success){
+      throw new Error(data.error || 'Generation failed');
+    }
+
+    // Mark all steps done
+    for(let i=0;i<=12;i++){
+      const el=document.getElementById(`step-${i}`);
+      if(el){el.classList.remove('active');el.classList.add('done');const icon=el.querySelector('.hci-gen-step-icon');if(icon)icon.textContent='✓';}
+    }
+
+    // Small pause then render
+    setTimeout(()=>renderReport(data.report), 800);
+
+  }catch(e){
+    clearInterval(stepInterval);
+    showError(e.message);
+  }
+}
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',init);
+}else{
+  init();
+}
+
+})();
+</script>
+</body>
+</html>
