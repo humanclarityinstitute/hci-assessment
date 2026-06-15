@@ -49,13 +49,16 @@ def _dim_summary_row(dim):
     No percentile number, no chart, no full narrative — those live in the
     PDF / web report.
 
-    Reads (confirm against report_generator output):
-      label, subtitle, position (the Section-3 positional word), plain_english
-    'position' falls back to the older 'rarity' field name if still emitted.
+    Reads report_generator's dimension_profiles fields:
+      label, subtitle, position (the Section-3 positional word), plain_english.
+    We render the positional word + plain-English string only — never a bare
+    percentile (v2.1).
     """
     label = dim.get('label', '')
     subtitle = dim.get('subtitle', '')
-    position = dim.get('position') or dim.get('rarity') or ''
+    position = (dim.get('position') or '').strip()
+    if position:
+        position = position[0].upper() + position[1:]  # "notably high" -> "Notably high"
     plain = dim.get('plain_english', '')
 
     position_pill = (
@@ -84,19 +87,24 @@ def _dim_summary_row(dim):
     </td></tr>"""
 
 
-def generate_report_email(report, demographics, report_url='https://humanclarityinstitute.com'):
-    """Generate the lightweight HTML summary email (PDF carries the full report)."""
+def generate_report_email(report, demographics, report_url='https://humanclarityinstitute.com', pdf_url=None):
+    """Generate the lightweight HTML summary email (PDF carries the full report).
+
+    pdf_url: optional durable link to the stored PDF, shown as a fallback so a
+    stripped attachment or a lost inbox never loses the report.
+    """
 
     age_group = demographics.get('age_group', '')
     country = demographics.get('country', '')
     frequency = demographics.get('ai_tool_use_frequency', '')
     date_str = datetime.utcnow().strftime('%d %B %Y')
 
-    # Most surprising finding -> short opener. Confirm key name in generator.
+    # Most surprising finding -> short opener. In report_generator this is the
+    # 'opening' field (generate_opening). 'overview' is the separate AI-Identity
+    # overview, used only as a fallback.
     surprising = _first_paragraph(
-        report.get('surprising_finding')
+        report.get('opening')
         or report.get('overview')
-        or report.get('opening')
         or ''
     )
 
@@ -108,6 +116,13 @@ def generate_report_email(report, demographics, report_url='https://humanclarity
     dim_rows = ''.join(
         _dim_summary_row(profiles[k]) for k in DIM_ORDER if profiles.get(k)
     )
+
+    # Durable PDF download link (fallback if the attachment is stripped/lost).
+    pdf_link_html = (
+        f'<p style="margin:14px 0 0;color:#6B7280;font-size:12px;">'
+        f'Prefer a direct download? <a href="{pdf_url}" style="color:#4054B2;font-weight:600;">'
+        f'Download your report PDF</a></p>'
+    ) if pdf_url else ''
 
     return f"""<!DOCTYPE html>
 <html lang="en-GB">
@@ -138,6 +153,7 @@ def generate_report_email(report, demographics, report_url='https://humanclarity
   <tr><td style="background:#ffffff;padding:26px 40px 8px;text-align:center;">
     <p style="margin:0 0 16px;color:#1A1A1A;font-size:14px;line-height:1.6;">Your full report — every dimension, the cross-dimensional patterns, your perception gap and the complete 39-question appendix — is <strong>attached as a PDF</strong> and available to read online.</p>
     <a href="{report_url}" style="display:inline-block;background:#4054B2;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 30px;border-radius:8px;">View your full report online →</a>
+    {pdf_link_html}
   </td></tr>
 
   <!-- Nine dimension summary -->
@@ -163,39 +179,6 @@ def generate_report_email(report, demographics, report_url='https://humanclarity
 </table>
 </body>
 </html>"""
-
-
-def generate_report_pdf(report_html, wait_ms=900):
-    """
-    Render the POPULATED full-report HTML to PDF bytes for the attachment.
-
-    The web report's histograms are drawn in JS, so a plain HTML->PDF library
-    (WeasyPrint / wkhtmltopdf) would drop every chart. This uses headless
-    Chromium via Playwright, which executes the JS first.
-
-    Deploy dependency: the Railway image needs Playwright + Chromium
-        pip install playwright && playwright install --with-deps chromium
-    If you would rather avoid bundling Chromium, the alternative is to have
-    report_generator emit the charts as static <img> (server-rendered PNG),
-    after which WeasyPrint becomes viable. That is a separate decision.
-
-    `report_html` must be the SAME html the web report renders (produced by
-    report_generator + hci-report-page.html), so the PDF matches the site.
-    """
-    from playwright.sync_api import sync_playwright
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(args=['--no-sandbox', '--disable-dev-shm-usage'])
-        page = browser.new_page()
-        page.set_content(report_html, wait_until='networkidle')
-        page.wait_for_timeout(wait_ms)  # let the histograms finish drawing
-        pdf_bytes = page.pdf(
-            format='A4',
-            print_background=True,
-            margin={'top': '14mm', 'bottom': '14mm', 'left': '12mm', 'right': '12mm'},
-        )
-        browser.close()
-    return pdf_bytes
 
 
 def send_report_email(to_email, report, demographics, resend_api_key,
