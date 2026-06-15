@@ -475,23 +475,14 @@ def premium():
         if not full_results:
             return jsonify({'success': False, 'error': 'No results provided'}), 400
 
-        payment_confirmed = request_data.get('payment_confirmed', False)
-        if not payment_confirmed:
-            return jsonify({'success': False, 'error': 'Payment not confirmed'}), 402
-
-        stripe_session_id = request_data.get('stripe_session_id')
-        if stripe_session_id:
-            verified = verify_stripe_payment(stripe_session_id)
-            if not verified:
-                return jsonify({
-                    'success': False,
-                    'error': 'Payment verification failed'
-                }), 402
-
         session_id = request_data.get('session_id')
         report_email = request_data.get('report_email')
+        stripe_session_id = request_data.get('stripe_session_id')
 
-        # Check cache — return immediately if report already exists
+        # 1) CACHE FIRST — if this report was already generated (which only
+        #    happens after a verified payment, in step 2 below), return it
+        #    immediately. This makes refreshes and the emailed report link work
+        #    even when they arrive without the Stripe id, and costs nothing.
         if session_id:
             existing_report = get_stored_report(session_id)
             if existing_report:
@@ -502,7 +493,39 @@ def premium():
                     'cached': True,
                 })
 
-        # Generate new report
+        # 2) STRICT PAYMENT GATE — reached only when there is NO cached report,
+        #    i.e. we are about to spend money generating one. No Claude calls run
+        #    until Stripe confirms this checkout session is paid. Fails CLOSED:
+        #    a missing key, or a missing/unverified Stripe id, refuses here — so
+        #    generation can never run without a confirmed payment.
+        if not os.environ.get('STRIPE_SECRET_KEY'):
+            print('STRICT GATE: STRIPE_SECRET_KEY not set — refusing to generate.')
+            return jsonify({
+                'success': False,
+                'error': 'Payment verification is temporarily unavailable. '
+                         'Please contact support — no report has been generated.'
+            }), 503
+
+        stripe_session = fetch_stripe_session(stripe_session_id) if stripe_session_id else None
+        paid = bool(stripe_session) and stripe_session.get('payment_status') == 'paid'
+        if not paid:
+            print(
+                'STRICT GATE: payment not verified '
+                f'(stripe id present: {bool(stripe_session_id)}) — refusing to generate.'
+            )
+            return jsonify({
+                'success': False,
+                'error': 'Payment could not be verified. If you have just paid, '
+                         'please refresh this page; otherwise contact support.'
+            }), 402
+
+        # Recover the assessment id from the verified Stripe session if it did
+        # not arrive in the URL, so the report is stored/emailed against the
+        # right session even when the redirect didn't carry it.
+        if not session_id and stripe_session:
+            session_id = stripe_session.get('client_reference_id')
+
+        # 3) Payment confirmed — now, and only now, spend on generation.
         api_key = os.environ.get('ANTHROPIC_API_KEY')
         report = generate_premium_report(full_results, api_key=api_key)
 
@@ -562,13 +585,19 @@ def premium():
         }), 500
 
 
-def verify_stripe_payment(stripe_session_id):
-    """Verify a Stripe payment session."""
+def fetch_stripe_session(stripe_session_id):
+    """
+    Fetch a Stripe Checkout Session. Returns the parsed session dict (which
+    includes payment_status and client_reference_id), or None on any error.
+
+    Note: returns None when STRIPE_SECRET_KEY is unset — callers treat that as
+    'not verified' and refuse, so generation never runs without a real check.
+    """
     try:
         stripe_key = os.environ.get('STRIPE_SECRET_KEY')
         if not stripe_key:
-            print('Stripe not configured — skipping verification')
-            return True
+            print('Stripe not configured — cannot verify payment')
+            return None
 
         import urllib.request
         req = urllib.request.Request(
@@ -576,12 +605,11 @@ def verify_stripe_payment(stripe_session_id):
             headers={'Authorization': f'Bearer {stripe_key}'}
         )
         response = urllib.request.urlopen(req, timeout=10)
-        session = json.loads(response.read())
-        return session.get('payment_status') == 'paid'
+        return json.loads(response.read())
 
     except Exception as e:
         print(f'Stripe verification error: {e}')
-        return False
+        return None
 
 
 # ============================================================
