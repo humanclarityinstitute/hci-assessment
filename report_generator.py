@@ -59,10 +59,10 @@ TONE RULES:
 - Never list problems — explore patterns
 
 PERCENTILE LANGUAGE:
-- Always state scores as plain English first:
-  "Higher than 97 out of every 100 people"
-- Then percentile as supporting credential: "97th percentile"
-- Never lead with the number — lead with the human meaning
+- State position as plain English: "higher than 97 out of every 100 people"
+- Pair it with the positional phrase ("notably high", "near the population centre")
+- Do NOT use a bare "Xth percentile" number anywhere in the prose
+- Always lead with the human meaning, never the number
 
 LANGUAGE TO NEVER USE:
 - concerning, worrying, problematic, at risk
@@ -88,6 +88,20 @@ USING HCI RESEARCH DATA:
 - These are patterns observed across the series at one point in time — never describe
   them as changes measured within an individual over time, and never imply a
   pre-AI baseline the data does not contain.
+
+V2.1 COMPLIANCE (mandatory):
+- Never assign a "type", "archetype", category, or label to the participant.
+  Describe patterns, not identities.
+- Describe cross-dimensional combinations as "interesting combinations" or
+  "combinations worth noticing" — NEVER as tensions, contradictions, conflicts,
+  or problems.
+- Use the positional-language scale exactly: exceptionally high / notably high /
+  above the population centre / near the population centre / below the population
+  centre / notably low / exceptionally low. Invent no alternative positional phrases.
+- Do not state a bare "Xth percentile" number. Express position as a plain-English
+  comparison ("higher than 84 out of 100 people") plus the positional phrase.
+- Every section ends on an observation or open question — never a recommendation
+  or instruction.
 """
 
 
@@ -132,6 +146,20 @@ def get_score_description(percentile):
         return f'notably low — only {p}% of participants score similarly'
     else:
         return f'exceptionally low — fewer than {p+1}% score similarly'
+
+
+def positional_language(p):
+    """Section 3 positional descriptor — exact v2.1 scale, no number."""
+    if p is None:
+        return 'near the population centre'
+    p = int(p)
+    if p >= 96: return 'exceptionally high'
+    if p >= 86: return 'notably high'
+    if p >= 71: return 'above the population centre'
+    if p >= 41: return 'near the population centre'
+    if p >= 26: return 'below the population centre'
+    if p >= 11: return 'notably low'
+    return 'exceptionally low'
 
 
 def get_rarity_text(percentile):
@@ -321,7 +349,7 @@ SIGNALS = {
         "AI is entering emotional regulation (18% use it for emotional support).",
         "Where behaviour shifts, it shifts through convenience and repetition rather than deliberate choice.",
     ],
-    'tensions': [
+    'combinations': [
         "Identity holds; the infrastructure that sustains it (attention, reflection, values-enactment) is under pressure.",
         "People hold their values clearly (78-96%) but living them is getting harder — environmental friction, not moral confusion.",
         "Override capability (88%) and felt steering (59%) coexist — influence operates below the threshold at which people choose to intervene.",
@@ -636,7 +664,7 @@ def generate_cross_dimensional(results, client):
         for d in full_ranking
     ])
 
-    tensions_text = 'HCI SERIES TENSIONS (grounding — cite any figures lightly):\n' + '\n'.join('  - ' + t for t in SIGNALS['tensions'])
+    combos_text = 'INTERESTING COMBINATIONS observed across HCI\'s series (grounding — cite any figures lightly):\n' + '\n'.join('  - ' + t for t in SIGNALS['combinations'])
 
     rare_text = ''
     if rare:
@@ -653,12 +681,11 @@ ALL NINE DIMENSION SCORES:
 
 {rare_text}
 
-{tensions_text}
+{combos_text}
 
-BIGGEST CONTRAST:
-{f"Highest: {highest['label']} at {format_percentile(highest['percentile'])} percentile" if highest else ""}
-{f"Lowest: {lowest['label']} at {format_percentile(lowest['percentile'])} percentile" if lowest else ""}
-{f"Gap between highest and lowest: {round(gap)}th percentile points" if gap else ""}
+WIDEST SPREAD IN THIS PROFILE:
+{f"Highest: {highest['label']} ({positional_language(highest['percentile'])})" if highest else ""}
+{f"Lowest: {lowest['label']} ({positional_language(lowest['percentile'])})" if lowest else ""}
 
 Write 200-250 words that:
 1. Open by describing the overall shape of this profile — what kind
@@ -666,14 +693,15 @@ Write 200-250 words that:
 2. Identify 2-3 specific dimensional relationships that are interesting
    — how do the scores relate to and illuminate each other?
 3. If any rare combinations exist, describe what makes them unusual
-   and why the combination is interesting
-4. Note the biggest contrast in the profile — what does it reveal
-   that individual scores alone wouldn't show?
+   and why the combination is interesting.
+4. Note the widest spread in the profile — what does that difference
+   reveal that individual scores alone wouldn't show?
 5. Close with a genuine observation about what this pattern suggests
-   about this person's relationship with AI — end with curiosity
+   about this person's relationship with AI — end with curiosity.
 
-This section should feel like the report is seeing the whole person,
-not just individual scores. The combination tells a story.
+Describe these strictly as INTERESTING COMBINATIONS — never as tensions,
+contradictions, conflicts, or problems. This section should feel like the
+report is seeing the whole person, not just individual scores.
 
 No headers. Flowing prose. Speak directly as "you"."""
 
@@ -687,77 +715,55 @@ No headers. Flowing prose. Speak directly as "you"."""
 
 
 # ============================================================
-# CALL 12: WHAT IS AI CHANGING?
+# Population Context (benchmark + demographic comparisons)
 # ============================================================
 
-def generate_what_is_changing(results, client):
-    """
-    Generate the 'What Is AI Changing?' section.
-    This is the most important section — answers the deepest question
-    the participant carries. Must be specific to their profile.
-    Population-grounded throughout. Never predictive or prescriptive.
-    """
+def generate_population_context(results, client):
+    """Population Context (v2.1) — two or three benchmark comparisons that place
+    the participant in specific population context, including their age group
+    where available. Replaces the former 'What Is AI Changing' section."""
     demographics = results['demographics']
-    dimensions = results['dimensions']
     patterns = results['patterns']
     full_ranking = patterns.get('full_ranking', [])
+    cohort = cohort_signal(demographics.get('age_group'))
 
-    # Identify dimensions showing strongest alignment with observed changes
-    high_dims = [d for d in full_ranking if d['percentile'] >= 65]
-    low_dims = [d for d in full_ranking if d['percentile'] <= 35]
+    high_dims = [d for d in full_ranking if d['percentile'] >= 71]
+    low_dims = [d for d in full_ranking if d['percentile'] <= 29]
 
     dim_summary = '\n'.join([
-        f"  {d['label']}: {format_percentile(d['percentile'])} percentile"
+        f"  {d['label']}: {positional_language(d['percentile'])} "
+        f"(higher than {int(d['percentile'])} of 100 people)"
         for d in full_ranking
     ])
 
-    trends_text = '\n'.join('  - ' + t for t in SIGNALS['trends'])
+    prompt = f"""Write the Population Context section of a personalised HCI AI Identity Report.
 
-    prompt = f"""Write the "What Is AI Changing?" section of a personalised HCI AI Identity Report.
+This section places the participant in the benchmark population with two or three
+concrete comparisons. It is grounded and factual — the most data-solid moment in
+the report.
 
-This is the most important section of the premium report. It speaks to the
-question the participant has carried since they started: how do AI use and
-their behaviour relate — and where does their own profile sit within that?
-
-PARTICIPANT PROFILE:
+PARTICIPANT PROFILE (positional language + plain-English comparison):
 {dim_summary}
 
+Most distinctive (high): {', '.join([d['label'] for d in high_dims]) if high_dims else 'none stand out high'}
+Most distinctive (low): {', '.join([d['label'] for d in low_dims]) if low_dims else 'none stand out low'}
 Age group: {demographics.get('age_group', 'not specified')}
-AI usage frequency: {demographics.get('ai_tool_use_frequency', 'not specified')}
+{f"Cohort context — people in this age group are {cohort}." if cohort else ""}
 
-DIMENSIONS SHOWING STRONG PATTERNS:
-High: {', '.join([d['label'] for d in high_dims]) if high_dims else 'None notably high'}
-Low: {', '.join([d['label'] for d in low_dims]) if low_dims else 'None notably low'}
+Write ~100 words that:
+1. Give two or three precise population comparisons from the profile above — where
+   this person sits relative to everyone, in plain English.
+2. Where an age group is given, add one comparison to people their own age, using
+   the cohort context above as light grounding.
+3. Describe difference, never deficiency. Position, never prediction.
 
-HCI SERIES PATTERNS (real findings — use the figures, cite lightly. These are
-patterns observed ACROSS the series at one point in time, NOT changes measured
-inside a person over time, and there is NO pre-AI baseline to compare against):
-{trends_text}
-
-Write 220-260 words, woven as connected prose, that:
-
-1. Connect 2-3 of this person's actual dimensions to the relevant HCI series
-   patterns above — name their dimensions and include a real figure with light
-   sourcing ("in HCI's research, reliance rises from 1.1 to 4.4 with use...").
-
-2. Note where their profile sits within those patterns — more or less pronounced
-   than the typical position. Describe position, never prediction.
-
-3. Identify which human capacities look most active and most preserved here.
-
-4. Note what people with similar profiles tend to describe — as observation,
-   never forecast.
-
-CRITICAL RULES:
-- Use ONLY the figures provided above; never invent statistics or a pre-AI baseline.
-- Never predict what will happen to this person; describe observed patterns only.
-- Never frame anything as change measured inside this individual over time.
-- Never alarm — illuminating, not warning. End with curiosity.
-- Speak directly as "you" throughout"""
+Use ONLY the positions provided above. Plain-English comparisons, no bare percentile
+numbers, positional language from the scale. End on an observation, not a
+recommendation. Speak directly as "you"."""
 
     message = client.messages.create(
         model='claude-sonnet-4-6',
-        max_tokens=600,
+        max_tokens=400,
         system=GLOBAL_SYSTEM_PROMPT,
         messages=[{'role': 'user', 'content': prompt}],
     )
@@ -809,10 +815,10 @@ HCI HUMAN REFERENCE LAYER (grounding for what is worth protecting; cite any figu
 Write TWO distinct sections:
 
 ═══════════════════════════════════
-SECTION A: PROFILE DIRECTIONS (~150 words)
+SECTION A: PUTTING THIS TO WORK (~190 words)
 ═══════════════════════════════════
 
-Three elements — each 2-3 sentences. Non-prescriptive throughout.
+Four elements — each 2-3 sentences. Non-prescriptive throughout.
 Never say "you should" or "you need to" — only observation and curiosity.
 
 STRENGTH:
@@ -829,6 +835,15 @@ WHAT OTHERS WITH THIS PROFILE OFTEN EXPLORE:
 What do people with similar profiles find interesting to pay attention to?
 Frame as observation, never instruction.
 "People with profiles like yours often find it interesting to notice..."
+
+USE THIS REPORT AS A MIRROR:
+Describe — as an option they may find interesting, never an instruction — that they can
+hand this full report to the AI they use most (ideally one that remembers their history)
+and ask it to reflect on the report, check it against how they actually work together,
+show them the evidence for and against, and, if THEY decide they want to shift something,
+help them do the heavy lifting. Note briefly that they run it in their own AI and nothing
+returns to HCI. Frame the whole thing as a possibility worth exploring; end this element
+on an open question, not a directive.
 
 ═══════════════════════════════════
 SECTION B: HUMAN FLOURISHING REFLECTION (~180 words)
@@ -850,8 +865,7 @@ Answer these four questions woven as connected prose:
    Frame as observation: "What appears most worth protecting here is..."
    Never as prescription: never "you should protect..."
 
-4. What does this profile suggest about how AI may be shaping this
-   person's experience over time?
+4. What human advantages appear most prominent in this pattern?
    Population-grounded. Open. Never alarming. End with genuine curiosity.
 
 CRITICAL: Section B must end with a sentence that leaves the participant
@@ -859,12 +873,12 @@ feeling more curious about themselves than when they started reading.
 This is the last thing they read. Make it count.
 
 Write Section A then Section B. Use clear section headers:
-"Profile Directions" and "Human Flourishing Reflection"
+"Putting This to Work" and "Human Flourishing Reflection"
 Then flowing prose within each. Speak as "you" throughout."""
 
     message = client.messages.create(
         model='claude-sonnet-4-6',
-        max_tokens=800,
+        max_tokens=950,
         system=GLOBAL_SYSTEM_PROMPT,
         messages=[{'role': 'user', 'content': prompt}],
     )
@@ -872,129 +886,96 @@ Then flowing prose within each. Speak as "you" throughout."""
 
 
 # ============================================================
-# GUARDRAIL PROMPTS — paste-in prompts that hold AI in the
-# role the person wants. Curated library, selected by profile.
-# Deterministic (no API call): the prompt text is never model-
-# generated, so it can't drift or hallucinate.
+# Your AI Identity — Overview  (v2.1, no archetype)
 # ============================================================
 
-GUARDRAIL_PROMPTS = [
-    {
-        'dim': 'verification', 'direction': 'low', 'universal': False,
-        'title': 'Make AI show its work',
-        'protects': 'your verification and independent judgement',
-        'prompt': "When you give me facts, statistics, or recommendations, tell me how confident you are and mark what you're inferring versus what you actually know. Flag explicitly when something is worth my checking elsewhere — don't smooth over uncertainty to sound helpful.",
-        'when': 'Set it as a standing instruction in any AI you rely on for information.',
-    },
-    {
-        'dim': 'decision_delegation', 'direction': 'high', 'universal': True,
-        'title': 'Options, not answers',
-        'protects': 'your ownership of decisions',
-        'prompt': "When I ask you to decide for me, don't. Lay out the realistic options with the strongest case for and against each, ask me the one question most likely to change my mind, then let me make the call.",
-        'when': "Use it whenever you catch yourself asking AI to just tell you what to do.",
-    },
-    {
-        'dim': 'human_agency', 'direction': 'low', 'universal': False,
-        'title': 'Make me think first',
-        'protects': 'your sense of authorship',
-        'prompt': "Before you give me your answer, ask me what I think and why. Push back on my reasoning, point out what I might be missing, and have me commit to a view before you offer yours.",
-        'when': 'Use it on anything where the thinking matters as much as the answer.',
-    },
-    {
-        'dim': 'reliance', 'direction': 'high', 'universal': False,
-        'title': 'Do it with me, not for me',
-        'protects': 'your independent functioning',
-        'prompt': "When you help me with a task, show your working and explain the key choices as you go, so I could do it myself next time — don't just hand me the finished result.",
-        'when': "Use it on the tasks you'd least want to lose the ability to do yourself.",
-    },
-    {
-        'dim': 'trust', 'direction': 'high', 'universal': True,
-        'title': 'Flag your uncertainty',
-        'protects': 'your epistemic calibration',
-        'prompt': "Whenever you're speculating, generalising, or unsure, say so plainly. I'd rather you tell me you're not certain than give me a confident answer that turns out to be wrong.",
-        'when': 'Keep it on by default — it costs nothing and catches a lot.',
-    },
-    {
-        'dim': 'thought_partnership', 'direction': 'high', 'universal': False,
-        'title': "Challenge, don't replace",
-        'protects': 'your own thinking',
-        'prompt': "Act as a thinking partner, not a ghostwriter. Help me sharpen my own ideas — ask questions, find the holes, offer counterpoints — but let the conclusions be mine.",
-        'when': "Use it when you're thinking something through, not just producing output.",
-    },
-    {
-        'dim': 'emotional_regulation', 'direction': 'high', 'universal': False,
-        'title': 'Point me back to people',
-        'protects': 'your human connection',
-        'prompt': "If I'm using you to work through something difficult, help me — and gently remind me to bring the things that matter most to the people in my life, not only to you.",
-        'when': 'Use it if AI has become a first port of call for hard moments.',
-    },
-]
+def generate_overview(results, client):
+    """Integrative overview paragraph naming the 2-3 most distinctive patterns.
+    No archetype, type, category, or label of any kind."""
+    patterns = results['patterns']
+    full_ranking = patterns.get('full_ranking', [])
+    dim_summary = '\n'.join([
+        f"  {d['label']}: {positional_language(d['percentile'])} "
+        f"(higher than {int(d['percentile'])} of 100 people)"
+        for d in full_ranking
+    ])
+    top = full_ranking[:3]
+    prompt = f"""Write the "Your AI Identity — Overview" section of a personalised HCI AI Identity Report.
+
+A single integrative paragraph describing the overall shape of this person's profile
+across all nine dimensions — written fresh, as a whole, not assembled from fragments.
+
+ALL NINE (positional language + plain-English comparison):
+{dim_summary}
+
+Centre the paragraph on the most distinctive patterns: {', '.join(d['label'] for d in top)}
+
+Write ~200 words that:
+1. Name the two or three most distinctive patterns and how they relate — what kind of
+   relationship with AI does the whole picture suggest?
+2. Stay integrative — a coherent whole, not a list of scores.
+3. Plain-English comparisons and positional language; no bare percentile numbers.
+
+ABSOLUTE RULE: do NOT assign a type, archetype, category, or label of any kind.
+Describe patterns, not an identity. End on an observation that sets up curiosity for
+the detail that follows. Speak directly as "you"."""
+    message = client.messages.create(
+        model='claude-sonnet-4-6', max_tokens=520,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+    )
+    return message.content[0].text.strip()
 
 
-def select_guardrails(dimensions, max_n=4):
-    """Pick the guardrail prompts that best fit this profile.
+# ============================================================
+# Perception Gap Analysis  (Section 6) — or Perception Alignment
+# ============================================================
 
-    A rule fires when the person leans into AI on that dimension
-    (high >= 65, or low <= 35). The most pronounced leans come first.
-    Always returns at least two — falling back to broadly useful ones.
-    """
-    scored = []
-    for r in GUARDRAIL_PROMPTS:
-        d = dimensions.get(r['dim'], {})
-        pct = d.get('percentiles', {}).get('overall')
-        if pct is None:
+def generate_perception_gap(results, client):
+    """Dedicated perception-gap section. If no meaningful gap, retitled
+    'Perception Alignment' and notes consistency. Never manufactures a finding."""
+    gaps = results.get('perception_gaps', {}) or {}
+    candidates = []
+    if isinstance(gaps, dict):
+        candidates = [g for g in gaps.values() if isinstance(g, dict)]
+    elif isinstance(gaps, list):
+        candidates = [g for g in gaps if isinstance(g, dict)]
+    sig = None
+    for g in candidates:
+        a, p = g.get('actual_percentile'), g.get('perceived_estimate')
+        if a is None or p is None:
             continue
-        if r['direction'] == 'high' and pct >= 65:
-            scored.append((pct - 50, r))
-        elif r['direction'] == 'low' and pct <= 35:
-            scored.append((50 - pct, r))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    chosen = [r for _, r in scored[:max_n]]
-    if len(chosen) < 2:
-        for r in GUARDRAIL_PROMPTS:
-            if r.get('universal') and r not in chosen:
-                chosen.append(r)
-            if len(chosen) >= 2:
-                break
-    return [
-        {'title': r['title'], 'protects': r['protects'],
-         'prompt': r['prompt'], 'when': r['when']}
-        for r in chosen
-    ]
+        if abs(a - p) >= 25 and (sig is None or abs(a - p) > abs(sig['actual_percentile'] - sig['perceived_estimate'])):
+            sig = g
 
+    if sig:
+        a = int(sig['actual_percentile'])
+        dim = sig.get('dimension', 'one dimension')
+        prompt = f"""Write the Perception Gap Analysis section (~100 words) of an HCI report.
 
-# ============================================================
-# VALIDATION PROTOCOL — let the person check this report against
-# how they actually use AI, in their own assistant. Deterministic.
-# ============================================================
+Dimension: {dim}
+Where they placed themselves: around the middle / their own estimate.
+Where the benchmark places them: higher than {a} of 100 people ({positional_language(a)}).
 
-def build_validation_protocol():
-    return {
-        'title': 'Validate this report against how you actually use AI',
-        'intro': (
-            "Most assessments stop at what you say about yourself. This one you can "
-            "check. The AI you use most has seen how you actually ask, decide, verify, "
-            "and reach for help — so you can hold this report up against your real "
-            "behaviour and see where it lands."
-        ),
-        'steps': [
-            'Open the AI you use most.',
-            'Paste or upload this full report into it.',
-            'Send the prompt below and read what it tells you.',
-        ],
-        'prompt': (
-            "Here is a personalised assessment of how I use AI. Based on how I actually "
-            "work with you — across our past conversations if you can see them, and how "
-            "I'm interacting with you right now — how accurate is each part of this? Where "
-            "do you see clear evidence for or against it? Be specific, and don't just agree "
-            "with me."
-        ),
-        'note': (
-            "It works richest with an assistant that remembers your history; otherwise it "
-            "will reflect on your current conversation. You run this in your own AI — "
-            "nothing comes back to us, and we never see your conversations."
-        ),
-    }
+Frame the gap to ILLUMINATE, never to correct. Permitted: "One finding worth noting...",
+"Your estimated positioning and your actual score tell different stories.", "That gap is
+itself a finding worth sitting with." PROHIBITED: "you underestimated...", "you may not
+realise...", "you were wrong", "you lack self-awareness". Plain-English comparison, no bare
+percentile number. End on an observation, not a recommendation. Speak as "you"."""
+    else:
+        prompt = """Write a short "Perception Alignment" section (~70 words) of an HCI report.
+
+This participant's self-estimates and their benchmarked scores are broadly consistent.
+Note this plainly and with genuine interest — consistency between how someone sees
+themselves and where they actually sit is itself worth noting. Do NOT manufacture a gap
+or a finding. End on an observation. Speak as "you"."""
+
+    message = client.messages.create(
+        model='claude-sonnet-4-6', max_tokens=350,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+    )
+    return message.content[0].text.strip()
 
 
 # ============================================================
@@ -1105,9 +1086,155 @@ def generate_free_result(results):
 # PREMIUM REPORT GENERATOR — 13 FOCUSED API CALLS
 # ============================================================
 
-def generate_premium_report(results, api_key=None, progress_callback=None):
+# ============================================================
+# PER-QUESTION BREAKDOWN  (deterministic, no API) — spec v2.1
+# Curated 1-2 distinctive questions per dimension + full appendix.
+# ============================================================
+
+QUESTION_TEXT = {
+    # Trust
+    "trust_q1": "When AI gives me information, I generally trust it is accurate.",
+    "trust_q2": "I feel confident relying on information or recommendations generated by AI.",
+    "trust_q3": "I worry that AI will present incorrect information as if it were fact.",
+    "trust_q4": "When I feel uncertain, I am more likely to trust guidance from AI systems.",
+    # Disclosure
+    "disc_q1": "I feel comfortable sharing personal thoughts or emotions with AI that I would not share with most people.",
+    "disc_q2": "I feel emotionally safer expressing myself to AI than I do to many people in my life.",
+    "disc_q3": "There are things I have told AI that I have never told another person.",
+    "disc_q4": "I am more open with AI about some topics than I am with people in my life.",
+    # Reliance
+    "rel_q1": "I feel uneasy or restless when I cannot use AI tools for an extended period.",
+    "rel_q2": "I struggle to function effectively without assistance from digital or AI systems.",
+    "rel_q3": "I rely on AI for many everyday work or personal decisions.",
+    "rel_q4": "I often rely on AI even when I could work things out on my own.",
+    "rel_q5": "Some of my abilities have weakened because AI systems now perform those tasks for me.",
+    # Decision Delegation
+    "del_q1": "I regularly hand over decisions to AI systems that I previously made myself.",
+    "del_q2": "When I use AI for decisions, I usually accept its recommendations without making significant changes.",
+    "del_q3": "I sometimes follow AI recommendations even when they do not feel right to me.",
+    "del_q4": "I am comfortable relying on AI systems for important decisions that could significantly affect my life or work.",
+    "del_q5": "When I feel uncertain about a decision, I am more likely to rely on AI guidance.",
+    # Verification
+    "ver_q1": "I regularly double-check information provided by AI using other sources.",
+    "ver_q2": "I often skip checking AI information because it takes too much time or effort.",
+    "ver_q3": "When information feels complicated or mentally demanding, I am more likely to accept it without checking carefully.",
+    "ver_q4": "I use independent sources to confirm whether AI-generated information is accurate.",
+    # Human Agency
+    "agency_q1": "My actions feel self-directed rather than driven by external forces.",
+    "agency_q2": "I feel in control of decisions when using AI or automated systems.",
+    "agency_q3": "Using AI tools has changed how much I trust my own judgement.",
+    "agency_q4": "I sometimes feel influenced by systems without being fully aware of how.",
+    "agency_q5": "I sometimes question what is genuinely \"mine\" versus shaped by suggestions from AI tools.",
+    # Emotional Regulation
+    "emot_q1": "AI sometimes gives me a sense of relief or support when I feel emotionally overwhelmed.",
+    "emot_q2": "I receive emotional support or comfort from AI tools.",
+    "emot_q3": "Over time, my emotional or conversational boundaries with AI have become more open.",
+    "emot_q4": "When I feel stressed, anxious, or emotionally overwhelmed, I often turn to AI to help me process my thoughts.",
+    # Thought Partnership
+    "thought_q1": "I use AI as a sounding board — thinking out loud and developing ideas through conversation.",
+    "thought_q2": "I use AI to challenge or stress-test my own beliefs and assumptions.",
+    "thought_q3": "AI has changed how deeply I engage with my own thinking.",
+    "thought_q4": "I tend to use AI in ways that confirm what I already think rather than challenge it.",
+    # Social Transparency
+    "soc_q1": "I openly acknowledge when AI has contributed to my work or thinking.",
+    "soc_q2": "I downplay or hide how much I use AI when talking to friends or family.",
+    "soc_q3": "I feel comfortable telling people in my life how I really use AI.",
+    "soc_q4": "There is a gap between how much I actually use AI and what I let others believe.",
+}
+
+import json as _json
+
+_BENCHMARK_CACHE = {}
+
+def _load_benchmark(path):
+    if path in _BENCHMARK_CACHE:
+        return _BENCHMARK_CACHE[path]
+    try:
+        with open(path) as f:
+            data = _json.load(f)
+    except Exception as e:
+        print(f'  [!] question breakdown: could not load benchmark ({e})')
+        data = {}
+    _BENCHMARK_CACHE[path] = data
+    return data
+
+def _bin7(arr):
+    bins = [0] * 7
+    for v in arr or []:
+        try:
+            iv = int(round(float(v)))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= iv <= 7:
+            bins[iv - 1] += 1
+    return bins
+
+def _pct_of(dist, ans):
+    total = sum(dist) or 1
+    ans = max(1, min(7, int(ans)))
+    below = sum(dist[:ans - 1])
+    at = dist[ans - 1]
+    return round((below + 0.5 * at) / total * 100)
+
+def build_question_breakdown(results, benchmark_path='benchmark_tables.json'):
+    """Assemble per-question data grouped by dimension. Each question carries the
+    raw answer, the overall and your-age 7-bin distributions, both plain-English
+    percentiles, and a 'distinctive' flag (the 1-2 furthest-from-average per
+    dimension). Returns {} if the benchmark or per-question data is unavailable."""
+    bench = _load_benchmark(benchmark_path)
+    if not bench:
+        return {}
+    demographics = results.get('demographics', {})
+    age = (demographics.get('age_group') or '').strip()
+    dims = results.get('dimensions', {})
+
+    out = {}
+    for dim_key, dim_data in dims.items():
+        qscores = dim_data.get('question_scores') or {}
+        if not qscores:
+            continue
+        questions = []
+        for q_key, qs in qscores.items():
+            variable = qs.get('variable')
+            answer = qs.get('raw')
+            bvar = bench.get(variable, {})
+            dist_overall = _bin7(bvar.get('overall'))
+            if sum(dist_overall) == 0:
+                continue
+            by_age = bvar.get('by_age', {}) or {}
+            age_arr = by_age.get(age) if age else None
+            dist_age = _bin7(age_arr) if age_arr else None
+            if dist_age is not None and sum(dist_age) == 0:
+                dist_age = None
+            pct_overall = _pct_of(dist_overall, answer)
+            pct_age = _pct_of(dist_age, answer) if dist_age else None
+            questions.append({
+                'q_key': q_key,
+                'variable': variable,
+                'text': QUESTION_TEXT.get(q_key, variable),
+                'answer': int(answer) if answer is not None else None,
+                'dist_overall': dist_overall,
+                'dist_age': dist_age,
+                'pct_overall': pct_overall,
+                'pct_age': pct_age,
+                'distinctive': False,
+            })
+        if not questions:
+            continue
+        # flag the 1-2 most distinctive (furthest from the population centre)
+        ranked = sorted(questions, key=lambda q: abs(q['pct_overall'] - 50), reverse=True)
+        for q in ranked[:2]:
+            q['distinctive'] = True
+        out[dim_key] = {
+            'label': dim_data.get('label', dim_key),
+            'questions': questions,
+        }
+    return out
+
+
+def generate_premium_report(results, api_key=None, progress_callback=None, benchmark_path='benchmark_tables.json'):
     """
-    Generate the complete premium report using 13 focused API calls.
+    Generate the complete premium report using 15 focused API calls (spec v2.1).
 
     progress_callback: optional function(step, total, message) for
     streaming progress updates to the frontend.
@@ -1122,7 +1249,7 @@ def generate_premium_report(results, api_key=None, progress_callback=None):
     patterns = results['patterns']
     variable_highlights = results.get('variable_highlights', [])
 
-    total_steps = 13
+    total_steps = 15
     step = 0
 
     def progress(message):
@@ -1132,11 +1259,15 @@ def generate_premium_report(results, api_key=None, progress_callback=None):
         if progress_callback:
             progress_callback(step, total_steps, message)
 
-    print('Generating premium report — 13 focused calls...')
+    print('Generating premium report — 15 focused calls (spec v2.1)...')
 
     # ── Call 1: Opening ──────────────────────────────────────────────────────
     progress('Identifying your most surprising finding...')
     opening = generate_opening(results, client)
+
+    # ── Call 2: Overview ─────────────────────────────────────────────────────
+    progress('Writing your AI Identity overview...')
+    overview = generate_overview(results, client)
 
     # ── Calls 2-10: Nine dimension profiles ──────────────────────────────────
     dimension_profiles = {}
@@ -1176,55 +1307,61 @@ def generate_premium_report(results, api_key=None, progress_callback=None):
                 'rarity': get_rarity_text(dim_data['percentiles'].get('overall')),
             }
 
-    # ── Call 11: Cross-dimensional patterns ──────────────────────────────────
+    # ── Cross-dimensional patterns ───────────────────────────────────────────
     progress('Analysing cross-dimensional patterns...')
     cross_dimensional = generate_cross_dimensional(results, client)
 
-    # ── Call 12: What Is AI Changing? ────────────────────────────────────────
-    progress('Writing What Is AI Changing section...')
-    what_is_changing = generate_what_is_changing(results, client)
+    # ── Perception Gap Analysis ──────────────────────────────────────────────
+    progress('Writing your perception gap analysis...')
+    perception_gap = generate_perception_gap(results, client)
 
-    # ── Call 13: Profile Directions + Human Flourishing ──────────────────────
+    # ── Population Context ───────────────────────────────────────────────────
+    progress('Placing you in population context...')
+    population_context = generate_population_context(results, client)
+
+    # ── Putting This to Work + Human Flourishing ─────────────────────────────
     progress('Writing your Human Flourishing Reflection...')
     closing = generate_closing(results, client)
 
-    # ── Guardrail prompts + validation protocol (deterministic, no API) ───────
-    print('  [+] Selecting your guardrail prompts...')
-    guardrails = select_guardrails(dimensions)
-    validation = build_validation_protocol()
+    # ── Per-question breakdown (deterministic, no API) ───────────────────────
+    print('  [+] Building per-question breakdown...')
+    question_breakdown = build_question_breakdown(results, benchmark_path)
 
     # ── Assemble report ──────────────────────────────────────────────────────
     report = {
         'metadata': {
             'demographics': demographics,
             'generated_by': 'HCI AI Identity & Behaviour Assessment',
-            'version': '5.0',
-            'total_api_calls': 13,
+            'version': '2.1',
+            'total_api_calls': 15,
         },
         'headline': results.get('headline'),
         'opening': opening,
+        'overview': overview,
         'dimension_profiles': dimension_profiles,
         'dimension_ranking': patterns.get('full_ranking', []),
         'cross_dimensional': cross_dimensional,
-        'what_is_changing': what_is_changing,
+        'perception_gap': perception_gap,
         'closing': closing,
-        'guardrail_prompts': guardrails,
-        'validation_protocol': validation,
+        'population_context': population_context,
+        'question_breakdown': question_breakdown,
         'variable_highlights': variable_highlights,
         'perception_gaps': results.get('perception_gaps', {}),
         'methodology_note': (
             "This report is based on your responses to the HCI AI Identity & "
             "Behaviour Assessment — a research-based behavioural instrument "
-            "benchmarked against data drawn from more than 10,000 participants "
-            "across multiple studies conducted by the Human Clarity Institute. "
+            "benchmarked against data from more than 10,000 participants across "
+            "multiple studies conducted by the Human Clarity Institute.\n\n"
             "Scores represent your positioning within the benchmark population. "
             "They describe patterns, not traits. They reflect how you responded "
             "at this point in time and may change as your relationship with AI "
-            "evolves. This assessment is designed for personal insight and "
-            "reflection. It is not a clinical instrument and should not be used "
-            "for diagnosis, professional evaluation, or any purpose beyond "
-            "individual self-understanding. Benchmark data and methodology are "
-            "publicly available at github.com/humanclarityinstitute."
+            "evolves.\n\n"
+            "This assessment is designed for personal insight and reflection. It "
+            "is not a clinical instrument and should not be used for diagnosis, "
+            "professional evaluation, or any purpose beyond individual "
+            "self-understanding.\n\n"
+            "Benchmark data and methodology are publicly available at "
+            "github.com/humanclarityinstitute."
         ),
     }
 
@@ -1244,12 +1381,14 @@ if __name__ == '__main__':
     print('Free result generator: ready (no API key needed)')
     print('Premium generator: requires ANTHROPIC_API_KEY')
     print()
-    print('Structure: 13 focused API calls')
-    print('  1: Most Surprising Finding + Why Most People Miss This')
-    print('  2-10: Nine dimension profiles (one per dimension)')
-    print('  11: Cross-dimensional patterns')
-    print('  12: What Is AI Changing?')
-    print('  13: Profile Directions + Human Flourishing Reflection')
+    print('Structure: 15 focused API calls (spec v2.1)')
+    print('  1: Most Surprising Finding')
+    print('  2: Your AI Identity — Overview (no archetype)')
+    print('  3-11: Nine dimension profiles')
+    print('  12: Cross-dimensional (interesting combinations)')
+    print('  13: Perception Gap Analysis')
+    print('  14: Population Context')
+    print('  15: Putting This to Work + Human Flourishing')
     print()
     print('Estimated generation time: 40-70 seconds')
     print('Estimated cost per report: ~$0.08-0.12')
