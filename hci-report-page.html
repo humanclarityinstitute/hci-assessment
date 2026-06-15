@@ -989,7 +989,7 @@ async function init(){
         payment_confirmed: true,
         session_id: sessionId,
         report_email: reportEmail,
-        // stripe_session_id: urlParams.get('session_id'), // uncomment when Stripe live
+      stripe_session_id: urlParams.get('stripe_session_id'),
       }),
     });
 
