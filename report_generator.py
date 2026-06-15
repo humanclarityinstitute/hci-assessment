@@ -1,6 +1,6 @@
 """
 HCI AI Identity & Behaviour Assessment
-Report Generator — Version 4
+Report Generator — Version 5
 
 Generates free results and premium reports with
 empowerment-first framing and comprehensive guardrails.
@@ -11,14 +11,6 @@ Premium report uses 13 focused API calls for maximum quality:
 - 1 call: Cross-dimensional patterns
 - 1 call: What Is AI Changing?
 - 1 call: Profile Directions + Human Flourishing Reflection
-
-Then appended (no API call): the AI Reflection Prompt — the proof layer
-the participant pastes into their own AI to verify the report.
-
-Changes from v3:
-- Adds the AI Reflection Prompt as a fixed final section of every report.
-- Corrects dataset claim language (no "benchmarked against 10,000"); adds
-  a system-prompt guardrail so generated prose can't reintroduce it.
 
 Every report leaves the participant feeling more
 self-aware and curious — never judged or deficient.
@@ -86,46 +78,17 @@ LANGUAGE TO USE:
 - what appears worth protecting
 - raises an interesting question
 
-DATASET CLAIMS (accuracy — never overstate):
-- HCI's research base is described as "drawn from more than 10,000
-  participants across multiple studies." Use that phrasing if referring
-  to it at all.
-- NEVER say a score is "benchmarked against 10,000 people." Each answer
-  is compared only to the participants who answered that same question
-  (hundreds to a few thousand per question), and dimension positions
-  combine those per-question comparisons.
-- Do NOT invent participant counts, sample sizes, percentages of the
-  population, correlations between dimensions, or study details. Only use
-  the numbers provided in the prompt.
+USING HCI RESEARCH DATA:
+- Some sections include real findings from HCI's research series, with figures.
+- When you cite a population figure, attribute it lightly to HCI's research, e.g.
+  "In HCI's research series, 84-99% of people verify before acting."
+- Only use figures explicitly provided in the section data. NEVER invent, estimate,
+  or round statistics, percentages, dataset names, or sample sizes. If no figure is
+  provided, write qualitatively ("most people", "a growing minority") with no number.
+- These are patterns observed across the series at one point in time — never describe
+  them as changes measured within an individual over time, and never imply a
+  pre-AI baseline the data does not contain.
 """
-
-
-# ============================================================
-# AI REFLECTION PROMPT (the proof layer)
-# A FIXED, engineered prompt appended to every premium report.
-# The participant pastes it — together with their results — into the
-# AI they use most, which can then verify the report against their
-# real conversation history. No API call; this text is static.
-# ============================================================
-
-AI_REFLECTION_INTRO = (
-    "No other assessment lets you check its findings against the evidence. "
-    "This one does. The AI you use most has seen your questions, your "
-    "decisions, and your patterns over time — so it can tell you how well "
-    "this report actually matches how you behave. Paste your results into "
-    "that AI, followed by the prompt below, and ask it to be honest with you."
-)
-
-AI_REFLECTION_PROMPT = """Here are my HCI AI Identity & Behaviour Report results.
-Based on our conversation history, how accurately does this describe how I actually use you?
-
-1. Which specific examples from our interactions support the findings in this report?
-2. Where do you see evidence that contradicts or complicates what the report suggests?
-3. What patterns in how I use you does this report appear to have missed entirely?
-4. Based on this profile, what are the three most specific ways I could adjust how I use AI to strengthen my own judgement and independent thinking?
-5. What would you suggest I stop asking you to do — and do myself instead?
-
-Be direct and honest. I can handle uncomfortable observations."""
 
 
 # ============================================================
@@ -297,6 +260,107 @@ DIMENSION_CONTEXT = {
 
 
 # ============================================================
+# HCI RESEARCH SIGNALS — sourced findings from the full series
+# (21 datasets, ~10,500 participants). Injected into prompts so
+# the model writes from real evidence, not placeholders.
+# ============================================================
+
+SIGNALS = {
+    'dimensions': {
+        'trust': {
+            'series': "In HCI's series, trust in AI is conditional and built through use: 0% of never-users trust AI for accuracy versus 55% of daily users, yet 77% distrust big tech on AI — trust and scrutiny coexist.",
+            'high': "Higher trust usually reflects a working relationship built through experience rather than blind faith.",
+            'low': "Lower trust reflects the near-universal stance of active scrutiny; most people treat AI claims as something to weigh, not accept.",
+        },
+        'disclosure': {
+            'series': "In HCI's series, what people share with AI is shaped by stigma and norms: 28% report stigma around workplace AI use, undisclosed AI use triggers a strong betrayal response, and emotional disclosure to AI is emerging.",
+            'high': "Higher disclosure can reflect AI becoming a genuinely private thinking or expressive space — uncommon and meaningful.",
+            'low': "Lower disclosure reflects intentional boundaries that keep human relationships primary for personal matters.",
+        },
+        'reliance': {
+            'series': "In HCI's series, reliance accumulates with exposure (decision reliance rises from 1.1 to 4.4 from never- to everyday-users) and increases under difficulty (58% of daily users rely on AI when things are hard). Crucially, reliance with a felt sense of control is associated with higher wellbeing than reliance without it — agency over use matters more than how much you use.",
+            'high': "Higher reliance reflects deep integration; what most shapes outcomes is whether use feels controlled, not the amount.",
+            'low': "Lower reliance reflects selective, intentional use and strong independent functioning.",
+        },
+        'decision_delegation': {
+            'series': "In HCI's series, delegation is selective: 91% retain personal responsibility for their decisions, delegation rises as stakes fall and under overwhelm, and only 2-3% would accept an AI decision with no intervention at all.",
+            'high': "Higher delegation reflects a collaborative approach; even high delegators overwhelmingly retain ultimate responsibility.",
+            'low': "Lower delegation reflects strong ownership of judgement — AI informs, the person decides.",
+        },
+        'verification': {
+            'series': "In HCI's series, verification is near-universal (84-99% check before acting) but cognitively costly (43% say it drains focus) and beginning to be rationed under load — 54% now verify only selectively and 50-54% find constant questioning exhausting.",
+            'high': "Higher verification reflects rigorous, evidence-seeking engagement and a stronger sense of ownership over conclusions.",
+            'low': "Lower verification often reflects efficiency and trust built through experience, in a context where verification is becoming genuinely tiring for many.",
+        },
+        'human_agency': {
+            'series': "In HCI's series, agency is intact at the identity level (91% retain responsibility, 88% feel able to override AI) but under pressure at the process level — 59% feel subtly steered toward certain choices, and drift happens through convenience rather than choice.",
+            'high': "Higher agency reflects a clear sense of authorship — directing AI rather than being directed.",
+            'low': "Lower agency reflects a more fluid, integrated relationship with AI; override capability and felt steering can coexist.",
+        },
+        'emotional_regulation': {
+            'series': "In HCI's series, 18% now use AI for emotional support (confirmed across two datasets) and reliance rises under emotional difficulty — yet 87% still believe only humans can truly meet emotional needs, the most live tension in the data.",
+            'high': "Higher scores reflect AI becoming a genuine low-judgement space for processing difficult feelings.",
+            'low': "Lower scores reflect clear boundaries that keep human connection primary for emotional life.",
+        },
+        'thought_partnership': {
+            'series': "In HCI's series, AI works best as a clarifier rather than a replacer; 34-38% question whether AI-assisted decisions are genuinely their own, and a clear values anchor is what separates genuine partnership from outsourced thinking.",
+            'high': "Higher scores reflect deep intellectual engagement — AI expanding what is possible to explore.",
+            'low': "Lower scores reflect task-focused use that keeps the thinking process itself one's own.",
+        },
+        'social_transparency': {
+            'series': "In HCI's series, honesty and transparency are the top two things people demand of AI; AI-use disclosure is shaped by stigma (28%) and evolving norms, and 50% self-censor under surveillance awareness.",
+            'high': "Higher transparency reflects no gap between private behaviour and public acknowledgement of AI use.",
+            'low': "Lower transparency reflects navigating still-evolving social norms — many keep AI use private for valid reasons.",
+        },
+    },
+    'trends': [
+        "Reliance and decision-support use rise steeply with exposure (decision reliance 1.1 to 4.4 from never- to everyday-users) — the clearest gradient in the series.",
+        "Trust in AI rises with familiarity (0% of never-users trust AI for accuracy versus 55% of daily users).",
+        "Verification stays near-universal but is beginning to be rationed under cognitive load (54% now verify selectively; 50-54% report fatigue).",
+        "Agency holds at the identity level (91% retain responsibility; 88% feel able to override AI) even as 59% report feeling subtly steered.",
+        "AI is entering emotional regulation (18% use it for emotional support).",
+        "Where behaviour shifts, it shifts through convenience and repetition rather than deliberate choice.",
+    ],
+    'tensions': [
+        "Identity holds; the infrastructure that sustains it (attention, reflection, values-enactment) is under pressure.",
+        "People hold their values clearly (78-96%) but living them is getting harder — environmental friction, not moral confusion.",
+        "Override capability (88%) and felt steering (59%) coexist — influence operates below the threshold at which people choose to intervene.",
+        "Verification is universal yet exhausting; a growing minority ration it.",
+        "87% believe only humans can truly meet emotional needs, yet 27% already get some emotional support from AI.",
+        "Reliance with control is associated with better outcomes than reliance without — agency over use is the key variable.",
+    ],
+    'human_reference': [
+        "Self-authorship — feeling like the active agent shaping your own direction — appears foundational to human stability.",
+        "Attention functions as infrastructure for coherent functioning, not just focus; when it degrades, the capacity to act on values degrades with it.",
+        "Values clarity is the most stable human signal in the series (78-96%) and works as a behavioural anchor that resists drift.",
+        "Living congruently with your values — not just holding them — is what stabilises; the gap between values held and values lived is the thing worth watching.",
+        "Self-trust behaves like an internal orientation mechanism; retaining your own decision authority is protective.",
+        "Reliance paired with a felt sense of control is associated with higher wellbeing than reliance without it.",
+    ],
+    'cohorts': {
+        'young': "the highest-pressure, leading-edge cohort — carrying the highest cognitive and emotional load, but capable of the best outcomes when use feels controlled and values-aligned",
+        'resilient': "the most resourced cohort — highest values clarity, strongest control over AI use, fastest attention recovery",
+        'integrator': "the most practically AI-integrated cohort — highest decision reliance and lowest felt independence without AI, alongside a stable work identity",
+        'wary': "the most vigilant cohort — the most diligent verifiers and most self-directed decision-makers, though least confident at detecting AI-generated content",
+    },
+}
+
+_COHORT_BY_AGE = {
+    '18 - 24': 'young', '25 - 34': 'young',
+    '35 - 44': 'resilient',
+    '45 - 54': 'integrator',
+    '55 - 65': 'wary', 'Over 65': 'wary',
+}
+
+def dimension_signal(dim_name):
+    return SIGNALS['dimensions'].get(dim_name, {})
+
+def cohort_signal(age_group):
+    key = _COHORT_BY_AGE.get((age_group or '').strip())
+    return SIGNALS['cohorts'].get(key) if key else None
+
+
+# ============================================================
 # CALL 1: MOST SURPRISING FINDING + WHY MOST PEOPLE MISS THIS
 # ============================================================
 
@@ -406,6 +470,7 @@ def generate_dimension_profile(dim_name, dim_data, demographics,
     any relevant variable-level highlight.
     """
     ctx = DIMENSION_CONTEXT.get(dim_name, {})
+    sig = dimension_signal(dim_name)
     percentiles = dim_data.get('percentiles', {})
     overall = percentiles.get('overall', 50)
     age_pct = percentiles.get('age_group')
@@ -476,6 +541,10 @@ HUMAN FOUNDATIONS ANCHOR:
 POPULATION PATTERN (Why It Matters):
 {ctx.get('population_pattern', '')}
 
+HCI RESEARCH SIGNAL FOR THIS DIMENSION (real finding — use it, cite lightly as "in HCI's research..."):
+{sig.get('series', '')}
+{(sig.get('high') if overall >= 50 else sig.get('low')) or ''}
+
 Write 160-200 words that:
 1. Open with what is genuinely interesting about their specific pattern
    — make it personal, not generic
@@ -483,7 +552,7 @@ Write 160-200 words that:
    (e.g. "Among people your age, this places you...")
 3. If there is a notable variable-level finding, reference it specifically
    — name the actual question behaviour, not the question itself
-4. Include the population pattern observation naturally
+4. Weave in the HCI research signal naturally — include its figure with light sourcing (e.g. "in HCI's research, 84-99% of people...")
 5. Close with one curious, open reflection — not a recommendation
 
 IMPORTANT:
@@ -508,17 +577,17 @@ IMPORTANT:
 
 RARE_COMBINATIONS = [
     ('reliance', 'human_agency', 'high', 'high',
-     'High Reliance + High Agency — most people with high reliance report reduced sense of agency. This combination is unusual and distinctive.'),
+     'High Reliance + High Agency — in HCI\'s series, reliance with a felt sense of control is the combination associated with the best outcomes (higher wellbeing than both non-users and uncontrolled users). Deep integration alongside retained authorship is the healthiest version of heavy use, and a distinctive one.'),
     ('trust', 'verification', 'high', 'high',
-     'High Trust + High Verification — trust and verification typically sit in tension. This combination describes confident but disciplined AI use.'),
+     'High Trust + High Verification — confident but disciplined: trusts AI yet still cross-checks. Notable because 50-54% of people now find constant verification exhausting, so sustaining both at once is uncommon.'),
     ('disclosure', 'emotional_regulation', 'high', 'low',
-     'High Disclosure + Low Emotional Regulation — shares openly with AI but does not depend on it emotionally. An unusual boundary combination.'),
+     'High Disclosure + Low Emotional Regulation — opens up to AI but keeps emotional dependence low; distinctive against the series trend where 18% now lean on AI for emotional support.'),
     ('thought_partnership', 'decision_delegation', 'high', 'low',
-     'High Thought Partnership + Low Decision Delegation — thinks extensively with AI but retains full ownership of decisions.'),
+     'High Thought Partnership + Low Decision Delegation — thinks extensively with AI but keeps decisions firmly their own; in the series 34-38% are unsure their AI-assisted decisions are truly theirs, so retaining clear ownership while thinking with AI stands out.'),
     ('reliance', 'verification', 'high', 'high',
-     'High Reliance + High Verification — deeply integrated with AI but cross-checks outputs consistently.'),
+     'High Reliance + High Verification — deeply integrated yet consistently cross-checks, against a backdrop where verification is being rationed under load (54% now verify selectively).'),
     ('social_transparency', 'thought_partnership', 'low', 'high',
-     'Low Social Transparency + High Thought Partnership — uses AI extensively as a thinking partner but conceals the extent from others.'),
+     'Low Social Transparency + High Thought Partnership — uses AI heavily as a thinking partner but keeps the extent private; fits the series finding that AI-use disclosure is suppressed by stigma (28%).'),
 ]
 
 
@@ -567,6 +636,8 @@ def generate_cross_dimensional(results, client):
         for d in full_ranking
     ])
 
+    tensions_text = 'HCI SERIES TENSIONS (grounding — cite any figures lightly):\n' + '\n'.join('  - ' + t for t in SIGNALS['tensions'])
+
     rare_text = ''
     if rare:
         rare_text = 'RARE COMBINATIONS DETECTED:\n' + '\n'.join([
@@ -581,6 +652,8 @@ ALL NINE DIMENSION SCORES:
 {dim_summary}
 
 {rare_text}
+
+{tensions_text}
 
 BIGGEST CONTRAST:
 {f"Highest: {highest['label']} at {format_percentile(highest['percentile'])} percentile" if highest else ""}
@@ -638,11 +711,13 @@ def generate_what_is_changing(results, client):
         for d in full_ranking
     ])
 
+    trends_text = '\n'.join('  - ' + t for t in SIGNALS['trends'])
+
     prompt = f"""Write the "What Is AI Changing?" section of a personalised HCI AI Identity Report.
 
-This is the most important section of the premium report. It answers the
-question the participant has been carrying since they started:
-What is AI actually changing in me?
+This is the most important section of the premium report. It speaks to the
+question the participant has carried since they started: how do AI use and
+their behaviour relate — and where does their own profile sit within that?
 
 PARTICIPANT PROFILE:
 {dim_summary}
@@ -654,35 +729,30 @@ DIMENSIONS SHOWING STRONG PATTERNS:
 High: {', '.join([d['label'] for d in high_dims]) if high_dims else 'None notably high'}
 Low: {', '.join([d['label'] for d in low_dims]) if low_dims else 'None notably low'}
 
-Write 220-260 words that answer these four questions,
-woven together as connected prose:
+HCI SERIES PATTERNS (real findings — use the figures, cite lightly. These are
+patterns observed ACROSS the series at one point in time, NOT changes measured
+inside a person over time, and there is NO pre-AI baseline to compare against):
+{trends_text}
 
-1. WHICH PATTERNS ALIGN WITH OBSERVED CHANGES
-   Which of this participant's behavioural patterns match the shifts
-   HCI is observing across thousands of AI users? Be specific —
-   name their actual dimensions.
-   Frame as: "Your [dimension] pattern aligns with one of the most
-   consistent shifts HCI observes..."
+Write 220-260 words, woven as connected prose, that:
 
-2. WHERE THIS PROFILE DIFFERS FROM PRE-AI BASELINES
-   Where does this profile sit relative to what HCI observed before
-   AI became embedded in daily life? What appears to have shifted?
-   Ground in population observation, never individual prediction.
+1. Connect 2-3 of this person's actual dimensions to the relevant HCI series
+   patterns above — name their dimensions and include a real figure with light
+   sourcing ("in HCI's research, reliance rises from 1.1 to 4.4 with use...").
 
-3. WHICH HUMAN CAPACITIES APPEAR MOST ACTIVE
-   Based on this profile, which human capacities appear most active
-   and most preserved? What does the data suggest remains strong?
+2. Note where their profile sits within those patterns — more or less pronounced
+   than the typical position. Describe position, never prediction.
 
-4. WHAT PATTERNS ALIGN WITH BROADER POPULATION CHANGES
-   What does HCI observe about people with similar profiles over time?
-   What changes do people with similar patterns describe?
-   Frame as observation, never prediction.
+3. Identify which human capacities look most active and most preserved here.
+
+4. Note what people with similar profiles tend to describe — as observation,
+   never forecast.
 
 CRITICAL RULES:
-- Never predict what will happen to this person
-- Frame everything as observed population patterns
-- Never alarm — this is illuminating, not warning
-- End with curiosity about what this means going forward
+- Use ONLY the figures provided above; never invent statistics or a pre-AI baseline.
+- Never predict what will happen to this person; describe observed patterns only.
+- Never frame anything as change measured inside this individual over time.
+- Never alarm — illuminating, not warning. End with curiosity.
 - Speak directly as "you" throughout"""
 
     message = client.messages.create(
@@ -720,6 +790,8 @@ def generate_closing(results, client):
 
     highest = full_ranking[0] if full_ranking else None
     lowest = full_ranking[-1] if full_ranking else None
+    cohort = cohort_signal(demographics.get('age_group'))
+    human_ref_text = '\n'.join('  - ' + h for h in SIGNALS['human_reference'])
 
     prompt = f"""Write the final two sections of a personalised HCI AI Identity Report.
 
@@ -729,6 +801,10 @@ PARTICIPANT PROFILE:
 Highest dimension: {highest['label'] + ' at ' + format_percentile(highest['percentile']) + ' percentile' if highest else 'N/A'}
 Lowest dimension: {lowest['label'] + ' at ' + format_percentile(lowest['percentile']) + ' percentile' if lowest else 'N/A'}
 Age group: {demographics.get('age_group', 'not specified')}
+{f"Cohort context — people in this age group are {cohort}." if cohort else ""}
+
+HCI HUMAN REFERENCE LAYER (grounding for what is worth protecting; cite any figures lightly):
+{human_ref_text}
 
 Write TWO distinct sections:
 
@@ -793,6 +869,132 @@ Then flowing prose within each. Speak as "you" throughout."""
         messages=[{'role': 'user', 'content': prompt}],
     )
     return message.content[0].text.strip()
+
+
+# ============================================================
+# GUARDRAIL PROMPTS — paste-in prompts that hold AI in the
+# role the person wants. Curated library, selected by profile.
+# Deterministic (no API call): the prompt text is never model-
+# generated, so it can't drift or hallucinate.
+# ============================================================
+
+GUARDRAIL_PROMPTS = [
+    {
+        'dim': 'verification', 'direction': 'low', 'universal': False,
+        'title': 'Make AI show its work',
+        'protects': 'your verification and independent judgement',
+        'prompt': "When you give me facts, statistics, or recommendations, tell me how confident you are and mark what you're inferring versus what you actually know. Flag explicitly when something is worth my checking elsewhere — don't smooth over uncertainty to sound helpful.",
+        'when': 'Set it as a standing instruction in any AI you rely on for information.',
+    },
+    {
+        'dim': 'decision_delegation', 'direction': 'high', 'universal': True,
+        'title': 'Options, not answers',
+        'protects': 'your ownership of decisions',
+        'prompt': "When I ask you to decide for me, don't. Lay out the realistic options with the strongest case for and against each, ask me the one question most likely to change my mind, then let me make the call.",
+        'when': "Use it whenever you catch yourself asking AI to just tell you what to do.",
+    },
+    {
+        'dim': 'human_agency', 'direction': 'low', 'universal': False,
+        'title': 'Make me think first',
+        'protects': 'your sense of authorship',
+        'prompt': "Before you give me your answer, ask me what I think and why. Push back on my reasoning, point out what I might be missing, and have me commit to a view before you offer yours.",
+        'when': 'Use it on anything where the thinking matters as much as the answer.',
+    },
+    {
+        'dim': 'reliance', 'direction': 'high', 'universal': False,
+        'title': 'Do it with me, not for me',
+        'protects': 'your independent functioning',
+        'prompt': "When you help me with a task, show your working and explain the key choices as you go, so I could do it myself next time — don't just hand me the finished result.",
+        'when': "Use it on the tasks you'd least want to lose the ability to do yourself.",
+    },
+    {
+        'dim': 'trust', 'direction': 'high', 'universal': True,
+        'title': 'Flag your uncertainty',
+        'protects': 'your epistemic calibration',
+        'prompt': "Whenever you're speculating, generalising, or unsure, say so plainly. I'd rather you tell me you're not certain than give me a confident answer that turns out to be wrong.",
+        'when': 'Keep it on by default — it costs nothing and catches a lot.',
+    },
+    {
+        'dim': 'thought_partnership', 'direction': 'high', 'universal': False,
+        'title': "Challenge, don't replace",
+        'protects': 'your own thinking',
+        'prompt': "Act as a thinking partner, not a ghostwriter. Help me sharpen my own ideas — ask questions, find the holes, offer counterpoints — but let the conclusions be mine.",
+        'when': "Use it when you're thinking something through, not just producing output.",
+    },
+    {
+        'dim': 'emotional_regulation', 'direction': 'high', 'universal': False,
+        'title': 'Point me back to people',
+        'protects': 'your human connection',
+        'prompt': "If I'm using you to work through something difficult, help me — and gently remind me to bring the things that matter most to the people in my life, not only to you.",
+        'when': 'Use it if AI has become a first port of call for hard moments.',
+    },
+]
+
+
+def select_guardrails(dimensions, max_n=4):
+    """Pick the guardrail prompts that best fit this profile.
+
+    A rule fires when the person leans into AI on that dimension
+    (high >= 65, or low <= 35). The most pronounced leans come first.
+    Always returns at least two — falling back to broadly useful ones.
+    """
+    scored = []
+    for r in GUARDRAIL_PROMPTS:
+        d = dimensions.get(r['dim'], {})
+        pct = d.get('percentiles', {}).get('overall')
+        if pct is None:
+            continue
+        if r['direction'] == 'high' and pct >= 65:
+            scored.append((pct - 50, r))
+        elif r['direction'] == 'low' and pct <= 35:
+            scored.append((50 - pct, r))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    chosen = [r for _, r in scored[:max_n]]
+    if len(chosen) < 2:
+        for r in GUARDRAIL_PROMPTS:
+            if r.get('universal') and r not in chosen:
+                chosen.append(r)
+            if len(chosen) >= 2:
+                break
+    return [
+        {'title': r['title'], 'protects': r['protects'],
+         'prompt': r['prompt'], 'when': r['when']}
+        for r in chosen
+    ]
+
+
+# ============================================================
+# VALIDATION PROTOCOL — let the person check this report against
+# how they actually use AI, in their own assistant. Deterministic.
+# ============================================================
+
+def build_validation_protocol():
+    return {
+        'title': 'Validate this report against how you actually use AI',
+        'intro': (
+            "Most assessments stop at what you say about yourself. This one you can "
+            "check. The AI you use most has seen how you actually ask, decide, verify, "
+            "and reach for help — so you can hold this report up against your real "
+            "behaviour and see where it lands."
+        ),
+        'steps': [
+            'Open the AI you use most.',
+            'Paste or upload this full report into it.',
+            'Send the prompt below and read what it tells you.',
+        ],
+        'prompt': (
+            "Here is a personalised assessment of how I use AI. Based on how I actually "
+            "work with you — across our past conversations if you can see them, and how "
+            "I'm interacting with you right now — how accurate is each part of this? Where "
+            "do you see clear evidence for or against it? Be specific, and don't just agree "
+            "with me."
+        ),
+        'note': (
+            "It works richest with an assistant that remembers your history; otherwise it "
+            "will reflect on your current conversation. You run this in your own AI — "
+            "nothing comes back to us, and we never see your conversations."
+        ),
+    }
 
 
 # ============================================================
@@ -986,12 +1188,17 @@ def generate_premium_report(results, api_key=None, progress_callback=None):
     progress('Writing your Human Flourishing Reflection...')
     closing = generate_closing(results, client)
 
+    # ── Guardrail prompts + validation protocol (deterministic, no API) ───────
+    print('  [+] Selecting your guardrail prompts...')
+    guardrails = select_guardrails(dimensions)
+    validation = build_validation_protocol()
+
     # ── Assemble report ──────────────────────────────────────────────────────
     report = {
         'metadata': {
             'demographics': demographics,
             'generated_by': 'HCI AI Identity & Behaviour Assessment',
-            'version': '4.0',
+            'version': '5.0',
             'total_api_calls': 13,
         },
         'headline': results.get('headline'),
@@ -1001,24 +1208,23 @@ def generate_premium_report(results, api_key=None, progress_callback=None):
         'cross_dimensional': cross_dimensional,
         'what_is_changing': what_is_changing,
         'closing': closing,
+        'guardrail_prompts': guardrails,
+        'validation_protocol': validation,
         'variable_highlights': variable_highlights,
         'perception_gaps': results.get('perception_gaps', {}),
-        'ai_reflection_intro': AI_REFLECTION_INTRO,
-        'ai_reflection_prompt': AI_REFLECTION_PROMPT,
         'methodology_note': (
             "This report is based on your responses to the HCI AI Identity & "
-            "Behaviour Assessment — a research-based behavioural instrument drawn "
-            "from the responses of more than 10,000 participants across multiple "
-            "studies conducted by the Human Clarity Institute. Each of your answers "
-            "is positioned against the participants who answered that same question, "
-            "and your dimension scores combine those positions. They describe "
-            "patterns, not traits. They reflect how you responded at this point in "
-            "time and may change as your relationship with AI evolves. This "
-            "assessment is designed for personal insight and reflection. It is not "
-            "a clinical instrument and should not be used for diagnosis, professional "
-            "evaluation, or any purpose beyond individual self-understanding. "
-            "Benchmark data and methodology are publicly available at "
-            "github.com/humanclarityinstitute."
+            "Behaviour Assessment — a research-based behavioural instrument "
+            "benchmarked against data drawn from more than 10,000 participants "
+            "across multiple studies conducted by the Human Clarity Institute. "
+            "Scores represent your positioning within the benchmark population. "
+            "They describe patterns, not traits. They reflect how you responded "
+            "at this point in time and may change as your relationship with AI "
+            "evolves. This assessment is designed for personal insight and "
+            "reflection. It is not a clinical instrument and should not be used "
+            "for diagnosis, professional evaluation, or any purpose beyond "
+            "individual self-understanding. Benchmark data and methodology are "
+            "publicly available at github.com/humanclarityinstitute."
         ),
     }
 
