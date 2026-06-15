@@ -40,11 +40,25 @@ sys.path.insert(0, os.path.dirname(__file__))
 from scoring_engine import score_assessment
 from report_generator import generate_free_result, generate_premium_report
 from email_template import send_report_email
+from report_pdf import build_report_pdf
 
 app = Flask(__name__)
 CORS(app)
 
 BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json')
+
+# Canonical report page used to render the PDF attachment. Commit a copy of the
+# SAME hci-report-page.html the WordPress site serves into this repo so the PDF
+# matches the live page; override with REPORT_TEMPLATE_PATH if it lives elsewhere.
+REPORT_TEMPLATE_PATH = os.environ.get(
+    'REPORT_TEMPLATE_PATH',
+    os.path.join(os.path.dirname(__file__), 'hci-report-page.html'),
+)
+# Public report page; the email CTA links here with ?session_id=...
+REPORT_BASE_URL = os.environ.get(
+    'REPORT_BASE_URL',
+    'https://humanclarityinstitute.com/ai-assessment/report',
+)
 
 
 # ============================================================
@@ -446,15 +460,35 @@ def premium():
         if session_id:
             store_premium_report(session_id, report)
 
-        # Send email
+        # Send email (lightweight summary + full-report PDF attachment).
+        # Fully isolated: a PDF or email failure must never fail /premium —
+        # the report is already generated and stored, and the page renders it.
         if report_email:
-            resend_key = os.environ.get('RESEND_API_KEY')
-            if resend_key:
-                demographics = full_results.get('demographics', {})
-                send_report_email(report_email, report, demographics, resend_key, session_id=session_id)
-                print(f'Report email sent to {report_email}')
-            else:
-                print('RESEND_API_KEY not configured — skipping email')
+            try:
+                resend_key = os.environ.get('RESEND_API_KEY')
+                if resend_key:
+                    demographics = full_results.get('demographics', {})
+                    report_url = (
+                        f'{REPORT_BASE_URL}?session_id={session_id}'
+                        if session_id else REPORT_BASE_URL
+                    )
+                    # Returns PDF bytes, or None on any rendering problem.
+                    pdf_bytes = build_report_pdf(
+                        report, REPORT_TEMPLATE_PATH, demographics
+                    )
+                    send_report_email(
+                        report_email, report, demographics, resend_key,
+                        report_url=report_url, pdf_bytes=pdf_bytes,
+                    )
+                    print(
+                        f'Report email sent to {report_email}'
+                        + (' with PDF' if pdf_bytes else ' (summary only — no PDF)')
+                    )
+                else:
+                    print('RESEND_API_KEY not configured — skipping email')
+            except Exception as email_err:
+                print(f'Email/PDF step failed (non-fatal): {email_err}')
+                traceback.print_exc()
         else:
             print('No report_email provided — skipping email')
 
