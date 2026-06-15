@@ -1,143 +1,154 @@
 """
-HCI Premium Report Email Template
-Generates HTML email with full report content
+HCI Premium Report Email — v2.1 (lightweight summary + PDF attachment)
+
+Design decision (locked): the email is a SHORT, scannable summary that mirrors
+the free results page voice — positional language + plain-English, no bare
+percentiles, no charts. The full experience lives in two places:
+  1. the interactive web report (CTA button -> report_url), and
+  2. a downloadable PDF of the full report, attached to this email.
+
+v2.1 rules honoured here:
+  - NO bare "Xth percentile" anywhere (cards or prose). We render only the
+    positional word + plain-English string that the generator produces.
+  - No archetypes, no "tensions" language.
+  - British English. Brand: navy #1B2A4A, brand blue #4054B2, cream #F9F7F2.
+
+------------------------------------------------------------------------------
+FIELD MAP — CONFIRM AGAINST report_generator.py BEFORE DEPLOY
+------------------------------------------------------------------------------
+This template reads the v2.1 report object. The exact key names below are the
+ONLY thing tying it to the generator, so they are isolated here on purpose.
+Everything is read with a safe default: a missing key degrades to blank, never
+to a wrong number (that is what produced the old "0th percentile" bug).
 """
 
-def generate_report_email(report, demographics, session_id=None):
-    """Generate HTML email for the premium report."""
-    
+import base64
+import json
+import urllib.request
+from datetime import datetime
+
+
+# Nine dimensions, v2.1 report order.
+DIM_ORDER = [
+    'reliance', 'trust', 'verification', 'decision_delegation',
+    'human_agency', 'disclosure', 'emotional_regulation',
+    'thought_partnership', 'social_transparency',
+]
+
+
+def _first_paragraph(text):
+    """Lightweight: show only the opening paragraph of a longer section."""
+    if not text:
+        return ''
+    return text.split('\n\n')[0].replace('\n', ' ').strip()
+
+
+def _dim_summary_row(dim):
+    """
+    One compact dimension row: label + subtitle, positional word, plain-English.
+    No percentile number, no chart, no full narrative — those live in the
+    PDF / web report.
+
+    Reads (confirm against report_generator output):
+      label, subtitle, position (the Section-3 positional word), plain_english
+    'position' falls back to the older 'rarity' field name if still emitted.
+    """
+    label = dim.get('label', '')
+    subtitle = dim.get('subtitle', '')
+    position = dim.get('position') or dim.get('rarity') or ''
+    plain = dim.get('plain_english', '')
+
+    position_pill = (
+        f'<span style="display:inline-block;background:#EDEBFB;color:#3D2B8C;'
+        f'font-size:11px;font-weight:700;padding:3px 11px;border-radius:20px;'
+        f'letter-spacing:0.02em;">{position}</span>'
+    ) if position else ''
+
+    return f"""
+    <tr><td style="padding:0 0 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="background:#F8F9FC;border-radius:8px;border-left:3px solid #4054B2;">
+        <tr><td style="padding:16px 18px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="vertical-align:top;">
+                <p style="margin:0;color:#1B2A4A;font-size:15px;font-weight:700;">{label}</p>
+                <p style="margin:2px 0 0;color:#6B7280;font-size:12px;">{subtitle}</p>
+              </td>
+              <td align="right" style="vertical-align:top;">{position_pill}</td>
+            </tr>
+          </table>
+          <p style="margin:10px 0 0;color:#4054B2;font-size:13px;font-weight:600;line-height:1.5;">{plain}</p>
+        </td></tr>
+      </table>
+    </td></tr>"""
+
+
+def generate_report_email(report, demographics, report_url='https://humanclarityinstitute.com'):
+    """Generate the lightweight HTML summary email (PDF carries the full report)."""
+
     age_group = demographics.get('age_group', '')
     country = demographics.get('country', '')
     frequency = demographics.get('ai_tool_use_frequency', '')
-    
-    from datetime import datetime
     date_str = datetime.utcnow().strftime('%d %B %Y')
-    
-    # Build dimension profiles HTML
-    dim_order = ['reliance', 'trust', 'verification', 'decision_delegation',
-                 'human_agency', 'disclosure', 'emotional_regulation',
-                 'thought_partnership', 'social_transparency']
-    
-    dim_html = ''
-    profiles = report.get('dimension_profiles', {})
-    for dim_key in dim_order:
-        dim = profiles.get(dim_key)
-        if not dim:
-            continue
-        pct = int(dim.get('percentile', 0))
-        plain = dim.get('plain_english', '')
-        rarity = dim.get('rarity', '')
-        narrative = dim.get('narrative', '').replace('\n', '<br>')
-        
-        dim_html += f"""
-        <div style="background:#f8f9fc;border-radius:8px;padding:24px;margin-bottom:16px;border-left:4px solid #4054B2;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                    <td><h3 style="margin:0 0 4px;color:#1B2A4A;font-size:16px;font-weight:700;">{dim.get('label','')}</h3>
-                    <p style="margin:0;color:#6B7280;font-size:12px;">{dim.get('subtitle','')}</p></td>
-                    <td align="right"><span style="font-size:28px;font-weight:800;color:#1B2A4A;letter-spacing:-1px;">{pct}<sup style="font-size:14px;">th</sup></span><br>
-                    <span style="font-size:11px;color:#6B7280;">percentile</span></td>
-                </tr>
-            </table>
-            <p style="margin:12px 0 8px;color:#4054B2;font-size:13px;font-weight:600;">{plain}</p>
-            {f'<p style="margin:0 0 12px;background:#EDEBFB;color:#3D2B8C;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;display:inline-block;">{rarity}</p>' if rarity else ''}
-            <p style="margin:12px 0 0;color:#1A1A1A;font-size:14px;line-height:1.7;">{narrative}</p>
-        </div>"""
-    
-    opening = report.get('opening', '').replace('\n\n', '</p><p style="margin:0 0 14px;color:#1B2A4A;font-size:15px;line-height:1.75;">').replace('\n', '<br>')
-    cross = report.get('cross_dimensional', '').replace('\n\n', '</p><p style="margin:0 0 14px;color:#1A1A1A;font-size:14px;line-height:1.75;">').replace('\n', '<br>')
-    changing = report.get('what_is_changing', '').replace('\n\n', '</p><p style="margin:0 0 14px;color:rgba(255,255,255,0.85);font-size:14px;line-height:1.75;">').replace('\n', '<br>')
-    closing = report.get('closing', '').replace('\n\n', '</p><p style="margin:0 0 14px;color:#1B2A4A;font-size:14px;line-height:1.75;">').replace('\n', '<br>')
-    methodology = report.get('methodology_note', '')
 
-    # AI Reflection Prompt (proof layer) — comes from the report dict
-    reflection_intro = report.get('ai_reflection_intro', '')
-    reflection_prompt_html = report.get('ai_reflection_prompt', '').replace('\n', '<br>')
+    # Most surprising finding -> short opener. Confirm key name in generator.
+    surprising = _first_paragraph(
+        report.get('surprising_finding')
+        or report.get('overview')
+        or report.get('opening')
+        or ''
+    )
 
-    # Permanent link back to the web version of the report
-    report_link_block = ''
-    if session_id:
-        report_url = (
-            'https://humanclarityinstitute.com/ai-assessment/report'
-            f'?session_id={session_id}'
-        )
-        report_link_block = f"""
-  <!-- Return to report -->
-  <tr><td style="background:#ffffff;padding:4px 40px 28px;text-align:center;">
-    <a href="{report_url}" style="display:inline-block;background:#4054B2;color:#ffffff;font-size:14px;font-weight:700;padding:13px 30px;border-radius:8px;text-decoration:none;">View your report online anytime →</a>
-    <p style="margin:12px 0 0;color:#9CA3AF;font-size:11px;">Bookmark this link to return to your report whenever you like.</p>
-  </td></tr>"""
+    # Methodology stays the fixed verbatim "10,000+" text from the generator.
+    methodology = report.get('methodology_note') or report.get('methodology') or ''
 
-    html = f"""<!DOCTYPE html>
-<html lang="en">
+    # Build the nine compact dimension rows in v2.1 order.
+    profiles = report.get('dimension_profiles', {}) or {}
+    dim_rows = ''.join(
+        _dim_summary_row(profiles[k]) for k in DIM_ORDER if profiles.get(k)
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="en-GB">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Your AI Identity Report — Human Clarity Institute</title>
 </head>
-<body style="margin:0;padding:0;background:#F4F6FB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-
+<body style="margin:0;padding:0;background:#F4F6FB;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F6FB;padding:32px 16px;">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
 
   <!-- Header -->
-  <tr><td style="background:#1B2A4A;border-radius:12px 12px 0 0;padding:36px 40px;">
-    <p style="margin:0 0 10px;color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Human Clarity Institute · AI Identity & Behaviour Assessment</p>
-    <h1 style="margin:0 0 12px;color:#ffffff;font-size:28px;font-weight:800;letter-spacing:-0.5px;line-height:1.15;">Your AI Identity Report</h1>
-    <p style="margin:0;color:rgba(255,255,255,0.4);font-size:13px;">{age_group} &nbsp;·&nbsp; {country} &nbsp;·&nbsp; {frequency} AI user &nbsp;·&nbsp; {date_str}</p>
+  <tr><td style="background:#1B2A4A;border-radius:12px 12px 0 0;padding:34px 40px;">
+    <p style="margin:0 0 10px;color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Human Clarity Institute · AI Identity &amp; Behaviour Assessment</p>
+    <h1 style="margin:0 0 12px;color:#ffffff;font-size:27px;font-weight:800;letter-spacing:-0.5px;line-height:1.15;">Your AI Identity Report</h1>
+    <p style="margin:0;color:rgba(255,255,255,0.45);font-size:13px;">{age_group} &nbsp;·&nbsp; {country} &nbsp;·&nbsp; {frequency} AI user &nbsp;·&nbsp; {date_str}</p>
   </td></tr>
 
-  <!-- Opening -->
-  <tr><td style="background:#F9F7F2;border:1px solid #D9CEBD;border-top:none;padding:28px 40px;">
-    <p style="margin:0 0 8px;color:#6B7280;font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Most Surprising Finding & Why Most People Miss This</p>
-    <p style="margin:0 0 14px;color:#1B2A4A;font-size:15px;line-height:1.75;font-weight:500;">{opening}</p>
+  <!-- Most surprising finding (short) -->
+  <tr><td style="background:#F9F7F2;border:1px solid #D9CEBD;border-top:none;padding:26px 40px;">
+    <p style="margin:0 0 8px;color:#6B7280;font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Your most surprising finding</p>
+    <p style="margin:0;color:#1B2A4A;font-size:15px;line-height:1.7;font-weight:500;">{surprising}</p>
   </td></tr>
 
-  <!-- White spacer -->
-  <tr><td style="background:#ffffff;padding:8px 40px;">
-    <p style="margin:0;color:#6B7280;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;padding:16px 0 8px;">Your Nine Dimension Profiles</p>
+  <!-- CTA: full report (PDF + web) -->
+  <tr><td style="background:#ffffff;padding:26px 40px 8px;text-align:center;">
+    <p style="margin:0 0 16px;color:#1A1A1A;font-size:14px;line-height:1.6;">Your full report — every dimension, the cross-dimensional patterns, your perception gap and the complete 39-question appendix — is <strong>attached as a PDF</strong> and available to read online.</p>
+    <a href="{report_url}" style="display:inline-block;background:#4054B2;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 30px;border-radius:8px;">View your full report online →</a>
   </td></tr>
 
-  <!-- Dimensions -->
-  <tr><td style="background:#ffffff;padding:0 40px 24px;">
-    {dim_html}
+  <!-- Nine dimension summary -->
+  <tr><td style="background:#ffffff;padding:18px 40px 6px;">
+    <p style="margin:0 0 14px;color:#6B7280;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">Your nine dimensions at a glance</p>
+    <table width="100%" cellpadding="0" cellspacing="0">{dim_rows}</table>
   </td></tr>
 
-  <!-- Cross-dimensional -->
-  <tr><td style="background:#ffffff;padding:0 40px 24px;">
-    <div style="border:1px solid #E2E6EF;border-radius:12px;padding:24px;">
-      <p style="margin:0 0 8px;color:#3D2B8C;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">Cross-Dimensional Patterns</p>
-      <p style="margin:0 0 14px;color:#1A1A1A;font-size:14px;line-height:1.75;">{cross}</p>
-    </div>
-  </td></tr>
-
-  <!-- What Is AI Changing -->
-  <tr><td style="background:#1B2A4A;padding:32px 40px;">
-    <p style="margin:0 0 8px;color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">HCI Research Insight</p>
-    <h2 style="margin:0 0 16px;color:#ffffff;font-size:20px;font-weight:800;">What is AI changing in you?</h2>
-    <p style="margin:0 0 14px;color:rgba(255,255,255,0.85);font-size:14px;line-height:1.75;">{changing}</p>
-  </td></tr>
-
-  <!-- Closing -->
-  <tr><td style="background:#F9F7F2;border:1px solid #D9CEBD;border-top:none;padding:28px 40px;">
-    <p style="margin:0 0 8px;color:#6B7280;font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Profile Directions & Human Flourishing Reflection</p>
-    <p style="margin:0 0 14px;color:#1B2A4A;font-size:14px;line-height:1.75;">{closing}</p>
-  </td></tr>
-
-  <!-- AI Reflection Prompt (proof layer) -->
-  <tr><td style="background:#1B2A4A;padding:32px 40px;">
-    <p style="margin:0 0 8px;color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Verify this report yourself</p>
-    <h2 style="margin:0 0 14px;color:#ffffff;font-size:20px;font-weight:800;">Put it to the test</h2>
-    <p style="margin:0 0 18px;color:rgba(255,255,255,0.85);font-size:14px;line-height:1.75;">{reflection_intro}</p>
-    <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);border-radius:8px;padding:20px 22px;">
-      <p style="margin:0;color:#E8EDF5;font-size:13px;line-height:1.8;font-family:'Courier New',Courier,monospace;">{reflection_prompt_html}</p>
-    </div>
-  </td></tr>
-{report_link_block}
-  <!-- Methodology -->
-  <tr><td style="background:#ffffff;border-radius:0 0 12px 12px;padding:24px 40px;border-top:1px solid #E2E6EF;">
-    <p style="margin:0 0 8px;color:#9CA3AF;font-size:11px;line-height:1.7;">{methodology}</p>
+  <!-- Methodology (fixed verbatim, 10,000+) -->
+  <tr><td style="background:#ffffff;border-radius:0 0 12px 12px;padding:18px 40px 24px;border-top:1px solid #E2E6EF;">
+    <p style="margin:14px 0 8px;color:#9CA3AF;font-size:11px;line-height:1.7;">{methodology}</p>
     <p style="margin:0;color:#9CA3AF;font-size:11px;">Benchmark data and methodology: <a href="https://github.com/humanclarityinstitute" style="color:#4054B2;">github.com/humanclarityinstitute</a></p>
   </td></tr>
 
@@ -153,36 +164,79 @@ def generate_report_email(report, demographics, session_id=None):
 </body>
 </html>"""
 
-    return html
+
+def generate_report_pdf(report_html, wait_ms=900):
+    """
+    Render the POPULATED full-report HTML to PDF bytes for the attachment.
+
+    The web report's histograms are drawn in JS, so a plain HTML->PDF library
+    (WeasyPrint / wkhtmltopdf) would drop every chart. This uses headless
+    Chromium via Playwright, which executes the JS first.
+
+    Deploy dependency: the Railway image needs Playwright + Chromium
+        pip install playwright && playwright install --with-deps chromium
+    If you would rather avoid bundling Chromium, the alternative is to have
+    report_generator emit the charts as static <img> (server-rendered PNG),
+    after which WeasyPrint becomes viable. That is a separate decision.
+
+    `report_html` must be the SAME html the web report renders (produced by
+    report_generator + hci-report-page.html), so the PDF matches the site.
+    """
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=['--no-sandbox', '--disable-dev-shm-usage'])
+        page = browser.new_page()
+        page.set_content(report_html, wait_until='networkidle')
+        page.wait_for_timeout(wait_ms)  # let the histograms finish drawing
+        pdf_bytes = page.pdf(
+            format='A4',
+            print_background=True,
+            margin={'top': '14mm', 'bottom': '14mm', 'left': '12mm', 'right': '12mm'},
+        )
+        browser.close()
+    return pdf_bytes
 
 
-def send_report_email(to_email, report, demographics, resend_api_key, session_id=None):
-    """Send the premium report via Resend."""
-    import urllib.request
-    import json
+def send_report_email(to_email, report, demographics, resend_api_key,
+                      report_url='https://humanclarityinstitute.com',
+                      pdf_bytes=None,
+                      pdf_filename='HCI-AI-Identity-Report.pdf'):
+    """
+    Send the summary email via Resend, with the full report attached as PDF.
 
-    html_content = generate_report_email(report, demographics, session_id)
-    
-    payload = json.dumps({
+    Pass pdf_bytes from generate_report_pdf(report_html). If pdf_bytes is None
+    the email still sends (summary + web link), just without the attachment —
+    so a PDF-rendering hiccup never blocks delivery.
+    """
+    html_content = generate_report_email(report, demographics, report_url)
+
+    body = {
         'from': 'reports@updates.humanclarityinstitute.com',
         'to': [to_email],
         'reply_to': 'info@humanclarityinstitute.com',
         'subject': 'Your AI Identity & Behaviour Report — Human Clarity Institute',
         'html': html_content,
-    }).encode('utf-8')
+    }
+
+    if pdf_bytes:
+        body['attachments'] = [{
+            'filename': pdf_filename,
+            'content': base64.b64encode(pdf_bytes).decode('utf-8'),
+        }]
 
     req = urllib.request.Request(
         'https://api.resend.com/emails',
-        data=payload,
+        data=json.dumps(body).encode('utf-8'),
         headers={
             'Authorization': f'Bearer {resend_api_key}',
             'Content-Type': 'application/json',
         },
-        method='POST'
+        method='POST',
     )
 
     try:
-        response = urllib.request.urlopen(req, timeout=10)
+        response = urllib.request.urlopen(req, timeout=15)
         result = json.loads(response.read())
         print(f'Email sent successfully: {result.get("id")}')
         return True
