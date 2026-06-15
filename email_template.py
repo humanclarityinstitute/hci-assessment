@@ -184,15 +184,18 @@ def generate_report_email(report, demographics, report_url='https://humanclarity
 def send_report_email(to_email, report, demographics, resend_api_key,
                       report_url='https://humanclarityinstitute.com',
                       pdf_bytes=None,
+                      pdf_url=None,
                       pdf_filename='HCI-AI-Identity-Report.pdf'):
     """
     Send the summary email via Resend, with the full report attached as PDF.
 
-    Pass pdf_bytes from generate_report_pdf(report_html). If pdf_bytes is None
-    the email still sends (summary + web link), just without the attachment —
-    so a PDF-rendering hiccup never blocks delivery.
+    pdf_bytes: attach the PDF if provided.
+    pdf_url:   durable link to the stored PDF, shown in-body as a fallback so a
+               stripped attachment or a lost inbox never loses the report.
+    If both are None the email still sends (summary + web link) — so a PDF
+    hiccup never blocks delivery.
     """
-    html_content = generate_report_email(report, demographics, report_url)
+    html_content = generate_report_email(report, demographics, report_url, pdf_url=pdf_url)
 
     body = {
         'from': 'reports@updates.humanclarityinstitute.com',
