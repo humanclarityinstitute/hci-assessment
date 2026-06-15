@@ -59,6 +59,10 @@ REPORT_BASE_URL = os.environ.get(
     'REPORT_BASE_URL',
     'https://humanclarityinstitute.com/ai-assessment/report',
 )
+# Supabase Storage bucket that holds generated report PDFs (create it as a
+# PUBLIC bucket; the session_id in the path is the unguessable access token,
+# same security model as the report page link).
+REPORT_PDF_BUCKET = os.environ.get('REPORT_PDF_BUCKET', 'reports')
 
 
 # ============================================================
@@ -203,6 +207,52 @@ def store_premium_report(session_id, report):
     except Exception as e:
         print(f'Report storage failed (non-critical): {e}')
         return False
+
+
+def upload_report_pdf(session_id, pdf_bytes):
+    """
+    Upload the generated report PDF to Supabase Storage and return its public
+    URL. Overwrites any existing PDF for this session (x-upsert) so a
+    regenerated report replaces the old file.
+
+    Returns the public URL, or None on any failure (non-fatal — the email then
+    sends with the attachment only, or summary + web link).
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+        if not supabase_url or not supabase_key or not pdf_bytes or not session_id:
+            return None
+
+        import urllib.request
+        import urllib.parse
+
+        path = f'{urllib.parse.quote(session_id)}.pdf'
+        upload_url = f'{supabase_url}/storage/v1/object/{REPORT_PDF_BUCKET}/{path}'
+
+        req = urllib.request.Request(
+            upload_url,
+            data=pdf_bytes,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Content-Type': 'application/pdf',
+                'x-upsert': 'true',
+            },
+            method='POST',
+        )
+        urllib.request.urlopen(req, timeout=20)
+
+        public_url = (
+            f'{supabase_url}/storage/v1/object/public/'
+            f'{REPORT_PDF_BUCKET}/{path}'
+        )
+        print(f'Report PDF uploaded for session {session_id}')
+        return public_url
+
+    except Exception as e:
+        print(f'PDF upload failed (non-critical): {e}')
+        return None
 
 
 # ============================================================
@@ -476,13 +526,17 @@ def premium():
                     pdf_bytes = build_report_pdf(
                         report, REPORT_TEMPLATE_PATH, demographics
                     )
+                    # Store the PDF (durable, survives a lost inbox) and link it
+                    # in the email as a fallback to the attachment.
+                    pdf_url = upload_report_pdf(session_id, pdf_bytes) if pdf_bytes else None
                     send_report_email(
                         report_email, report, demographics, resend_key,
-                        report_url=report_url, pdf_bytes=pdf_bytes,
+                        report_url=report_url, pdf_bytes=pdf_bytes, pdf_url=pdf_url,
                     )
                     print(
                         f'Report email sent to {report_email}'
                         + (' with PDF' if pdf_bytes else ' (summary only — no PDF)')
+                        + (' + stored link' if pdf_url else '')
                     )
                 else:
                     print('RESEND_API_KEY not configured — skipping email')
