@@ -143,6 +143,15 @@ DIMENSIONS = {
 SCALE_MAX = 7
 SCALE_MIN = 1
 
+# Reverse lookup: which dimension owns each variable. Used so every
+# variable_highlight can carry its dimension (the report generator matches the
+# personalised highlight to a dimension via this key).
+VARIABLE_TO_DIMENSION = {
+    var: dim
+    for dim, cfg in DIMENSIONS.items()
+    for var in cfg['variables']
+}
+
 
 # ============================================================
 # VARIABLE HIGHLIGHTS CONFIGURATION
@@ -544,6 +553,7 @@ def _make_highlight(card_type, variable, raw_answer, benchmarks, demographics):
 
     return {
         'type': card_type,
+        'dimension': VARIABLE_TO_DIMENSION.get(variable),
         'variable': variable,
         'question_text': QUESTION_TEXT.get(variable, variable.replace('_', ' ').capitalize()),
         'raw_response': int(raw_answer),
