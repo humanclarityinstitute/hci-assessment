@@ -1304,6 +1304,9 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
                 'plain_english': plain_english_percentile(
                     dim_data['percentiles'].get('overall')
                 ),
+                'position': positional_language(
+                    dim_data['percentiles'].get('overall')
+                ),
                 'rarity': get_rarity_text(dim_data['percentiles'].get('overall')),
             }
 
