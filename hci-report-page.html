@@ -912,34 +912,42 @@ function showError(msg){
 }
 
 // Main — generate report
+// Main — generate report (or render an already-stored report on re-open)
 async function init(){
-  // Get session_id from URL (passed by Stripe) or sessionStorage fallback
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session_id') || sessionStorage.getItem('hci_session_id');
 
-  let fullResults = null;
-
-  // Try sessionStorage first (same-tab flow)
-  const fullResultsRaw = sessionStorage.getItem('hci_full_results');
-  if(fullResultsRaw){
-    try{ fullResults = JSON.parse(fullResultsRaw); }catch(e){}
-  }
-
-  // If not in sessionStorage, fetch from Railway using session_id
-  if(!fullResults && sessionId){
+  // ── FAST-PATH: read-only re-open ──────────────────────────────────────────
+  // If this session already has a stored report, show it and stop. Pure read.
+  let prefetchedResults = null;
+  if(sessionId){
     try{
       const res = await fetch(`${API}/get-results?session_id=${encodeURIComponent(sessionId)}`);
       if(res.ok){
         const data = await res.json();
-        if(data.success && data.full_results){
-          fullResults = data.full_results;
+        if(data && data.success){
+          if(data.report){
+            renderReport(data.report);   // already-generated report → render it
+            return;                      // done: no /premium, no regeneration
+          }
+          if(data.full_results){
+            prefetchedResults = data.full_results;  // keep for generation below
+          }
         }
       }
     }catch(e){
-      console.error('Could not fetch results from server:', e);
+      console.error('Re-open fetch failed:', e);
     }
   }
 
+  // ── GENERATION FLOW: first load right after payment ───────────────────────
+  let fullResults = prefetchedResults;
+  if(!fullResults){
+    const fullResultsRaw = sessionStorage.getItem('hci_full_results');
+    if(fullResultsRaw){
+      try{ fullResults = JSON.parse(fullResultsRaw); }catch(e){}
+    }
+  }
   if(!fullResults){
     showError('No results found');
     return;
@@ -947,10 +955,6 @@ async function init(){
 
   // Start progress animation
   setStep(0);
-
-  // Simulate progress steps while waiting for API
-  // The API takes ~45-70 seconds — we animate through steps
-  // to give the participant visual feedback
   const stepMessages = [
     'Identifying your most surprising finding...',
     'Writing your Reliance profile...',
@@ -966,8 +970,6 @@ async function init(){
     'Writing What Is AI Changing?',
     'Writing your Human Flourishing Reflection...',
   ];
-
-  // Advance steps every ~4 seconds to match expected generation time
   let stepTimer = 0;
   const stepInterval = setInterval(()=>{
     stepTimer++;
@@ -977,10 +979,7 @@ async function init(){
   }, 4000);
 
   try{
-    // Call premium endpoint
-    const sessionId = urlParams.get('session_id') || sessionStorage.getItem('hci_session_id');
     const reportEmail = sessionStorage.getItem('hci_report_email');
-
     const response = await fetch(`${API}/premium`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
@@ -989,32 +988,24 @@ async function init(){
         payment_confirmed: true,
         session_id: sessionId,
         report_email: reportEmail,
-      stripe_session_id: urlParams.get('stripe_session_id'),
+        stripe_session_id: urlParams.get('stripe_session_id'),
       }),
     });
-
     clearInterval(stepInterval);
-
     if(!response.ok){
       const errData = await response.json().catch(()=>({}));
       throw new Error(errData.error || `HTTP ${response.status}`);
     }
-
     const data = await response.json();
-
     if(!data.success){
       throw new Error(data.error || 'Generation failed');
     }
-
     // Mark all steps done
     for(let i=0;i<=12;i++){
       const el=document.getElementById(`step-${i}`);
       if(el){el.classList.remove('active');el.classList.add('done');const icon=el.querySelector('.hci-gen-step-icon');if(icon)icon.textContent='✓';}
     }
-
-    // Small pause then render
     setTimeout(()=>renderReport(data.report), 800);
-
   }catch(e){
     clearInterval(stepInterval);
     showError(e.message);
@@ -1026,8 +1017,5 @@ if(document.readyState==='loading'){
 }else{
   init();
 }
-
 })();
 </script>
-</body>
-</html>
