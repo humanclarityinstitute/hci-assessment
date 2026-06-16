@@ -1,4 +1,3 @@
-# redeploy trigger
 """
 HCI AI Identity & Behaviour Assessment
 API Layer — Version 5
@@ -418,7 +417,7 @@ def get_results():
         url = (
             f'{supabase_url}/rest/v1/assessment_responses'
             f'?session_id=eq.{urllib.parse.quote(session_id)}'
-            f'&select=full_results,demographics,report_email'
+            f'&select=full_results,demographics,report_email,premium_report'
             f'&limit=1'
         )
         req = urllib.request.Request(
@@ -448,6 +447,10 @@ def get_results():
             'full_results': full_results,
             'session_id': session_id,
             'report_email': record.get('report_email'),
+            # Stored premium report, if one has been generated. Lets the report
+            # page render directly in any browser from an emailed ?session_id
+            # link — a pure read, no /premium call, no regeneration.
+            'report': record.get('premium_report'),
         })
 
     except Exception as e:
