@@ -217,6 +217,10 @@ def send_report_email(to_email, report, demographics, resend_api_key,
         headers={
             'Authorization': f'Bearer {resend_api_key}',
             'Content-Type': 'application/json',
+            # Resend's API sits behind Cloudflare, which blocks the default
+            # Python-urllib User-Agent with a 403 (Cloudflare error 1010).
+            # Sending a normal User-Agent lets the request through.
+            'User-Agent': 'HCI-Reports/1.0',
         },
         method='POST',
     )
