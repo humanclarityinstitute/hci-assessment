@@ -573,7 +573,6 @@ def premium():
         else:
             print('No report_email provided — skipping email')
 
-        store_response(request_data, result_type='premium')
 
         return jsonify({
             'success': True,
