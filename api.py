@@ -25,6 +25,16 @@ Changes from v3:
 - /premium sends email via Resend after generation
 - /get-results endpoint for session-based retrieval
 - store_response updated to save session_id, full_results, report_email
+
+Changes in this revision (row-integrity fix):
+- /score now accepts the session_id sent by the frontend instead of minting
+  its own (frontend owns a single stable id for the whole journey). Falls back
+  to a generated id only if none is supplied.
+- store_response() now UPSERTS on session_id instead of blind-INSERTing, so a
+  results-page reload updates the existing row instead of creating a duplicate.
+  Relies on the UNIQUE(session_id) constraint on assessment_responses.
+- Removed the stray store_response(..., result_type='premium') insert at the
+  end of /premium that was creating empty premium stub rows.
 """
 
 from flask import Flask, request, jsonify
@@ -73,6 +83,13 @@ def store_response(payload, result_type='free', session_id=None,
                    full_results=None, report_email=None):
     """
     Store assessment response in Supabase.
+
+    UPSERTS on session_id: if a row with this session_id already exists (e.g.
+    the user reloaded the results page), the existing row is updated in place
+    rather than a duplicate being inserted. This relies on the
+    UNIQUE(session_id) constraint on assessment_responses. When no session_id
+    is supplied it falls back to a plain insert.
+
     Fails silently — storage failure should not break the user flow.
     """
     try:
@@ -105,14 +122,23 @@ def store_response(payload, result_type='free', session_id=None,
 
         body = json.dumps(record).encode('utf-8')
 
+        # Upsert when we have a session_id: on conflict with the existing row's
+        # session_id, merge (update) instead of inserting a duplicate. Without a
+        # session_id, behave as a plain insert (unchanged from before).
+        url = f'{supabase_url}/rest/v1/assessment_responses'
+        prefer = 'return=minimal'
+        if session_id:
+            url += '?on_conflict=session_id'
+            prefer = 'return=minimal,resolution=merge-duplicates'
+
         req = urllib.request.Request(
-            f'{supabase_url}/rest/v1/assessment_responses',
+            url,
             data=body,
             headers={
                 'Content-Type': 'application/json',
                 'apikey': supabase_key,
                 'Authorization': f'Bearer {supabase_key}',
-                'Prefer': 'return=minimal',
+                'Prefer': prefer,
             },
             method='POST'
         )
@@ -344,10 +370,13 @@ def score():
         results = score_assessment(responses, demographics, BENCHMARK_PATH)
         free_result = generate_free_result(results)
 
-       session_id = request_data.get('session_id')
+        # Use the session_id supplied by the frontend (it owns a single stable
+        # id for the whole journey). Fall back to a generated id only if none
+        # was sent, so older clients still work.
+        session_id = request_data.get('session_id')
         if not session_id:
-            # Fallback only — frontend should always supply one now.
-            import hashlib, time
+            import hashlib
+            import time
             session_id = hashlib.md5(
                 f"{time.time()}{json.dumps(demographics)}".encode()
             ).hexdigest()[:16]
@@ -574,7 +603,6 @@ def premium():
                 traceback.print_exc()
         else:
             print('No report_email provided — skipping email')
-
 
         return jsonify({
             'success': True,
