@@ -344,11 +344,13 @@ def score():
         results = score_assessment(responses, demographics, BENCHMARK_PATH)
         free_result = generate_free_result(results)
 
-        import hashlib
-        import time
-        session_id = hashlib.md5(
-            f"{time.time()}{json.dumps(demographics)}".encode()
-        ).hexdigest()[:16]
+       session_id = request_data.get('session_id')
+        if not session_id:
+            # Fallback only — frontend should always supply one now.
+            import hashlib, time
+            session_id = hashlib.md5(
+                f"{time.time()}{json.dumps(demographics)}".encode()
+            ).hexdigest()[:16]
 
         # Get report email if provided
         report_email = request_data.get('report_email') or \
