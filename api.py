@@ -14,8 +14,8 @@ Changes from v4:
       (reverse-aware), replacing the previous single-variable lookup.
     * benchmark_tables.json now also carries compact dist_* tables.
   No payload fields added or removed — existing consumers are unaffected.
-- /premium now passes session_id into send_report_email() so the report
-  email links back to the web report (pairs with email_template's session_id).
+- /premium now passes session_id into generate_premium_report() so the report
+  can link back to the web report and be cached against the session.
 
 Changes from v3:
 - get_stored_report() — retrieve cached premium report from Supabase
@@ -35,6 +35,8 @@ Changes in this revision (row-integrity fix):
   Relies on the UNIQUE(session_id) constraint on assessment_responses.
 - Removed the stray store_response(..., result_type='premium') insert at the
   end of /premium that was creating empty premium stub rows.
+- /premium now passes session_id to generate_premium_report() for reporting
+  and caching purposes.
 """
 
 from flask import Flask, request, jsonify
@@ -579,7 +581,7 @@ def premium():
 
         # 3) Payment confirmed — now, and only now, spend on generation.
         api_key = os.environ.get('ANTHROPIC_API_KEY')
-        report = generate_premium_report(full_results, api_key=api_key)
+        report = generate_premium_report(full_results, session_id=session_id, api_key=api_key)
 
         # Store immediately so refresh works
         if session_id:
@@ -857,14 +859,13 @@ def fetch_stripe_session(stripe_session_id):
 # ============================================================
 
 if __name__ == '__main__':
-    print('HCI Assessment API — Version 5')
+    print('HCI Assessment API — Version 5.1')
     print('=' * 40)
     print(f'Benchmark file: {BENCHMARK_PATH}')
     print(f'Benchmark exists: {os.path.exists(BENCHMARK_PATH)}')
     print()
-    print('v5: documents new scoring_engine contract (variable_highlights now')
-    print('    populated with histogram distributions; average-of-percentiles')
-    print('    dimension scoring). No /score payload change.')
+    print('v5.1: /premium now passes session_id to generate_premium_report()')
+    print('      for reporting and caching purposes. No other changes.')
     print()
     print('Starting API server on http://localhost:5000')
     app.run(debug=True, port=5000)
