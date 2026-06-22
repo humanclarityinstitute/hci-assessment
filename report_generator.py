@@ -1,28 +1,144 @@
 """
 HCI AI Identity & Behaviour Assessment
-Report Generator — Version 5
+Report Generator — Version 5 + Resilience Layer
 
 Generates free results and premium reports with
 empowerment-first framing and comprehensive guardrails.
 
-Premium report uses 13 focused API calls for maximum quality:
+Premium report uses 15 focused API calls (with 90s timeout + retry):
 - 1 call: Most Surprising Finding + Why Most People Miss This
+- 1 call: Your AI Identity Overview
 - 9 calls: Individual dimension profiles (one per dimension)
 - 1 call: Cross-dimensional patterns
-- 1 call: What Is AI Changing?
-- 1 call: Profile Directions + Human Flourishing Reflection
+- 1 call: Perception Gap Analysis
+- 1 call: Population Context
+- 1 call: Putting This to Work + Human Flourishing Reflection
 
 Every report leaves the participant feeling more
 self-aware and curious — never judged or deficient.
+
+RESILIENCE: 90s timeout per call + single retry on timeout.
+NO PARTIAL REPORTS — if any call fails twice, entire report fails.
 """
 
 import json
+import time
+from datetime import datetime
 
 try:
     import anthropic
+    from anthropic import APITimeoutError
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
+
+
+# ============================================================
+# RESILIENCE CONFIGURATION
+# ============================================================
+
+CALL_TIMEOUT_SECONDS = 90
+MAX_RETRIES = 1
+
+
+# ============================================================
+# NOTIFICATION HANDLER
+# ============================================================
+
+def notify_timeout(call_name, duration_sec, session_id, attempt, error_msg=''):
+    """
+    Send timeout notification. Currently logs to console (visible in Railway logs).
+    TODO: Integrate with Slack webhook or Resend email.
+    """
+    timestamp = datetime.utcnow().isoformat()
+    
+    print(
+        f'[TIMEOUT ALERT] {call_name} | '
+        f'Duration: {duration_sec:.1f}s (timeout: {CALL_TIMEOUT_SECONDS}s) | '
+        f'Session: {session_id} | '
+        f'Attempt: {attempt}/{MAX_RETRIES + 1} | '
+        f'Time: {timestamp}'
+    )
+    
+    # Future: send to Slack or Resend
+    # For now, Railway logs will capture this and you can set up log-based alerts
+
+
+# ============================================================
+# CORE: Call with timeout + retry
+# ============================================================
+
+def call_claude_with_resilience(
+    client,
+    model,
+    max_tokens,
+    system,
+    messages,
+    call_name='API Call',
+    session_id=None
+):
+    """
+    Call Claude with 90s timeout + single retry on timeout.
+    
+    NO PARTIAL REPORTS — if this fails, the whole report fails.
+    """
+    
+    for attempt in range(MAX_RETRIES + 1):
+        start_time = time.time()
+        
+        try:
+            message = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                timeout=float(CALL_TIMEOUT_SECONDS),
+            )
+            
+            duration = time.time() - start_time
+            
+            # Log slow calls
+            if duration > 30:
+                print(
+                    f'[SLOW] {call_name} completed in {duration:.1f}s '
+                    f'(session: {session_id})'
+                )
+            
+            return message.content[0].text.strip()
+        
+        except APITimeoutError as e:
+            duration = time.time() - start_time
+            
+            # Notify on timeout
+            notify_timeout(call_name, duration, session_id or 'unknown', attempt + 1, str(e))
+            
+            # If we have retries left, retry
+            if attempt < MAX_RETRIES:
+                print(
+                    f'[RETRY] {call_name} timed out after {duration:.1f}s, '
+                    f'retrying (attempt {attempt + 2}/{MAX_RETRIES + 1})...'
+                )
+                time.sleep(1)  # brief backoff before retry
+                continue
+            else:
+                # All retries exhausted — fail hard
+                print(
+                    f'[FATAL] {call_name} failed on final attempt. '
+                    f'NO PARTIAL REPORTS — entire report generation aborted. '
+                    f'Session: {session_id}'
+                )
+                raise APITimeoutError(
+                    f'{call_name} exceeded {CALL_TIMEOUT_SECONDS}s timeout '
+                    f'on {MAX_RETRIES + 1} attempts (session: {session_id})'
+                ) from e
+        
+        except Exception as e:
+            # Non-timeout errors — fail immediately, no retry
+            print(
+                f'[ERROR] {call_name} failed: {type(e).__name__}: {str(e)[:100]} '
+                f'(session: {session_id})'
+            )
+            raise
 
 
 # ============================================================
@@ -208,7 +324,7 @@ def select_best_benchmark(dimension_data, demographics):
 
 
 # ============================================================
-# DIMENSION CONTEXT — what each dimension measures
+# DIMENSION CONTEXT
 # ============================================================
 
 DIMENSION_CONTEXT = {
@@ -288,9 +404,7 @@ DIMENSION_CONTEXT = {
 
 
 # ============================================================
-# HCI RESEARCH SIGNALS — sourced findings from the full series
-# (21 datasets, ~10,500 participants). Injected into prompts so
-# the model writes from real evidence, not placeholders.
+# HCI RESEARCH SIGNALS
 # ============================================================
 
 SIGNALS = {
@@ -392,29 +506,25 @@ def cohort_signal(age_group):
 # CALL 1: MOST SURPRISING FINDING + WHY MOST PEOPLE MISS THIS
 # ============================================================
 
-def generate_opening(results, client):
+def generate_opening(results, client, session_id=None):
     """
     Generate the opening section — Most Surprising Finding and
-    Why Most People Miss This. This is what the participant
-    remembers most. Must be specific, grounded, memorable.
+    Why Most People Miss This. Uses resilience wrapper.
     """
     demographics = results['demographics']
     perception_gaps = results.get('perception_gaps', {})
     patterns = results['patterns']
     variable_highlights = results.get('variable_highlights', [])
 
-    # Find most significant perception gap
     significant_gaps = [
         g for g in perception_gaps.values()
         if g and g.get('magnitude') in ['significant', 'moderate']
     ]
     significant_gaps.sort(key=lambda x: x.get('abs_gap', 0), reverse=True)
 
-    # Find most extreme dimension
     full_ranking = patterns.get('full_ranking', [])
     most_extreme = max(full_ranking, key=lambda x: abs(x['percentile'] - 50)) if full_ranking else None
 
-    # Find most distinctive variable highlight
     personalised_var = next((h for h in variable_highlights if h['type'] == 'personalised'), None)
 
     gap_text = ''
@@ -476,27 +586,72 @@ No headers. Write Part 1 then Part 2 as connected prose.
 Speak directly to the person as "you".
 Warm, precise, intellectually curious tone throughout."""
 
-    message = client.messages.create(
+    result = call_claude_with_resilience(
+        client,
         model='claude-sonnet-4-6',
         max_tokens=600,
         system=GLOBAL_SYSTEM_PROMPT,
         messages=[{'role': 'user', 'content': prompt}],
+        call_name='Opening Finding',
+        session_id=session_id,
     )
-    return message.content[0].text.strip()
+    return result
 
 
 # ============================================================
-# CALLS 2-10: INDIVIDUAL DIMENSION PROFILES
+# CALL 2: YOUR AI IDENTITY — OVERVIEW
+# ============================================================
+
+def generate_overview(results, client, session_id=None):
+    """Integrative overview paragraph. Uses resilience wrapper."""
+    patterns = results['patterns']
+    full_ranking = patterns.get('full_ranking', [])
+    dim_summary = '\n'.join([
+        f"  {d['label']}: {positional_language(d['percentile'])} "
+        f"(higher than {int(d['percentile'])} of 100 people)"
+        for d in full_ranking
+    ])
+    top = full_ranking[:3]
+    
+    prompt = f"""Write the "Your AI Identity — Overview" section of a personalised HCI AI Identity Report.
+
+A single integrative paragraph describing the overall shape of this person's profile
+across all nine dimensions — written fresh, as a whole, not assembled from fragments.
+
+ALL NINE (positional language + plain-English comparison):
+{dim_summary}
+
+Centre the paragraph on the most distinctive patterns: {', '.join(d['label'] for d in top)}
+
+Write ~200 words that:
+1. Name the two or three most distinctive patterns and how they relate — what kind of
+   relationship with AI does the whole picture suggest?
+2. Stay integrative — a coherent whole, not a list of scores.
+3. Plain-English comparisons and positional language; no bare percentile numbers.
+
+ABSOLUTE RULE: do NOT assign a type, archetype, category, or label of any kind.
+Describe patterns, not an identity. End on an observation that sets up curiosity for
+the detail that follows. Speak directly as "you"."""
+
+    result = call_claude_with_resilience(
+        client,
+        model='claude-sonnet-4-6',
+        max_tokens=520,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+        call_name='Your AI Identity Overview',
+        session_id=session_id,
+    )
+    return result
+
+
+# ============================================================
+# CALLS 3-11: INDIVIDUAL DIMENSION PROFILES
 # ============================================================
 
 def generate_dimension_profile(dim_name, dim_data, demographics,
-                                variable_highlights, client):
-    """
-    Generate a full personalised profile for one dimension.
-    Includes: plain English score, demographic comparisons,
-    rarity framing, narrative, population pattern, and
-    any relevant variable-level highlight.
-    """
+                                variable_highlights, client, session_id=None):
+    """Generate a full personalised profile for one dimension. Uses resilience wrapper."""
     ctx = DIMENSION_CONTEXT.get(dim_name, {})
     sig = dimension_signal(dim_name)
     percentiles = dim_data.get('percentiles', {})
@@ -505,7 +660,6 @@ def generate_dimension_profile(dim_name, dim_data, demographics,
     gender_pct = percentiles.get('gender')
     freq_pct = percentiles.get('frequency')
 
-    # Build demographic comparison text
     demo_comparisons = []
     if age_pct is not None:
         demo_comparisons.append(
@@ -525,7 +679,6 @@ def generate_dimension_profile(dim_name, dim_data, demographics,
             f"{format_percentile(gender_pct)} percentile"
         )
 
-    # Find relevant variable highlight for this dimension
     dim_var = next(
         (h for h in variable_highlights
          if h['dimension'] == dim_name and h['type'] == 'personalised'),
@@ -590,17 +743,20 @@ IMPORTANT:
 - Write as flowing prose, no headers, no bullet points
 - Speak directly as "you" throughout"""
 
-    message = client.messages.create(
+    result = call_claude_with_resilience(
+        client,
         model='claude-sonnet-4-6',
         max_tokens=450,
         system=GLOBAL_SYSTEM_PROMPT,
         messages=[{'role': 'user', 'content': prompt}],
+        call_name=f'{ctx.get("label", dim_name)} Profile',
+        session_id=session_id,
     )
-    return message.content[0].text.strip()
+    return result
 
 
 # ============================================================
-# CALL 11: CROSS-DIMENSIONAL PATTERNS
+# CALL 12: CROSS-DIMENSIONAL PATTERNS
 # ============================================================
 
 RARE_COMBINATIONS = [
@@ -640,16 +796,14 @@ def find_rare_combinations(dimension_results):
     return found
 
 
-def generate_cross_dimensional(results, client):
-    """Generate cross-dimensional patterns section."""
+def generate_cross_dimensional(results, client, session_id=None):
+    """Generate cross-dimensional patterns. Uses resilience wrapper."""
     patterns = results['patterns']
     dimensions = results['dimensions']
     full_ranking = patterns.get('full_ranking', [])
 
-    # Find rare combinations
     rare = find_rare_combinations(dimensions)
 
-    # Find biggest gap between any two dimensions
     if len(full_ranking) >= 2:
         highest = full_ranking[0]
         lowest = full_ranking[-1]
@@ -658,7 +812,6 @@ def generate_cross_dimensional(results, client):
         highest = lowest = None
         gap = 0
 
-    # Build all dimension summary
     dim_summary = '\n'.join([
         f"  {d['label']}: {format_percentile(d['percentile'])} percentile"
         for d in full_ranking
@@ -705,23 +858,78 @@ report is seeing the whole person, not just individual scores.
 
 No headers. Flowing prose. Speak directly as "you"."""
 
-    message = client.messages.create(
+    result = call_claude_with_resilience(
+        client,
         model='claude-sonnet-4-6',
         max_tokens=550,
         system=GLOBAL_SYSTEM_PROMPT,
         messages=[{'role': 'user', 'content': prompt}],
+        call_name='Cross-Dimensional Patterns',
+        session_id=session_id,
     )
-    return message.content[0].text.strip()
+    return result
 
 
 # ============================================================
-# Population Context (benchmark + demographic comparisons)
+# CALL 13: PERCEPTION GAP ANALYSIS
 # ============================================================
 
-def generate_population_context(results, client):
-    """Population Context (v2.1) — two or three benchmark comparisons that place
-    the participant in specific population context, including their age group
-    where available. Replaces the former 'What Is AI Changing' section."""
+def generate_perception_gap(results, client, session_id=None):
+    """Dedicated perception-gap section. Uses resilience wrapper."""
+    gaps = results.get('perception_gaps', {}) or {}
+    candidates = []
+    if isinstance(gaps, dict):
+        candidates = [g for g in gaps.values() if isinstance(g, dict)]
+    elif isinstance(gaps, list):
+        candidates = [g for g in gaps if isinstance(g, dict)]
+    sig = None
+    for g in candidates:
+        a, p = g.get('actual_percentile'), g.get('perceived_estimate')
+        if a is None or p is None:
+            continue
+        if abs(a - p) >= 25 and (sig is None or abs(a - p) > abs(sig['actual_percentile'] - sig['perceived_estimate'])):
+            sig = g
+
+    if sig:
+        a = int(sig['actual_percentile'])
+        dim = sig.get('dimension', 'one dimension')
+        prompt = f"""Write the Perception Gap Analysis section (~100 words) of an HCI report.
+
+Dimension: {dim}
+Where they placed themselves: around the middle / their own estimate.
+Where the benchmark places them: higher than {a} of 100 people ({positional_language(a)}).
+
+Frame the gap to ILLUMINATE, never to correct. Permitted: "One finding worth noting...",
+"Your estimated positioning and your actual score tell different stories.", "That gap is
+itself a finding worth sitting with." PROHIBITED: "you underestimated...", "you may not
+realise...", "you were wrong", "you lack self-awareness". Plain-English comparison, no bare
+percentile number. End on an observation, not a recommendation. Speak as "you"."""
+    else:
+        prompt = """Write a short "Perception Alignment" section (~70 words) of an HCI report.
+
+This participant's self-estimates and their benchmarked scores are broadly consistent.
+Note this plainly and with genuine interest — consistency between how someone sees
+themselves and where they actually sit is itself worth noting. Do NOT manufacture a gap
+or a finding. End on an observation. Speak as "you"."""
+
+    result = call_claude_with_resilience(
+        client,
+        model='claude-sonnet-4-6',
+        max_tokens=350,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+        call_name='Perception Gap Analysis',
+        session_id=session_id,
+    )
+    return result
+
+
+# ============================================================
+# CALL 14: POPULATION CONTEXT
+# ============================================================
+
+def generate_population_context(results, client, session_id=None):
+    """Population Context. Uses resilience wrapper."""
     demographics = results['demographics']
     patterns = results['patterns']
     full_ranking = patterns.get('full_ranking', [])
@@ -761,29 +969,24 @@ Use ONLY the positions provided above. Plain-English comparisons, no bare percen
 numbers, positional language from the scale. End on an observation, not a
 recommendation. Speak directly as "you"."""
 
-    message = client.messages.create(
+    result = call_claude_with_resilience(
+        client,
         model='claude-sonnet-4-6',
         max_tokens=400,
         system=GLOBAL_SYSTEM_PROMPT,
         messages=[{'role': 'user', 'content': prompt}],
+        call_name='Population Context',
+        session_id=session_id,
     )
-    return message.content[0].text.strip()
+    return result
 
 
 # ============================================================
-# CALL 13: PROFILE DIRECTIONS + HUMAN FLOURISHING REFLECTION
+# CALL 15: PUTTING THIS TO WORK + HUMAN FLOURISHING REFLECTION
 # ============================================================
 
-def generate_closing(results, client):
-    """
-    Generate the closing two sections:
-    1. Profile Directions — non-prescriptive, curiosity-forward
-    2. Human Flourishing Reflection — the most distinctive section
-       in any AI assessment anywhere
-
-    Combined into one call for coherence — these two sections
-    need to flow naturally into each other.
-    """
+def generate_closing(results, client, session_id=None):
+    """Generate closing sections. Uses resilience wrapper."""
     demographics = results['demographics']
     patterns = results['patterns']
     dimensions = results['dimensions']
@@ -876,106 +1079,16 @@ Write Section A then Section B. Use clear section headers:
 "Putting This to Work" and "Human Flourishing Reflection"
 Then flowing prose within each. Speak as "you" throughout."""
 
-    message = client.messages.create(
+    result = call_claude_with_resilience(
+        client,
         model='claude-sonnet-4-6',
         max_tokens=950,
         system=GLOBAL_SYSTEM_PROMPT,
         messages=[{'role': 'user', 'content': prompt}],
+        call_name='Closing Reflection',
+        session_id=session_id,
     )
-    return message.content[0].text.strip()
-
-
-# ============================================================
-# Your AI Identity — Overview  (v2.1, no archetype)
-# ============================================================
-
-def generate_overview(results, client):
-    """Integrative overview paragraph naming the 2-3 most distinctive patterns.
-    No archetype, type, category, or label of any kind."""
-    patterns = results['patterns']
-    full_ranking = patterns.get('full_ranking', [])
-    dim_summary = '\n'.join([
-        f"  {d['label']}: {positional_language(d['percentile'])} "
-        f"(higher than {int(d['percentile'])} of 100 people)"
-        for d in full_ranking
-    ])
-    top = full_ranking[:3]
-    prompt = f"""Write the "Your AI Identity — Overview" section of a personalised HCI AI Identity Report.
-
-A single integrative paragraph describing the overall shape of this person's profile
-across all nine dimensions — written fresh, as a whole, not assembled from fragments.
-
-ALL NINE (positional language + plain-English comparison):
-{dim_summary}
-
-Centre the paragraph on the most distinctive patterns: {', '.join(d['label'] for d in top)}
-
-Write ~200 words that:
-1. Name the two or three most distinctive patterns and how they relate — what kind of
-   relationship with AI does the whole picture suggest?
-2. Stay integrative — a coherent whole, not a list of scores.
-3. Plain-English comparisons and positional language; no bare percentile numbers.
-
-ABSOLUTE RULE: do NOT assign a type, archetype, category, or label of any kind.
-Describe patterns, not an identity. End on an observation that sets up curiosity for
-the detail that follows. Speak directly as "you"."""
-    message = client.messages.create(
-        model='claude-sonnet-4-6', max_tokens=520,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-    )
-    return message.content[0].text.strip()
-
-
-# ============================================================
-# Perception Gap Analysis  (Section 6) — or Perception Alignment
-# ============================================================
-
-def generate_perception_gap(results, client):
-    """Dedicated perception-gap section. If no meaningful gap, retitled
-    'Perception Alignment' and notes consistency. Never manufactures a finding."""
-    gaps = results.get('perception_gaps', {}) or {}
-    candidates = []
-    if isinstance(gaps, dict):
-        candidates = [g for g in gaps.values() if isinstance(g, dict)]
-    elif isinstance(gaps, list):
-        candidates = [g for g in gaps if isinstance(g, dict)]
-    sig = None
-    for g in candidates:
-        a, p = g.get('actual_percentile'), g.get('perceived_estimate')
-        if a is None or p is None:
-            continue
-        if abs(a - p) >= 25 and (sig is None or abs(a - p) > abs(sig['actual_percentile'] - sig['perceived_estimate'])):
-            sig = g
-
-    if sig:
-        a = int(sig['actual_percentile'])
-        dim = sig.get('dimension', 'one dimension')
-        prompt = f"""Write the Perception Gap Analysis section (~100 words) of an HCI report.
-
-Dimension: {dim}
-Where they placed themselves: around the middle / their own estimate.
-Where the benchmark places them: higher than {a} of 100 people ({positional_language(a)}).
-
-Frame the gap to ILLUMINATE, never to correct. Permitted: "One finding worth noting...",
-"Your estimated positioning and your actual score tell different stories.", "That gap is
-itself a finding worth sitting with." PROHIBITED: "you underestimated...", "you may not
-realise...", "you were wrong", "you lack self-awareness". Plain-English comparison, no bare
-percentile number. End on an observation, not a recommendation. Speak as "you"."""
-    else:
-        prompt = """Write a short "Perception Alignment" section (~70 words) of an HCI report.
-
-This participant's self-estimates and their benchmarked scores are broadly consistent.
-Note this plainly and with genuine interest — consistency between how someone sees
-themselves and where they actually sit is itself worth noting. Do NOT manufacture a gap
-or a finding. End on an observation. Speak as "you"."""
-
-    message = client.messages.create(
-        model='claude-sonnet-4-6', max_tokens=350,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-    )
-    return message.content[0].text.strip()
+    return result
 
 
 # ============================================================
@@ -1025,7 +1138,6 @@ def generate_free_result(results):
             'framing': 'Notable finding',
         })
 
-    # Best benchmark comparison
     primary_dim = full_ranking[0] if full_ranking else None
     best_benchmark = None
 
@@ -1052,7 +1164,6 @@ def generate_free_result(results):
                     'text': benchmark_text,
                 }
 
-    # Perception gap
     perception_highlight = None
     gaps = results.get('perception_gaps', {})
     significant_gaps = [
@@ -1083,66 +1194,50 @@ def generate_free_result(results):
 
 
 # ============================================================
-# PREMIUM REPORT GENERATOR — 13 FOCUSED API CALLS
-# ============================================================
-
-# ============================================================
-# PER-QUESTION BREAKDOWN  (deterministic, no API) — spec v2.1
-# Curated 1-2 distinctive questions per dimension + full appendix.
+# QUESTION BREAKDOWN HELPERS
 # ============================================================
 
 QUESTION_TEXT = {
-    # Trust
     "trust_q1": "When AI gives me information, I generally trust it is accurate.",
     "trust_q2": "I feel confident relying on information or recommendations generated by AI.",
     "trust_q3": "I worry that AI will present incorrect information as if it were fact.",
     "trust_q4": "When I feel uncertain, I am more likely to trust guidance from AI systems.",
-    # Disclosure
     "disc_q1": "I feel comfortable sharing personal thoughts or emotions with AI that I would not share with most people.",
     "disc_q2": "I feel emotionally safer expressing myself to AI than I do to many people in my life.",
     "disc_q3": "There are things I have told AI that I have never told another person.",
     "disc_q4": "I am more open with AI about some topics than I am with people in my life.",
-    # Reliance
     "rel_q1": "I feel uneasy or restless when I cannot use AI tools for an extended period.",
     "rel_q2": "I struggle to function effectively without assistance from digital or AI systems.",
     "rel_q3": "I rely on AI for many everyday work or personal decisions.",
     "rel_q4": "I often rely on AI even when I could work things out on my own.",
     "rel_q5": "Some of my abilities have weakened because AI systems now perform those tasks for me.",
-    # Decision Delegation
     "del_q1": "I regularly hand over decisions to AI systems that I previously made myself.",
     "del_q2": "When I use AI for decisions, I usually accept its recommendations without making significant changes.",
     "del_q3": "I sometimes follow AI recommendations even when they do not feel right to me.",
     "del_q4": "I am comfortable relying on AI systems for important decisions that could significantly affect my life or work.",
     "del_q5": "When I feel uncertain about a decision, I am more likely to rely on AI guidance.",
-    # Verification
     "ver_q1": "I regularly double-check information provided by AI using other sources.",
     "ver_q2": "I often skip checking AI information because it takes too much time or effort.",
     "ver_q3": "When information feels complicated or mentally demanding, I am more likely to accept it without checking carefully.",
     "ver_q4": "I use independent sources to confirm whether AI-generated information is accurate.",
-    # Human Agency
     "agency_q1": "My actions feel self-directed rather than driven by external forces.",
     "agency_q2": "I feel in control of decisions when using AI or automated systems.",
     "agency_q3": "Using AI tools has changed how much I trust my own judgement.",
     "agency_q4": "I sometimes feel influenced by systems without being fully aware of how.",
     "agency_q5": "I sometimes question what is genuinely \"mine\" versus shaped by suggestions from AI tools.",
-    # Emotional Regulation
     "emot_q1": "AI sometimes gives me a sense of relief or support when I feel emotionally overwhelmed.",
     "emot_q2": "I receive emotional support or comfort from AI tools.",
     "emot_q3": "Over time, my emotional or conversational boundaries with AI have become more open.",
     "emot_q4": "When I feel stressed, anxious, or emotionally overwhelmed, I often turn to AI to help me process my thoughts.",
-    # Thought Partnership
     "thought_q1": "I use AI as a sounding board — thinking out loud and developing ideas through conversation.",
     "thought_q2": "I use AI to challenge or stress-test my own beliefs and assumptions.",
     "thought_q3": "AI has changed how deeply I engage with my own thinking.",
     "thought_q4": "I tend to use AI in ways that confirm what I already think rather than challenge it.",
-    # Social Transparency
     "soc_q1": "I openly acknowledge when AI has contributed to my work or thinking.",
     "soc_q2": "I downplay or hide how much I use AI when talking to friends or family.",
     "soc_q3": "I feel comfortable telling people in my life how I really use AI.",
     "soc_q4": "There is a gap between how much I actually use AI and what I let others believe.",
 }
-
-import json as _json
 
 _BENCHMARK_CACHE = {}
 
@@ -1151,7 +1246,7 @@ def _load_benchmark(path):
         return _BENCHMARK_CACHE[path]
     try:
         with open(path) as f:
-            data = _json.load(f)
+            data = json.load(f)
     except Exception as e:
         print(f'  [!] question breakdown: could not load benchmark ({e})')
         data = {}
@@ -1177,10 +1272,7 @@ def _pct_of(dist, ans):
     return round((below + 0.5 * at) / total * 100)
 
 def build_question_breakdown(results, benchmark_path='benchmark_tables.json'):
-    """Assemble per-question data grouped by dimension. Each question carries the
-    raw answer, the overall and your-age 7-bin distributions, both plain-English
-    percentiles, and a 'distinctive' flag (the 1-2 furthest-from-average per
-    dimension). Returns {} if the benchmark or per-question data is unavailable."""
+    """Assemble per-question data grouped by dimension."""
     bench = _load_benchmark(benchmark_path)
     if not bench:
         return {}
@@ -1221,7 +1313,6 @@ def build_question_breakdown(results, benchmark_path='benchmark_tables.json'):
             })
         if not questions:
             continue
-        # flag the 1-2 most distinctive (furthest from the population centre)
         ranked = sorted(questions, key=lambda q: abs(q['pct_overall'] - 50), reverse=True)
         for q in ranked[:2]:
             q['distinctive'] = True
@@ -1232,12 +1323,16 @@ def build_question_breakdown(results, benchmark_path='benchmark_tables.json'):
     return out
 
 
+# ============================================================
+# PREMIUM REPORT GENERATOR — 15 CALLS WITH RESILIENCE
+# ============================================================
+
 def generate_premium_report(results, api_key=None, progress_callback=None, benchmark_path='benchmark_tables.json'):
     """
-    Generate the complete premium report using 15 focused API calls (spec v2.1).
-
-    progress_callback: optional function(step, total, message) for
-    streaming progress updates to the frontend.
+    Generate the complete premium report using 15 focused API calls with resilience.
+    
+    All calls wrapped with 90s timeout + single retry on timeout.
+    NO PARTIAL REPORTS — if any call fails, entire report fails.
     """
     if not ANTHROPIC_AVAILABLE:
         raise ImportError('anthropic package required. pip install anthropic')
@@ -1248,6 +1343,7 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
     dimensions = results['dimensions']
     patterns = results['patterns']
     variable_highlights = results.get('variable_highlights', [])
+    session_id = results.get('session_id')
 
     total_steps = 15
     step = 0
@@ -1259,17 +1355,17 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
         if progress_callback:
             progress_callback(step, total_steps, message)
 
-    print('Generating premium report — 15 focused calls (spec v2.1)...')
+    print('Generating premium report — 15 focused calls (v2.1 + resilience)...')
 
     # ── Call 1: Opening ──────────────────────────────────────────────────────
     progress('Identifying your most surprising finding...')
-    opening = generate_opening(results, client)
+    opening = generate_opening(results, client, session_id)
 
     # ── Call 2: Overview ─────────────────────────────────────────────────────
     progress('Writing your AI Identity overview...')
-    overview = generate_overview(results, client)
+    overview = generate_overview(results, client, session_id)
 
-    # ── Calls 2-10: Nine dimension profiles ──────────────────────────────────
+    # ── Calls 3-11: Nine dimension profiles ──────────────────────────────────
     dimension_profiles = {}
     dim_order = [
         'reliance', 'trust', 'verification', 'decision_delegation',
@@ -1291,7 +1387,7 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
         if dim_data:
             progress(f'Writing your {dim_labels.get(dim_name, dim_name)} profile...')
             narrative = generate_dimension_profile(
-                dim_name, dim_data, demographics, variable_highlights, client
+                dim_name, dim_data, demographics, variable_highlights, client, session_id
             )
             dimension_profiles[dim_name] = {
                 'label': dim_data['label'],
@@ -1310,21 +1406,21 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
                 'rarity': get_rarity_text(dim_data['percentiles'].get('overall')),
             }
 
-    # ── Cross-dimensional patterns ───────────────────────────────────────────
+    # ── Call 12: Cross-dimensional patterns ───────────────────────────────────
     progress('Analysing cross-dimensional patterns...')
-    cross_dimensional = generate_cross_dimensional(results, client)
+    cross_dimensional = generate_cross_dimensional(results, client, session_id)
 
-    # ── Perception Gap Analysis ──────────────────────────────────────────────
+    # ── Call 13: Perception Gap Analysis ──────────────────────────────────────
     progress('Writing your perception gap analysis...')
-    perception_gap = generate_perception_gap(results, client)
+    perception_gap = generate_perception_gap(results, client, session_id)
 
-    # ── Population Context ───────────────────────────────────────────────────
+    # ── Call 14: Population Context ───────────────────────────────────────────
     progress('Placing you in population context...')
-    population_context = generate_population_context(results, client)
+    population_context = generate_population_context(results, client, session_id)
 
-    # ── Putting This to Work + Human Flourishing ─────────────────────────────
+    # ── Call 15: Putting This to Work + Human Flourishing ─────────────────────
     progress('Writing your Human Flourishing Reflection...')
-    closing = generate_closing(results, client)
+    closing = generate_closing(results, client, session_id)
 
     # ── Per-question breakdown (deterministic, no API) ───────────────────────
     print('  [+] Building per-question breakdown...')
@@ -1337,6 +1433,11 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
             'generated_by': 'HCI AI Identity & Behaviour Assessment',
             'version': '2.1',
             'total_api_calls': 15,
+            'resilience': {
+                'timeout_seconds': CALL_TIMEOUT_SECONDS,
+                'max_retries': MAX_RETRIES,
+                'session_id': session_id,
+            },
         },
         'headline': results.get('headline'),
         'opening': opening,
@@ -1368,7 +1469,7 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
         ),
     }
 
-    print(f'Premium report generation complete. ({total_steps} API calls)')
+    print(f'Premium report generation complete. (15 API calls, 90s timeout + retry)')
     return report
 
 
@@ -1377,21 +1478,20 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
 # ============================================================
 
 if __name__ == '__main__':
-    import sys
-    import os
-
-    print('Report Generator v3 — Test')
+    print('Report Generator v3 + Resilience Layer')
     print('Free result generator: ready (no API key needed)')
     print('Premium generator: requires ANTHROPIC_API_KEY')
     print()
-    print('Structure: 15 focused API calls (spec v2.1)')
+    print('Structure: 15 focused API calls (spec v2.1 + resilience)')
     print('  1: Most Surprising Finding')
-    print('  2: Your AI Identity — Overview (no archetype)')
+    print('  2: Your AI Identity — Overview')
     print('  3-11: Nine dimension profiles')
-    print('  12: Cross-dimensional (interesting combinations)')
+    print('  12: Cross-dimensional patterns')
     print('  13: Perception Gap Analysis')
     print('  14: Population Context')
     print('  15: Putting This to Work + Human Flourishing')
     print()
+    print('Resilience: 90s timeout per call, single retry on timeout')
+    print('NO PARTIAL REPORTS — fails hard if any call fails twice')
     print('Estimated generation time: 40-70 seconds')
     print('Estimated cost per report: ~$0.08-0.12')
