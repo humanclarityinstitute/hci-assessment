@@ -924,19 +924,24 @@ Action: Check the Railway logs and Supabase row for this session to investigate.
 
         # 2) Customer alert — friendly, reassuring tone
         if delivery_email:
-            customer_subject = 'Your HCI AI Assessment Report — We\'re Investigating'
+            customer_subject = 'Your HCI AI Assessment Report — We\'re Resolving This'
             customer_body = f"""Hi there,
 
-We encountered an issue while generating your premium report. Our team is investigating, and we'll get back to you shortly.
+We encountered an issue while generating your premium report. We apologise for the inconvenience — our team is investigating right now, and we're committed to getting your report to you within 48 hours.
 
-Your assessment data is safe and stored. We'll regenerate your report as soon as the issue is resolved — no further action needed from you.
+Your assessment data is completely safe and stored securely. We'll regenerate your report as soon as the issue is resolved — no further action needed from you.
+
+What we're offering you:
+• Your premium report, regenerated and sent within 48 hours
+• Two free retake tokens so you can benchmark your progress in the future and see how your relationship with AI has evolved
 
 Session ID (for reference): {session_id}
 Timestamp: {timestamp}
 
-If you have any questions in the meantime, please reply to this email.
+If you have any questions or concerns, please reach out to support@humanclarityinstitute.com — we're here to help.
 
-Thanks for your patience,
+Thanks for your patience and understanding.
+
 Human Clarity Institute
 """
 
