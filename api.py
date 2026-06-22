@@ -586,7 +586,7 @@ def premium():
 
         # 3) Payment confirmed — now, and only now, spend on generation.
         api_key = os.environ.get('ANTHROPIC_API_KEY')
-        report = generate_premium_report(full_results, session_id=session_id, api_key=api_key)
+        report = generate_premium_report(full_results, api_key=api_key)
 
         # Store immediately so refresh works
         if session_id:
