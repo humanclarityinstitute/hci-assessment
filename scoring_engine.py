@@ -292,6 +292,11 @@ def get_dimension_percentiles(question_scores, benchmarks, demographics):
     dimension's items has benchmark data for that segment; the average is
     taken over whichever items have it.
 
+    Age band consolidation: users aged 'Over 65' are benchmarked against
+    the merged '55+' pool (55-65 + Over 65 combined). Users aged '55-65'
+    are benchmarked against the '55-65' band only. This preserves granularity
+    for younger seniors while giving 65+ users a larger, more stable sample.
+
     Returns {'overall': p, 'age_group': p, ...} with rounded percentiles.
     """
     # 'overall' plus any demographic segment we can resolve
@@ -299,22 +304,43 @@ def get_dimension_percentiles(question_scores, benchmarks, demographics):
     for seg, bench_key in _SEGMENTS:
         demo_val = demographics.get(_DEMO_FIELD[seg])
         if demo_val:
-            targets.append((seg, bench_key, demo_val))
+            # Age band consolidation: flag 'Over 65' for special handling
+            if seg == 'age_group' and demo_val == 'Over 65':
+                targets.append((seg, bench_key, demo_val, True))  # consolidate flag
+            else:
+                targets.append((seg, bench_key, demo_val, False))
 
     result = {}
-    for seg, bench_key, demo_val in targets:
+    for target in targets:
+        if len(target) == 4:
+            seg, bench_key, demo_val, consolidate = target
+        else:
+            seg, bench_key, demo_val = target
+            consolidate = False
+
         item_percentiles = []
         for qs in question_scores.values():
             bench = benchmarks.get(qs['variable'])
             if not bench:
                 continue
+            
             if seg == 'overall':
                 dist = bench.get('overall')
+            elif consolidate:
+                # Merge 55-65 and Over 65 distributions for 65+ users
+                dist_55_65 = bench.get(bench_key, {}).get('55-65', [])
+                dist_over_65 = bench.get(bench_key, {}).get('Over 65', [])
+                dist = (dist_55_65 if isinstance(dist_55_65, list) else []) + \
+                       (dist_over_65 if isinstance(dist_over_65, list) else [])
+                if not dist:
+                    dist = None
             else:
                 dist = bench.get(bench_key, {}).get(demo_val)
+            
             p = percentile_of_answer(qs['raw'], dist, qs['reversed'])
             if p is not None:
                 item_percentiles.append(p)
+        
         if item_percentiles:
             result[seg] = round(sum(item_percentiles) / len(item_percentiles), 0)
 
@@ -535,6 +561,9 @@ def _make_highlight(card_type, variable, raw_answer, benchmarks, demographics):
     Package one variable into the shape the results page expects:
     type, question text, the participant's raw answer, their percentile
     (overall + age), and the 1-7 distribution to draw the histogram from.
+    
+    Age band consolidation: if user is 'Over 65', merge the 55-65 and Over 65
+    distributions to calculate their age percentile.
     """
     bench = benchmarks.get(variable)
     if not bench:
@@ -544,12 +573,32 @@ def _make_highlight(card_type, variable, raw_answer, benchmarks, demographics):
 
     overall_dist = bench.get('dist_overall') or _bin_counts(bench.get('overall'))
     age_dist = None
+    
     if age:
-        age_dist = (bench.get('dist_by_age', {}).get(age)
-                    or _bin_counts(bench.get('by_age', {}).get(age)))
+        if age == 'Over 65':
+            # Consolidate: merge 55-65 and Over 65 distributions
+            dist_55_65 = bench.get('by_age', {}).get('55-65', [])
+            dist_over_65 = bench.get('by_age', {}).get('Over 65', [])
+            combined = (dist_55_65 if dist_55_65 else []) + (dist_over_65 if dist_over_65 else [])
+            age_dist = _bin_counts(combined) if combined else None
+        else:
+            # Standard lookup for 55-65 and other age bands
+            age_dist = (bench.get('dist_by_age', {}).get(age)
+                       or _bin_counts(bench.get('by_age', {}).get(age)))
 
     overall_pct = percentile_of_answer(raw_answer, bench.get('overall'))
-    age_pct = percentile_of_answer(raw_answer, bench.get('by_age', {}).get(age)) if age else None
+    
+    # Calculate age percentile
+    age_pct = None
+    if age:
+        if age == 'Over 65':
+            # Merge distributions for 65+ users
+            dist_55_65 = bench.get('by_age', {}).get('55-65', [])
+            dist_over_65 = bench.get('by_age', {}).get('Over 65', [])
+            combined = (dist_55_65 if dist_55_65 else []) + (dist_over_65 if dist_over_65 else [])
+            age_pct = percentile_of_answer(raw_answer, combined) if combined else None
+        else:
+            age_pct = percentile_of_answer(raw_answer, bench.get('by_age', {}).get(age))
 
     return {
         'type': card_type,
