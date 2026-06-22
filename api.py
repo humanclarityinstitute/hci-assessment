@@ -974,10 +974,115 @@ Human Clarity Institute
         return False
 
 
+
 # ============================================================
-# LOCAL TEST
+# RECOVERY ENDPOINT — regenerate + resend a failed report
 # ============================================================
 
+@app.route('/recover-report', methods=['POST'])
+def recover_report():
+    """
+    Admin recovery endpoint: regenerate and resend a report for a paid customer
+    whose report failed to generate.
+
+    POST to /recover-report with JSON:
+      {
+        "session_id": "the_session_id"
+      }
+
+    Retrieves full_results and report_email from Supabase, regenerates the
+    report, stores it, and sends the email.
+    """
+    try:
+        request_data = request.get_json()
+        if not request_data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        session_id = request_data.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+
+        # Retrieve their stored data from Supabase
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+
+        if not supabase_url or not supabase_key:
+            return jsonify({'success': False, 'error': 'Storage not configured'}), 500
+
+        import urllib.request
+        import urllib.parse
+
+        url = (
+            f'{supabase_url}/rest/v1/assessment_responses'
+            f'?session_id=eq.{urllib.parse.quote(session_id)}'
+            f'&select=full_results,report_email,stripe_session_id,paid'
+            f'&limit=1'
+        )
+        req = urllib.request.Request(
+            url,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+            }
+        )
+        response = urllib.request.urlopen(req, timeout=10)
+        records = json.loads(response.read())
+
+        if not records:
+            return jsonify({'success': False, 'error': 'Session not found'}), 404
+
+        record = records[0]
+        full_results = record.get('full_results')
+        report_email = record.get('report_email')
+        paid = record.get('paid')
+
+        if not full_results:
+            return jsonify({'success': False, 'error': 'No results stored for this session'}), 404
+
+        if not paid:
+            return jsonify({'success': False, 'error': 'This session is not marked as paid'}), 402
+
+        if not report_email:
+            return jsonify({'success': False, 'error': 'No delivery email on file'}), 400
+
+        print(f'Recovering report for session {session_id}, email {report_email}')
+
+        # Generate the report
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        report = generate_premium_report(full_results, api_key=api_key)
+
+        # Store it
+        store_premium_report(session_id, report)
+
+        # Send email with PDF
+        if report_email:
+            try:
+                resend_key = os.environ.get('RESEND_API_KEY')
+                if resend_key:
+                    demographics = full_results.get('demographics', {})
+                    report_url = f'{REPORT_BASE_URL}?session_id={session_id}'
+                    pdf_bytes = build_report_pdf(report, REPORT_TEMPLATE_PATH, demographics)
+                    pdf_url = upload_report_pdf(session_id, pdf_bytes) if pdf_bytes else None
+                    send_report_email(
+                        report_email, report, demographics, resend_key,
+                        report_url=report_url, pdf_bytes=pdf_bytes, pdf_url=pdf_url,
+                    )
+                    print(f'Recovery email sent to {report_email}')
+                else:
+                    print('RESEND_API_KEY not configured — skipping email')
+            except Exception as email_err:
+                print(f'Recovery email/PDF step failed: {email_err}')
+                traceback.print_exc()
+
+        return jsonify({
+            'success': True,
+            'message': f'Report regenerated and sent to {report_email}',
+        })
+
+    except Exception as e:
+        print(f'Recovery endpoint error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Report recovery failed'}), 500
 if __name__ == '__main__':
     print('HCI Assessment API — Version 5.2')
     print('=' * 40)
