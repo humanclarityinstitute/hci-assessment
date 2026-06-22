@@ -903,9 +903,9 @@ Action: Check the Railway logs and Supabase row for this session to investigate.
 
         ops_payload = {
             'from': 'reports@humanclarityinstitute.com',
-            'to': ops_email,
+            'to': [ops_email],
             'subject': ops_subject,
-            'text': ops_body,
+            'html': ops_body,
         }
 
         ops_body_json = json.dumps(ops_payload).encode('utf-8')
