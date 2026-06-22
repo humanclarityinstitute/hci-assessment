@@ -1,6 +1,15 @@
 """
 HCI AI Identity & Behaviour Assessment
-API Layer — Version 5
+API Layer — Version 5.2
+
+Changes from v5.1:
+- notify_timeout() — send internal alerts (to info@humanclarityinstitute.com)
+  and customer alerts (to delivery_email) when report generation fails or times out.
+  Integrated into /premium exception handler; non-fatal (never blocks error response).
+
+Changes from v5.0:
+- /premium now passes session_id to generate_premium_report() for reporting
+  and caching purposes.
 
 Changes from v4:
 - No structural change to the /score response: it already forwards
@@ -14,8 +23,6 @@ Changes from v4:
       (reverse-aware), replacing the previous single-variable lookup.
     * benchmark_tables.json now also carries compact dist_* tables.
   No payload fields added or removed — existing consumers are unaffected.
-- /premium now passes session_id into generate_premium_report() so the report
-  can link back to the web report and be cached against the session.
 
 Changes from v3:
 - get_stored_report() — retrieve cached premium report from Supabase
@@ -26,7 +33,7 @@ Changes from v3:
 - /get-results endpoint for session-based retrieval
 - store_response updated to save session_id, full_results, report_email
 
-Changes in this revision (row-integrity fix):
+Changes in earlier v5 revisions (row-integrity fix):
 - /score now accepts the session_id sent by the frontend instead of minting
   its own (frontend owns a single stable id for the whole journey). Falls back
   to a generated id only if none is supplied.
@@ -35,8 +42,6 @@ Changes in this revision (row-integrity fix):
   Relies on the UNIQUE(session_id) constraint on assessment_responses.
 - Removed the stray store_response(..., result_type='premium') insert at the
   end of /premium that was creating empty premium stub rows.
-- /premium now passes session_id to generate_premium_report() for reporting
-  and caching purposes.
 """
 
 from flask import Flask, request, jsonify
@@ -630,8 +635,16 @@ def premium():
         })
 
     except Exception as e:
+        error_msg = str(e)
+        error_type = 'generation_timeout' if 'timeout' in error_msg.lower() else 'generation_error'
+        
         print(f'Premium endpoint error: {e}')
         traceback.print_exc()
+        
+        # Send alerts — non-fatal, never blocks the error response
+        if session_id and delivery_email:
+            notify_timeout(session_id, delivery_email, error_msg, error_type=error_type)
+        
         return jsonify({
             'success': False,
             'error': 'Report generation failed — please contact support'
@@ -854,18 +867,120 @@ def fetch_stripe_session(stripe_session_id):
         return None
 
 
+def notify_timeout(session_id, delivery_email, error_msg, error_type='generation_timeout'):
+    """
+    Send alert emails when a report fails to generate or times out.
+
+    - Internal alert to info@humanclarityinstitute.com (minimal detail: session + error type)
+    - Customer alert to delivery_email (friendly "we're investigating" message)
+
+    Non-fatal: notification failures never block the main flow.
+    """
+    try:
+        resend_key = os.environ.get('RESEND_API_KEY')
+        if not resend_key:
+            print('RESEND_API_KEY not configured — skipping failure notifications')
+            return False
+
+        import urllib.request
+
+        ops_email = 'info@humanclarityinstitute.com'
+        timestamp = datetime.utcnow().isoformat()
+
+        # 1) Internal alert — minimal detail for ops triage
+        ops_subject = f'⚠️ Report {error_type}: session {session_id}'
+        ops_body = f"""Report generation failed.
+
+Session: {session_id}
+Error type: {error_type}
+Timestamp: {timestamp}
+Customer email: {delivery_email}
+
+Error details: {error_msg}
+
+Action: Check the Railway logs and Supabase row for this session to investigate.
+"""
+
+        ops_payload = {
+            'from': 'reports@humanclarityinstitute.com',
+            'to': ops_email,
+            'subject': ops_subject,
+            'text': ops_body,
+        }
+
+        ops_body_json = json.dumps(ops_payload).encode('utf-8')
+        ops_req = urllib.request.Request(
+            'https://api.resend.com/emails',
+            data=ops_body_json,
+            headers={
+                'Authorization': f'Bearer {resend_key}',
+                'Content-Type': 'application/json',
+                'User-Agent': 'HCI-Reports/1.0',
+            },
+            method='POST',
+        )
+        urllib.request.urlopen(ops_req, timeout=10)
+        print(f'Internal alert sent to {ops_email} for session {session_id}')
+
+        # 2) Customer alert — friendly, reassuring tone
+        if delivery_email:
+            customer_subject = 'Your HCI AI Assessment Report — We\'re Investigating'
+            customer_body = f"""Hi there,
+
+We encountered an issue while generating your premium report. Our team is investigating, and we'll get back to you shortly.
+
+Your assessment data is safe and stored. We'll regenerate your report as soon as the issue is resolved — no further action needed from you.
+
+Session ID (for reference): {session_id}
+Timestamp: {timestamp}
+
+If you have any questions in the meantime, please reply to this email.
+
+Thanks for your patience,
+Human Clarity Institute
+"""
+
+            customer_payload = {
+                'from': 'reports@humanclarityinstitute.com',
+                'to': delivery_email,
+                'subject': customer_subject,
+                'text': customer_body,
+            }
+
+            customer_body_json = json.dumps(customer_payload).encode('utf-8')
+            customer_req = urllib.request.Request(
+                'https://api.resend.com/emails',
+                data=customer_body_json,
+                headers={
+                    'Authorization': f'Bearer {resend_key}',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'HCI-Reports/1.0',
+                },
+                method='POST',
+            )
+            urllib.request.urlopen(customer_req, timeout=10)
+            print(f'Customer alert sent to {delivery_email} for session {session_id}')
+
+        return True
+
+    except Exception as e:
+        print(f'Failure notification failed (non-critical): {e}')
+        traceback.print_exc()
+        return False
+
+
 # ============================================================
 # LOCAL TEST
 # ============================================================
 
 if __name__ == '__main__':
-    print('HCI Assessment API — Version 5.1')
+    print('HCI Assessment API — Version 5.2')
     print('=' * 40)
     print(f'Benchmark file: {BENCHMARK_PATH}')
     print(f'Benchmark exists: {os.path.exists(BENCHMARK_PATH)}')
     print()
-    print('v5.1: /premium now passes session_id to generate_premium_report()')
-    print('      for reporting and caching purposes. No other changes.')
+    print('v5.2: notify_timeout() sends failure alerts to ops + customer.')
+    print('      Integrated into /premium exception handler (non-fatal).')
     print()
     print('Starting API server on http://localhost:5000')
     app.run(debug=True, port=5000)
