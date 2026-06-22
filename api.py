@@ -979,20 +979,80 @@ Human Clarity Institute
 # RECOVERY ENDPOINT — regenerate + resend a failed report
 # ============================================================
 
-@app.route('/recover-report', methods=['POST'])
+@app.route('/recover-report', methods=['GET', 'POST'])
 def recover_report():
     """
     Admin recovery endpoint: regenerate and resend a report for a paid customer
     whose report failed to generate.
 
-    POST to /recover-report with JSON:
-      {
-        "session_id": "the_session_id"
-      }
+    GET: shows a simple form where you paste the session_id
+    POST: accepts JSON with {"session_id": "the_session_id"}
 
     Retrieves full_results and report_email from Supabase, regenerates the
     report, stores it, and sends the email.
     """
+    # GET request — show the form
+    if request.method == 'GET':
+        return '''<!DOCTYPE html>
+<html>
+<head>
+    <title>HCI Report Recovery</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        input { width: 100%; padding: 8px; box-sizing: border-box; font-size: 14px; }
+        button { background-color: #4054B2; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #2d3a7f; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+    <h1>HCI Report Recovery</h1>
+    <p>Paste the customer's session ID to regenerate and resend their report.</p>
+    
+    <form onsubmit="submitForm(event)">
+        <div class="form-group">
+            <label for="session_id">Session ID:</label>
+            <input type="text" id="session_id" name="session_id" placeholder="e.g., 3fdea24fb107bf3d" required>
+        </div>
+        <button type="submit">Recover Report</button>
+    </form>
+    
+    <div id="result"></div>
+    
+    <script>
+        async function submitForm(event) {
+            event.preventDefault();
+            const sessionId = document.getElementById('session_id').value;
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p>Processing...</p>';
+            
+            try {
+                const response = await fetch('/recover-report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<div class="result success">✓ Success! Report regenerated and sent to ${data.message.split('to ')[1]}</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">✗ Error: ${data.error}</div>`;
+                }
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="result error">✗ Network error: ${err.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>'''
+    
+    # POST request — process the recovery
     try:
         request_data = request.get_json()
         if not request_data:
