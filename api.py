@@ -560,6 +560,23 @@ def premium():
         if not session_id and stripe_session:
             session_id = stripe_session.get('client_reference_id')
 
+        # Delivery email: PREFER the email entered at Stripe checkout (the
+        # verified, reliable address where the customer expects their purchase),
+        # falling back to any assessment-page email passed through. The
+        # assessment-page email is primarily a marketing lead; the payment
+        # email is the delivery address.
+        stripe_email = None
+        if stripe_session:
+            details = stripe_session.get('customer_details') or {}
+            stripe_email = details.get('email') or stripe_session.get('customer_email')
+        delivery_email = stripe_email or report_email
+
+        # Stamp the row PAID before generation runs, so a "paid but no report"
+        # state is always cleanly queryable regardless of where generation might
+        # fail. Non-fatal: never block generation on this.
+        if session_id:
+            mark_row_paid(session_id, delivery_email, stripe_session_id)
+
         # 3) Payment confirmed — now, and only now, spend on generation.
         api_key = os.environ.get('ANTHROPIC_API_KEY')
         report = generate_premium_report(full_results, api_key=api_key)
@@ -568,10 +585,11 @@ def premium():
         if session_id:
             store_premium_report(session_id, report)
 
-        # Send email (lightweight summary + full-report PDF attachment).
+        # Send email (lightweight summary + full-report PDF attachment) to the
+        # delivery_email resolved above (Stripe payment email preferred).
         # Fully isolated: a PDF or email failure must never fail /premium —
         # the report is already generated and stored, and the page renders it.
-        if report_email:
+        if delivery_email:
             try:
                 resend_key = os.environ.get('RESEND_API_KEY')
                 if resend_key:
@@ -588,11 +606,11 @@ def premium():
                     # in the email as a fallback to the attachment.
                     pdf_url = upload_report_pdf(session_id, pdf_bytes) if pdf_bytes else None
                     send_report_email(
-                        report_email, report, demographics, resend_key,
+                        delivery_email, report, demographics, resend_key,
                         report_url=report_url, pdf_bytes=pdf_bytes, pdf_url=pdf_url,
                     )
                     print(
-                        f'Report email sent to {report_email}'
+                        f'Report email sent to {delivery_email}'
                         + (' with PDF' if pdf_bytes else ' (summary only — no PDF)')
                         + (' + stored link' if pdf_url else '')
                     )
@@ -602,7 +620,7 @@ def premium():
                 print(f'Email/PDF step failed (non-fatal): {email_err}')
                 traceback.print_exc()
         else:
-            print('No report_email provided — skipping email')
+            print('No delivery email available — skipping email')
 
         return jsonify({
             'success': True,
@@ -615,6 +633,195 @@ def premium():
         return jsonify({
             'success': False,
             'error': 'Report generation failed — please contact support'
+        }), 500
+
+
+def mark_row_paid(session_id, delivery_email=None, stripe_session_id=None):
+    """
+    Stamp the assessment row as PAID (PATCH) the moment payment is verified,
+    BEFORE generation runs. This makes "paid but no report" a clean, queryable
+    state no matter where generation might later fail. Non-fatal: any failure
+    here is logged and ignored so it can never block report generation.
+
+    Writes:
+      paid = true, paid_at = now, and (if available) the delivery email and the
+      Stripe checkout session id, for support/recovery cross-referencing.
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+        if not supabase_url or not supabase_key or not session_id:
+            return False
+
+        import urllib.request
+        import urllib.parse
+
+        record = {
+            'paid': True,
+            'paid_at': datetime.utcnow().isoformat(),
+        }
+        if delivery_email:
+            record['report_email'] = delivery_email
+        if stripe_session_id:
+            record['stripe_session_id'] = stripe_session_id
+
+        body = json.dumps(record).encode('utf-8')
+        url = (
+            f'{supabase_url}/rest/v1/assessment_responses'
+            f'?session_id=eq.{urllib.parse.quote(session_id)}'
+        )
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Prefer': 'return=minimal',
+            },
+            method='PATCH',
+        )
+        urllib.request.urlopen(req, timeout=10)
+        print(f'Row stamped paid for session {session_id}')
+        return True
+    except Exception as e:
+        print(f'mark_row_paid failed (non-critical): {e}')
+        return False
+
+
+# Lookup key for the report price in Stripe. The price amount/currency live in
+# the Stripe dashboard against this key, so the price can be changed there
+# (transfer the lookup key to a new price) without any code change.
+REPORT_PRICE_LOOKUP_KEY = os.environ.get('REPORT_PRICE_LOOKUP_KEY', 'hci_report_standard')
+
+# Where Stripe sends the customer after checkout. Success carries Stripe's own
+# checkout session id, which /premium reads as stripe_session_id and verifies.
+CHECKOUT_SUCCESS_URL = os.environ.get(
+    'CHECKOUT_SUCCESS_URL',
+    REPORT_BASE_URL + '?stripe_session_id={CHECKOUT_SESSION_ID}',
+)
+CHECKOUT_CANCEL_URL = os.environ.get(
+    'CHECKOUT_CANCEL_URL',
+    'https://humanclarityinstitute.com/ai-assessment/results',
+)
+
+
+def _stripe_form_post(url, fields):
+    """POST application/x-www-form-urlencoded to the Stripe API. Returns parsed
+    JSON, or raises. Stripe's API takes form-encoded bodies (incl. bracketed
+    keys for nested params)."""
+    import urllib.request
+    import urllib.parse
+
+    stripe_key = os.environ.get('STRIPE_SECRET_KEY')
+    if not stripe_key:
+        raise RuntimeError('STRIPE_SECRET_KEY not set')
+
+    data = urllib.parse.urlencode(fields).encode('utf-8')
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            'Authorization': f'Bearer {stripe_key}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        method='POST',
+    )
+    response = urllib.request.urlopen(req, timeout=15)
+    return json.loads(response.read())
+
+
+def _resolve_price_id():
+    """Resolve the active Stripe Price ID from the lookup key, so price changes
+    are made in the Stripe dashboard (no code change). Returns the price id or
+    None on failure."""
+    try:
+        import urllib.request
+        import urllib.parse
+
+        stripe_key = os.environ.get('STRIPE_SECRET_KEY')
+        if not stripe_key:
+            return None
+
+        q = urllib.parse.urlencode({
+            'lookup_keys[]': REPORT_PRICE_LOOKUP_KEY,
+            'active': 'true',
+            'limit': 1,
+        })
+        req = urllib.request.Request(
+            f'https://api.stripe.com/v1/prices?{q}',
+            headers={'Authorization': f'Bearer {stripe_key}'},
+        )
+        import urllib.request as _u
+        resp = _u.urlopen(req, timeout=15)
+        data = json.loads(resp.read())
+        items = data.get('data') or []
+        if items:
+            return items[0]['id']
+        print(f'No active price found for lookup key {REPORT_PRICE_LOOKUP_KEY}')
+        return None
+    except Exception as e:
+        print(f'Price lookup failed: {e}')
+        return None
+
+
+@app.route('/create-checkout', methods=['POST'])
+def create_checkout():
+    """
+    Create a Stripe Checkout Session in code and return its hosted URL.
+
+    Replaces the old fixed Payment Link. Sets client_reference_id to the
+    assessment session_id so the paid checkout is matched back to the right
+    row, enables promotion codes (so 100%-off trial/test codes work), and
+    collects the customer email for delivery. The price is resolved from the
+    lookup key, so it can be changed in the Stripe dashboard with no code change.
+    """
+    try:
+        request_data = request.get_json() or {}
+        session_id = request_data.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+
+        if not os.environ.get('STRIPE_SECRET_KEY'):
+            return jsonify({
+                'success': False,
+                'error': 'Checkout is temporarily unavailable. Please try again later.'
+            }), 503
+
+        price_id = _resolve_price_id()
+        if not price_id:
+            return jsonify({
+                'success': False,
+                'error': 'Could not determine the product price. Please contact support.'
+            }), 500
+
+        fields = {
+            'mode': 'payment',
+            'line_items[0][price]': price_id,
+            'line_items[0][quantity]': 1,
+            'client_reference_id': session_id,
+            'allow_promotion_codes': 'true',
+            'success_url': CHECKOUT_SUCCESS_URL,
+            'cancel_url': CHECKOUT_CANCEL_URL,
+        }
+        sess = _stripe_form_post('https://api.stripe.com/v1/checkout/sessions', fields)
+
+        checkout_url = sess.get('url')
+        if not checkout_url:
+            print(f'Checkout session created but no URL returned: {sess}')
+            return jsonify({
+                'success': False,
+                'error': 'Could not start checkout. Please try again.'
+            }), 500
+
+        return jsonify({'success': True, 'checkout_url': checkout_url})
+
+    except Exception as e:
+        print(f'Create-checkout error: {e}')
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Could not start checkout. Please try again.'
         }), 500
 
 
