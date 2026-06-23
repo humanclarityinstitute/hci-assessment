@@ -6,22 +6,22 @@
   <title>Your AI Identity Report — Human Clarity Institute</title>
   <style>
     /* ════════════════════════════════════════════════════════════════
-   ASTRA WORDPRESS THEME OVERRIDES
-   Removes Astra styling to ensure HCI design system applies cleanly
-   ════════════════════════════════════════════════════════════════ */
+       ASTRA WORDPRESS THEME OVERRIDES
+       Removes Astra styling to ensure HCI design system applies cleanly
+       ════════════════════════════════════════════════════════════════ */
+    .entry-content,
+    .entry-content > div,
+    .ast-container,
+    .site-content .ast-container,
+    .ast-article-single,
+    .ast-article-single > .entry-content,
+    .page-content,
+    .entry-header {
+      max-width: 100% !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
 
-.entry-content,
-.entry-content > div,
-.ast-container,
-.site-content .ast-container,
-.ast-article-single,
-.ast-article-single > .entry-content,
-.page-content,
-.entry-header {
-  max-width: 100% !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
     /* ============================================================
        HCI REPORT DESIGN SYSTEM — Complete CSS
        Typography: 10.5pt body, 1.2 line-height
@@ -408,7 +408,86 @@
   </style>
 </head>
 <body>
-<div class="report" id="hci-report">
+
+<!-- ══════════════════════════════════════════════════════════════
+     LOADING STATE — Spinner + Progress Steps
+     ══════════════════════════════════════════════════════════════ -->
+<div id="hci-loading" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 40px 20px; background: var(--color-bg-light);">
+  <!-- Standard rotating spinner -->
+  <div id="hci-spinner" style="width: 48px; height: 48px; margin-bottom: 40px; border: 4px solid #e0e0e0; border-top: 4px solid #0066cc; border-radius: 50%; animation: hci-spinner-spin 1s linear infinite;"></div>
+  
+  <h2 style="font-size: 22px; font-weight: 700; color: var(--color-text); margin-bottom: 10px; text-align: center;">Generating your AI Identity Report</h2>
+  <p style="font-size: 14px; color: var(--color-text-secondary); text-align: center; margin-bottom: 12px; max-width: 420px; line-height: 1.6;">Your report is being written specifically for your profile. This takes about 1–2 minutes.</p>
+  <p style="font-size: 13px; color: var(--color-text-secondary); text-align: center; margin-bottom: 40px; max-width: 420px; line-height: 1.6; font-weight: 500;"><strong style="color: var(--color-text);">Please keep this window open.</strong> Your report will appear here when ready, and you'll also receive it as a link and PDF via email.</p>
+  
+  <div style="width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 0;">
+    <div class="hci-progress-step" id="step-0" style="opacity: 1;">
+      <div class="hci-progress-icon" style="width: 32px; height: 32px; border-radius: 50%; background: var(--color-primary-light); border: 2px solid var(--color-primary); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; color: var(--color-primary); font-weight: 600;">◎</div>
+      <div style="font-size: 14px; color: var(--color-text); font-weight: 500;">Identifying your most surprising finding</div>
+    </div>
+    <div class="hci-progress-step" id="step-1" style="opacity: 0.3;">
+      <div class="hci-progress-icon" style="width: 32px; height: 32px; border-radius: 50%; background: var(--color-primary-light); border: 2px solid var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; color: var(--color-text-tertiary); font-weight: 600;">◈</div>
+      <div style="font-size: 14px; color: var(--color-text-tertiary); font-weight: 500;">Building your benchmark dashboard</div>
+    </div>
+    <div class="hci-progress-step" id="step-2" style="opacity: 0.3;">
+      <div class="hci-progress-icon" style="width: 32px; height: 32px; border-radius: 50%; background: var(--color-primary-light); border: 2px solid var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; color: var(--color-text-tertiary); font-weight: 600;">◈</div>
+      <div style="font-size: 14px; color: var(--color-text-tertiary); font-weight: 500;">Analyzing distinctive combinations</div>
+    </div>
+    <div class="hci-progress-step" id="step-3" style="opacity: 0.3;">
+      <div class="hci-progress-icon" style="width: 32px; height: 32px; border-radius: 50%; background: var(--color-primary-light); border: 2px solid var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; color: var(--color-text-tertiary); font-weight: 600;">◈</div>
+      <div style="font-size: 14px; color: var(--color-text-tertiary); font-weight: 500;">Writing your behaviour story</div>
+    </div>
+    <div class="hci-progress-step" id="step-4" style="opacity: 0.3;">
+      <div class="hci-progress-icon" style="width: 32px; height: 32px; border-radius: 50%; background: var(--color-primary-light); border: 2px solid var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; color: var(--color-text-tertiary); font-weight: 600;">◈</div>
+      <div style="font-size: 14px; color: var(--color-text-tertiary); font-weight: 500;">Analyzing cross-dimensional patterns</div>
+    </div>
+    <div class="hci-progress-step" id="step-5" style="opacity: 0.3;">
+      <div class="hci-progress-icon" style="width: 32px; height: 32px; border-radius: 50%; background: var(--color-primary-light); border: 2px solid var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; color: var(--color-text-tertiary); font-weight: 600;">◐</div>
+      <div style="font-size: 14px; color: var(--color-text-tertiary); font-weight: 500;">Finalizing your report</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     ERROR STATE — Fallback if generation fails
+     ══════════════════════════════════════════════════════════════ -->
+<div id="hci-error" style="display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 40px 20px; background: var(--color-bg-light); text-align: center;">
+  <h2 style="font-size: 20px; font-weight: 700; color: var(--color-text); margin-bottom: 16px;">We're generating your report right now</h2>
+  <div style="font-size: 14px; color: var(--color-text-secondary); max-width: 520px; line-height: 1.6; text-align: left; margin-bottom: 24px;">
+    <p style="margin-bottom: 14px;">We encountered a brief delay while generating your premium report, but our team is on it right now and working to get it to you within minutes. In rare cases where technical issues persist, you'll have your report no later than 48 hours.</p>
+    
+    <p style="margin-bottom: 12px; font-weight: 600; color: var(--color-text);">In the meantime:</p>
+    <ul style="list-style: disc; margin-bottom: 14px; padding-left: 20px; text-align: left;">
+      <li style="margin-bottom: 8px;">Check your email (including spam folder) — your report should arrive very soon</li>
+      <li style="margin-bottom: 8px;">Your assessment data is completely secure</li>
+      <li>You'll also receive two free retake tokens to benchmark your progress in the future</li>
+    </ul>
+    
+    <p>If your report doesn't arrive within 48 hours, or if you have any questions, email <a href="mailto:support@humanclarityinstitute.com" style="color: var(--color-primary); text-decoration: none; font-weight: 500;">support@humanclarityinstitute.com</a> — we'll either deliver your report or provide a full refund. No exceptions.</p>
+  </div>
+  <a href="/ai-assessment/results" style="display: inline-block; padding: 12px 24px; border: 1px solid var(--color-border); border-radius: var(--border-radius-md); font-size: 14px; font-weight: 500; color: var(--color-primary); text-decoration: none;">Back to your results</a>
+</div>
+
+<style>
+@keyframes hci-spinner-spin {
+  to { transform: rotate(360deg); }
+}
+
+.hci-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+  transition: opacity 0.4s ease;
+}
+
+.hci-progress-step:last-child {
+  border-bottom: none;
+}
+</style>
+
+<div class="report" id="hci-report" style="display: none;">
 
   <!-- ═══════════════════════════════════════════════════════════
        REPORT HEADER
@@ -534,8 +613,60 @@
 (function() {
 'use strict';
 
-// ── UTILITY FUNCTIONS ──────────────────────────────────────────
+const API = 'https://web-production-381d3.up.railway.app';
 
+// ── PROGRESS STEP ANIMATION ────────────────────────────────────
+let currentStep = -1;
+const stepDuration = 13300; // ~13.3s per step × 6 = 80s total (matches actual generation time)
+
+function setStep(n) {
+  if (currentStep >= 0) {
+    const prev = document.getElementById(`step-${currentStep}`);
+    if (prev) {
+      prev.style.opacity = '0.6';
+      const icon = prev.querySelector('.hci-progress-icon');
+      if (icon) {
+        icon.style.background = 'var(--color-bg-secondary)';
+        icon.style.borderColor = 'var(--color-border)';
+        icon.style.color = 'var(--color-text-secondary)';
+        icon.textContent = '✓';
+      }
+    }
+  }
+  currentStep = n;
+  const el = document.getElementById(`step-${n}`);
+  if (el) {
+    el.style.opacity = '1';
+    const icon = el.querySelector('.hci-progress-icon');
+    if (icon) {
+      icon.style.background = 'var(--color-primary-light)';
+      icon.style.borderColor = 'var(--color-primary)';
+      icon.style.color = 'var(--color-primary)';
+    }
+  }
+}
+
+// ── SHOW/HIDE STATES ───────────────────────────────────────────
+function showLoading() {
+  document.getElementById('hci-loading').style.display = 'flex';
+  document.getElementById('hci-error').style.display = 'none';
+  document.getElementById('hci-report').style.display = 'none';
+}
+
+function showError() {
+  document.getElementById('hci-loading').style.display = 'none';
+  document.getElementById('hci-error').style.display = 'flex';
+  document.getElementById('hci-report').style.display = 'none';
+}
+
+function showReport() {
+  document.getElementById('hci-loading').style.display = 'none';
+  document.getElementById('hci-error').style.display = 'none';
+  document.getElementById('hci-report').style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── FORMAT UTILITIES ───────────────────────────────────────────
 function plainEnglish(p) {
   if (!p && p !== 0) return '';
   p = parseInt(p);
@@ -564,7 +695,6 @@ function formatProse(text) {
 }
 
 // ── DIMENSION CARD BUILDER ─────────────────────────────────────
-
 function buildDimensionCard(dimName, dimData) {
   const pct = parseInt(dimData.percentile) || 50;
   const plain = plainEnglish(pct);
@@ -598,10 +728,10 @@ function buildDimensionCard(dimName, dimData) {
 }
 
 // ── MAIN RENDER FUNCTION ───────────────────────────────────────
-
 function renderReport(report) {
   if (!report) {
     console.error('No report data provided');
+    showError();
     return;
   }
 
@@ -741,22 +871,59 @@ function renderReport(report) {
     
     document.getElementById('hci-next-steps').innerHTML = html;
   }
+
+  // Show the report
+  showReport();
 }
 
 // ── BOOTSTRAP: Check for injected report data ───────────────────
-// This is what report_pdf.py injects and calls
-
 if (typeof window !== 'undefined' && window.__HCI_REPORT__) {
+  // Report already generated (PDF embed or re-open)
   renderReport(window.__HCI_REPORT__);
 }
 
-})();
-
-// ── INIT BOOTSTRAP (what report_pdf.py expects to find and replace) ──
+// ── INIT ───────────────────────────────────────────────────────
 function init() {
-  // Placeholder init function
-  // In production, this is replaced by report_pdf.py
-  console.log('Report page initialized');
+  showLoading();
+  setStep(0);
+  
+  // If report already injected, use it immediately
+  if (window.__HCI_REPORT__) {
+    renderReport(window.__HCI_REPORT__);
+    return;
+  }
+  
+  // Start progress animation
+  let stepIndex = 0;
+  const maxSteps = 6;
+  const stepInterval = setInterval(() => {
+    stepIndex++;
+    if (stepIndex < maxSteps) {
+      setStep(stepIndex);
+    }
+  }, stepDuration); // ~13.3s per step
+
+  // Fallback: if no report after 120 seconds, show error
+  const timeoutId = setTimeout(() => {
+    clearInterval(stepInterval);
+    if (document.getElementById('hci-loading').style.display === 'flex') {
+      showError();
+    }
+  }, 120000);
+  
+  // Expose ability to clear timeout and render when report arrives via backend
+  window.hciReportReady = function(report) {
+    clearInterval(stepInterval);
+    clearTimeout(timeoutId);
+    renderReport(report);
+  };
+  
+  // Expose ability to show error immediately if backend fails
+  window.hciReportError = function() {
+    clearInterval(stepInterval);
+    clearTimeout(timeoutId);
+    showError();
+  };
 }
 
 if (document.readyState === 'loading') {
@@ -764,6 +931,8 @@ if (document.readyState === 'loading') {
 } else {
   init();
 }
+
+})();
 </script>
 
 </body>
