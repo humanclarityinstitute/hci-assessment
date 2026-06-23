@@ -380,10 +380,6 @@ def score():
             if key in responses:
                 responses[key] = int(responses[key])
 
-        results = score_assessment(responses, demographics, BENCHMARK_PATH)
-        results['session_id'] = session_id
-        free_result = generate_free_result(results)
-
         # Use the session_id supplied by the frontend (it owns a single stable
         # id for the whole journey). Fall back to a generated id only if none
         # was sent, so older clients still work.
@@ -394,6 +390,10 @@ def score():
             session_id = hashlib.md5(
                 f"{time.time()}{json.dumps(demographics)}".encode()
             ).hexdigest()[:16]
+
+        results = score_assessment(responses, demographics, BENCHMARK_PATH)
+        results['session_id'] = session_id
+        free_result = generate_free_result(results)
 
         # Get report email if provided
         report_email = request_data.get('report_email') or \
@@ -593,7 +593,6 @@ def premium():
 
         # 3) Payment confirmed — now, and only now, spend on generation.
         api_key = os.environ.get('ANTHROPIC_API_KEY')
-        full_results['session_id'] = session_id
         report = generate_premium_report(full_results, api_key=api_key)
 
         # Store immediately so refresh works
