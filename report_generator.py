@@ -816,7 +816,7 @@ def generate_dashboard(results, benchmark):
     }
     
     for dim_name, dim_data in dimensions.items():
-        percentile = dim_data.get('percentile', 50)
+        percentile = dim_data.get('percentiles', {}).get('overall', 50)
         dashboard['dimensions'][dim_name] = {
             'name': dim_data.get('label', dim_name),
             'definition': dim_data.get('definition', ''),
@@ -839,7 +839,7 @@ def generate_how_typical(results, dimensions_spec):
     typical = {}
     
     for dim_name, dim_data in dimensions.items():
-        percentile = dim_data.get('percentile', 50)
+        percentile = dim_data.get('percentiles', {}).get('overall', 50)
         
         if percentile > 75 or percentile < 25:
             distinctive[dim_name] = {
