@@ -1176,6 +1176,9 @@ def generate_free_result(results, api_key=None):
     """
     Generate free tier results — dashboard only, no narrative sections.
     Used by /score endpoint.
+    Returns:
+    - dashboard: all 9 dimensions
+    - shown_scores: top 3 dimensions for results page
     """
     
     if not ANTHROPIC_AVAILABLE:
@@ -1187,6 +1190,31 @@ def generate_free_result(results, api_key=None):
     print(f'Generating free results (dashboard only) for session {session_id}...')
     
     dashboard = generate_dashboard(results, benchmark)
+    dimensions = results.get('dimensions', {})
+    
+    # Extract top 3 dimensions by distinctiveness (furthest from 50th percentile)
+    dimension_scores = []
+    for dim_name, dim_data in dimensions.items():
+        percentile = dim_data.get('percentiles', {}).get('overall', 50)
+        distance_from_center = abs(percentile - 50)
+        dimension_scores.append({
+            'label': dim_data.get('label', dim_name),
+            'percentile': percentile,
+            'distance': distance_from_center,
+            'key': dim_name
+        })
+    
+    # Sort by distance from center (most distinctive first)
+    dimension_scores.sort(key=lambda x: x['distance'], reverse=True)
+    
+    # Take top 3
+    shown_scores = [
+        {
+            'label': d['label'],
+            'percentile': d['percentile'],
+        }
+        for d in dimension_scores[:3]
+    ]
     
     return {
         'metadata': {
@@ -1196,6 +1224,7 @@ def generate_free_result(results, api_key=None):
             'session_id': session_id,
         },
         'dashboard': dashboard,
+        'shown_scores': shown_scores,
     }
 
 
