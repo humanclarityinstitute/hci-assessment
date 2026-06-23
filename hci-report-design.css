@@ -1,0 +1,713 @@
+/**
+ * HCI AI Identity & Behaviour Assessment
+ * Complete Design System — Typography, Spacing, Color
+ * 
+ * Locked based on Gallup CliftonStrengths + Big Five Personality Test
+ * Target: 10.5pt body, 1.2 line-height, professional density
+ * Outcome: 24-page report → 16-18 pages (same content, tighter layout)
+ */
+
+/* ============================================================
+   ROOT VARIABLES — LOCKED DESIGN TOKENS
+   ============================================================ */
+
+:root {
+  /* TYPOGRAPHY */
+  --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-serif: Georgia, 'Times New Roman', serif;
+  
+  --font-size-body: 10.5px;
+  --font-size-label: 9px;
+  --font-size-sm: 9px;
+  --font-size-caption: 8.5px;
+  
+  --font-size-h4: 11px;
+  --font-size-h3: 12px;
+  --font-size-h2: 13px;
+  --font-size-h1: 16px;
+  
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 600;
+  
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.3;
+  --line-height-relaxed: 1.4;
+  
+  /* SPACING — In points (pt) to match print layouts */
+  --spacing-xs: 3pt;
+  --spacing-sm: 6pt;
+  --spacing-md: 8pt;
+  --spacing-lg: 12pt;
+  --spacing-xl: 16pt;
+  --spacing-xxl: 20pt;
+  
+  /* PAGE MARGINS — Locked */
+  --margin-left: 0.75in;
+  --margin-right: 0.75in;
+  --margin-top: 0.5in;
+  --margin-bottom: 0.5in;
+  
+  /* COLORS */
+  --color-primary: #0066cc;
+  --color-primary-dark: #004a99;
+  --color-primary-light: #f0f5ff;
+  
+  --color-text: #1a1a1a;
+  --color-text-secondary: #666;
+  --color-text-tertiary: #999;
+  --color-text-muted: #bbb;
+  
+  --color-border: #e0e0e0;
+  --color-border-light: #f0f0f0;
+  --color-divider: #ddd;
+  
+  --color-bg-white: #ffffff;
+  --color-bg-light: #fafafa;
+  --color-bg-secondary: #f5f5f5;
+  
+  /* BORDER & RADIUS */
+  --border-width-thin: 0.5pt;
+  --border-width-medium: 1pt;
+  --border-radius-sm: 3px;
+  --border-radius-md: 4px;
+  --border-radius-lg: 6px;
+}
+
+/* ============================================================
+   GLOBAL RESETS & BASE STYLES
+   ============================================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px; /* Browser baseline for rem calculations */
+}
+
+body {
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-tight);
+  color: var(--color-text);
+  background: var(--color-bg-white);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   PRINT LAYOUT CONTAINER
+   ============================================================ */
+
+.report {
+  max-width: 8in;
+  margin: 0 auto;
+  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
+  background: var(--color-bg-white);
+  color: var(--color-text);
+}
+
+/* For PDF/Print rendering */
+@media print {
+  body {
+    margin: 0;
+    padding: 0;
+  }
+  
+  .report {
+    max-width: 100%;
+    margin: 0;
+    padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
+    page-break-after: auto;
+  }
+}
+
+/* ============================================================
+   TYPOGRAPHY HIERARCHY
+   ============================================================ */
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text);
+  margin: 0;
+  line-height: var(--line-height-tight);
+  page-break-after: avoid;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  margin-bottom: var(--spacing-lg);
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-md);
+}
+
+h3 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--spacing-sm);
+}
+
+h4 {
+  font-size: var(--font-size-h4);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--spacing-sm);
+}
+
+p {
+  margin: 0;
+  line-height: var(--line-height-tight);
+  margin-bottom: var(--spacing-sm);
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+/* ============================================================
+   SECTION STRUCTURE
+   ============================================================ */
+
+.report-section {
+  margin-bottom: var(--spacing-xxl);
+  page-break-inside: avoid;
+}
+
+.report-section.no-break {
+  page-break-inside: avoid;
+}
+
+.section-title {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-md);
+  page-break-after: avoid;
+}
+
+.section-subtitle {
+  font-size: var(--font-size-h4);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-regular);
+  margin-bottom: var(--spacing-md);
+  page-break-after: avoid;
+}
+
+.section-intro {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+  margin-bottom: var(--spacing-lg);
+  color: var(--color-text);
+}
+
+/* ============================================================
+   DIMENSION CARDS (Section 1: Benchmark Dashboard)
+   ============================================================ */
+
+.dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-xl);
+  margin-bottom: var(--spacing-xxl);
+}
+
+.dimension-card {
+  border: var(--border-width-thin) solid var(--color-border);
+  padding: var(--spacing-xl);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-bg-white);
+  page-break-inside: avoid;
+}
+
+.dimension-card:hover {
+  border-color: var(--color-primary-light);
+}
+
+.dimension-label {
+  font-size: var(--font-size-label);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--spacing-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.dimension-name {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text);
+  margin-bottom: var(--spacing-md);
+}
+
+.dimension-definition {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-md);
+}
+
+.dimension-score {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.score-number {
+  font-size: 18px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+}
+
+.score-label {
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-tight);
+}
+
+.percentile-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--color-bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: var(--spacing-md);
+}
+
+.percentile-fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.3s ease;
+}
+
+.dimension-comparisons {
+  border-top: var(--border-width-thin) solid var(--color-divider);
+  padding-top: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  font-size: var(--font-size-body);
+}
+
+.comparison-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-xs);
+  line-height: var(--line-height-tight);
+}
+
+.comparison-label {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.comparison-value {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-primary);
+}
+
+.dimension-insight {
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+  border-top: var(--border-width-thin) solid var(--color-divider);
+  padding-top: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+/* ============================================================
+   NARRATIVE SECTIONS
+   ============================================================ */
+
+.narrative {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+  margin-bottom: var(--spacing-lg);
+}
+
+.narrative-paragraph {
+  margin-bottom: var(--spacing-sm);
+  line-height: var(--line-height-normal);
+}
+
+.narrative-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* ============================================================
+   QUESTION-LEVEL PROFILE (Section 6)
+   ============================================================ */
+
+.question-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+}
+
+.question-item {
+  border: var(--border-width-thin) solid var(--color-border);
+  padding: var(--spacing-md);
+  border-radius: var(--border-radius-md);
+  background: var(--color-bg-white);
+  page-break-inside: avoid;
+}
+
+.question-text {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  margin-bottom: var(--spacing-sm);
+  line-height: var(--line-height-normal);
+}
+
+.question-histogram {
+  width: 100%;
+  height: 40px;
+  margin-bottom: var(--spacing-sm);
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.histogram-bar {
+  flex: 1;
+  background: var(--color-primary-light);
+  border-radius: 1px;
+  min-height: 2px;
+}
+
+.histogram-bar.filled {
+  background: var(--color-primary);
+}
+
+.histogram-bar.active {
+  background: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-light);
+}
+
+.question-percentile {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+  line-height: var(--line-height-tight);
+}
+
+.question-insight {
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+/* ============================================================
+   DATA CARDS & BOXES
+   ============================================================ */
+
+.data-card {
+  background: var(--color-bg-secondary);
+  border: var(--border-width-thin) solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  page-break-inside: avoid;
+}
+
+.data-card-title {
+  font-size: var(--font-size-h4);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-text);
+}
+
+.data-card-content {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-secondary);
+}
+
+/* ============================================================
+   INSIGHT BOXES
+   ============================================================ */
+
+.insight-box {
+  background: var(--color-primary-light);
+  border-left: 3px solid var(--color-primary);
+  padding: var(--spacing-md) var(--spacing-md) var(--spacing-md) var(--spacing-lg);
+  margin: var(--spacing-lg) 0;
+  border-radius: var(--border-radius-sm);
+}
+
+.insight-box-title {
+  font-size: var(--font-size-h4);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.insight-box-content {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+}
+
+/* ============================================================
+   DIVIDERS & VISUAL BREAKS
+   ============================================================ */
+
+.divider {
+  border: none;
+  border-top: var(--border-width-thin) solid var(--color-divider);
+  margin: var(--spacing-lg) 0;
+  height: 0;
+}
+
+.divider.light {
+  border-top-color: var(--color-border-light);
+}
+
+.page-break {
+  page-break-after: always;
+  margin: var(--spacing-xl) 0;
+  height: 0;
+}
+
+.section-break {
+  margin: var(--spacing-xxl) 0 var(--spacing-lg) 0;
+  page-break-after: avoid;
+}
+
+/* ============================================================
+   LISTS & STRUCTURED CONTENT
+   ============================================================ */
+
+ul, ol {
+  margin: 0;
+  padding: 0 0 0 var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  list-style-position: outside;
+}
+
+li {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+  color: var(--color-text);
+  margin-bottom: var(--spacing-sm);
+}
+
+li:last-child {
+  margin-bottom: 0;
+}
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--spacing-lg);
+  font-size: var(--font-size-body);
+}
+
+thead {
+  background: var(--color-bg-secondary);
+}
+
+th {
+  padding: var(--spacing-sm) var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text);
+  border-bottom: var(--border-width-medium) solid var(--color-border);
+  line-height: var(--line-height-tight);
+}
+
+td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: var(--border-width-thin) solid var(--color-border-light);
+  line-height: var(--line-height-tight);
+  color: var(--color-text);
+}
+
+tbody tr:last-child td {
+  border-bottom: var(--border-width-medium) solid var(--color-border);
+}
+
+/* ============================================================
+   LABELS & TAGS
+   ============================================================ */
+
+.label {
+  display: inline-block;
+  padding: 2px var(--spacing-sm);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.label.secondary {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+
+/* ============================================================
+   RESPONSIVE DESIGN
+   ============================================================ */
+
+@media (max-width: 768px) {
+  :root {
+    --margin-left: 0.5in;
+    --margin-right: 0.5in;
+  }
+  
+  .dimension-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .question-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .report {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --font-size-body: 10px;
+    --spacing-xl: 12px;
+    --margin-left: 0.375in;
+    --margin-right: 0.375in;
+  }
+  
+  .dimension-card {
+    padding: var(--spacing-lg);
+  }
+}
+
+/* ============================================================
+   PRINT-SPECIFIC STYLES
+   ============================================================ */
+
+@media print {
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  
+  a {
+    text-decoration: none;
+    color: var(--color-text);
+  }
+  
+  .no-print {
+    display: none;
+  }
+  
+  .report-section {
+    page-break-inside: avoid;
+  }
+  
+  h2, h3, h4 {
+    page-break-after: avoid;
+    page-break-before: avoid;
+  }
+  
+  .dimension-card,
+  .data-card,
+  .question-item {
+    page-break-inside: avoid;
+    border: var(--border-width-thin) solid var(--color-border);
+  }
+  
+  .page-break {
+    page-break-after: always;
+  }
+}
+
+/* ============================================================
+   ACCESSIBILITY
+   ============================================================ */
+
+a:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+button:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-muted {
+  color: var(--color-text-tertiary);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-primary {
+  color: var(--color-primary);
+}
+
+.mt-xs { margin-top: var(--spacing-xs); }
+.mt-sm { margin-top: var(--spacing-sm); }
+.mt-md { margin-top: var(--spacing-md); }
+.mt-lg { margin-top: var(--spacing-lg); }
+.mt-xl { margin-top: var(--spacing-xl); }
+
+.mb-xs { margin-bottom: var(--spacing-xs); }
+.mb-sm { margin-bottom: var(--spacing-sm); }
+.mb-md { margin-bottom: var(--spacing-md); }
+.mb-lg { margin-bottom: var(--spacing-lg); }
+.mb-xl { margin-bottom: var(--spacing-xl); }
+
+.no-margin { margin: 0; }
+.no-padding { padding: 0; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
