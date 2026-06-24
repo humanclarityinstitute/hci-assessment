@@ -861,6 +861,124 @@ def generate_how_typical(results, dimensions_spec):
     }
 
 
+def generate_question_profile(results, benchmark, demographics):
+    """
+    Section 6: Question-Level Profile — All 39 questions with answers, 
+    distributions, and comparisons.
+    
+    For each question:
+    - Respondent's answer (1-7)
+    - Distribution of responses across all respondents
+    - Respondent's percentile on that question
+    - Plain English positioning
+    - Age group comparison
+    """
+    
+    dimensions = results.get('dimensions', {})
+    age_group = demographics.get('age_group', 'Unknown')
+    
+    if not benchmark:
+        benchmark = {}
+    
+    questions_data = []
+    question_number = 1
+    
+    # Iterate through dimensions in order and collect all questions
+    dimension_order = [
+        'trust', 'disclosure', 'reliance', 'decision_delegation', 
+        'human_agency', 'verification', 'emotional_regulation', 
+        'thought_partnership', 'social_transparency'
+    ]
+    
+    for dim_name in dimension_order:
+        if dim_name not in dimensions:
+            continue
+            
+        dim_data = dimensions[dim_name]
+        if not dim_data:
+            continue
+        
+        question_scores = dim_data.get('question_scores', {})
+        
+        for q_key, q_score in question_scores.items():
+            variable_name = q_score.get('variable', '')
+            respondent_answer = q_score.get('raw', 0)
+            
+            # Get benchmark data for this variable
+            var_benchmark = benchmark.get(variable_name, {})
+            overall_dist = var_benchmark.get('overall', {})
+            age_dist = var_benchmark.get(age_group, {})
+            
+            # Calculate respondent's percentile on this question
+            respondent_percentile = percentile_from_distribution(
+                respondent_answer, 
+                overall_dist
+            )
+            age_percentile = percentile_from_distribution(
+                respondent_answer,
+                age_dist
+            ) if age_dist else respondent_percentile
+            
+            # Build distribution array (1-7 scale, as percentages)
+            distribution = [
+                overall_dist.get(str(i), 0) for i in range(1, 8)
+            ]
+            
+            # Plain English positioning
+            position = positional_language(respondent_percentile) if respondent_percentile else 'near the population centre'
+            plain = plain_english_percentile(respondent_percentile) if respondent_percentile else 'Similar to most people'
+            
+            # Age group comparison
+            age_label = age_group if age_group != 'Unknown' else 'your age group'
+            age_avg = age_dist.get('mean', 50) if age_dist else 50
+            
+            questions_data.append({
+                'number': question_number,
+                'key': q_key,
+                'variable': variable_name,
+                'dimension': dim_name,
+                'dimension_label': dim_data.get('label', dim_name),
+                'respondent_answer': respondent_answer,
+                'respondent_percentile': respondent_percentile,
+                'respondent_position': position,
+                'respondent_plain_english': plain,
+                'distribution': distribution,  # [1%, 2%, 3%, 4%, 5%, 6%, 7%]
+                'age_group': age_label,
+                'age_percentile': age_percentile,
+                'age_group_mean': age_avg,
+            })
+            
+            question_number += 1
+    
+    return {
+        'title': 'YOUR QUESTION-LEVEL PROFILE',
+        'subtitle': 'All 39 questions with your answers and comparisons',
+        'questions': questions_data,
+        'total_questions': len(questions_data)
+    }
+
+
+def percentile_from_distribution(answer, distribution_dict):
+    """
+    Calculate respondent's percentile given their answer (1-7) 
+    and a distribution dict like {1: 5, 2: 10, 3: 15, ...}.
+    
+    Returns: percentile (0-100)
+    """
+    if not distribution_dict or answer is None:
+        return 50
+    
+    # Sum all responses below this answer
+    cumulative = 0
+    for scale_point in range(1, answer):
+        cumulative += distribution_dict.get(str(scale_point), 0)
+    
+    # Add half of responses at this level
+    cumulative += distribution_dict.get(str(answer), 0) / 2
+    
+    return max(0, min(100, round(cumulative)))
+
+
 def generate_what_to_protect(results):
     """Section 9: What to Protect — Pre-written templates with data insertion"""
     
@@ -1107,11 +1225,7 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
     
     # ── SECTION 6: Question Profile (no API) ───────────────────────────────────
     progress('Building your question-level profile...')
-    question_profile = {
-        'title': 'YOUR QUESTION-LEVEL PROFILE',
-        'subtitle': 'All 39 questions with your answers and comparisons',
-        'note': 'Generated from assessment data'
-    }
+    question_profile = generate_question_profile(results, benchmark, demographics)
     
     # ── API CALL #4: Distinctive Responses ─────────────────────────────────────
     progress('Analyzing your most distinctive responses...')
