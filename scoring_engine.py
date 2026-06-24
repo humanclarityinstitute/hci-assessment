@@ -322,7 +322,7 @@ def get_dimension_percentiles(question_scores, benchmarks, demographics):
 
         item_percentiles = []
         for qs in question_scores.values():
-            bench = benchmarks.get(qs['variable'])
+           bench = benchmarks.get('variables', {}).get(qs['variable'])
             if not bench:
                 continue
             
