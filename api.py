@@ -163,6 +163,49 @@ def store_response(payload, result_type='free', session_id=None,
         return None
 
 
+def get_stored_full_results(session_id):
+    """
+    Retrieve stored assessment full_results from Supabase by session_id.
+    Called by /premium as fallback when sessionStorage was lost or empty.
+    Returns the full_results dict if found, None otherwise.
+    Non-fatal: if retrieval fails, None is returned and /premium handles it.
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+
+        if not supabase_url or not supabase_key:
+            return None
+
+        import urllib.request
+        import urllib.parse
+
+        url = (
+            f'{supabase_url}/rest/v1/assessment_responses'
+            f'?session_id=eq.{urllib.parse.quote(session_id)}'
+            f'&select=full_results'
+            f'&limit=1'
+        )
+        req = urllib.request.Request(
+            url,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+            }
+        )
+        response = urllib.request.urlopen(req, timeout=5)
+        rows = json.loads(response.read().decode('utf-8'))
+        if rows and len(rows) > 0:
+            stored = rows[0].get('full_results')
+            if stored:
+                print(f'Retrieved full_results from Supabase for session {session_id}')
+                return stored
+        return None
+    except Exception as e:
+        print(f'Retrieval of full_results failed (non-critical): {e}')
+        return None
+
+
 def get_stored_report(session_id):
     """
     Retrieve a cached premium report from Supabase by session_id.
@@ -521,12 +564,26 @@ def premium():
             return jsonify({'success': False, 'error': 'No data provided'}), 400
 
         full_results = request_data.get('full_results')
-        if not full_results:
-            return jsonify({'success': False, 'error': 'No results provided'}), 400
-
         session_id = request_data.get('session_id')
         report_email = request_data.get('report_email')
         stripe_session_id = request_data.get('stripe_session_id')
+
+        # FALLBACK RECOVERY: If full_results is empty/missing (e.g., sessionStorage
+        # was cleared or frontend couldn't send it), try to recover from Supabase
+        # using session_id. This handles browser refresh cases gracefully.
+        if (not full_results or not full_results.get('dimensions')) and session_id:
+            print(f'Attempting Supabase recovery for session {session_id}...')
+            recovered = get_stored_full_results(session_id)
+            if recovered and recovered.get('dimensions'):
+                full_results = recovered
+                print(f'Successfully recovered full_results from Supabase')
+
+        # If after recovery we still have no valid results, fail
+        if not full_results or not full_results.get('dimensions'):
+            return jsonify({
+                'success': False,
+                'error': 'Assessment data could not be retrieved. Please contact support if this persists.'
+            }), 400
 
         # 1) CACHE FIRST — if this report was already generated (which only
         #    happens after a verified payment, in step 2 below), return it
@@ -573,6 +630,14 @@ def premium():
         # right session even when the redirect didn't carry it.
         if not session_id and stripe_session:
             session_id = stripe_session.get('client_reference_id')
+            # If we just recovered session_id from Stripe AND we still don't have
+            # full_results, try to recover from Supabase now that we have the id
+            if not full_results or not full_results.get('dimensions'):
+                print(f'Attempting secondary Supabase recovery with Stripe-recovered session_id...')
+                recovered = get_stored_full_results(session_id)
+                if recovered and recovered.get('dimensions'):
+                    full_results = recovered
+                    print(f'Successfully recovered full_results in secondary attempt')
 
         # Delivery email: PREFER the email entered at Stripe checkout (the
         # verified, reliable address where the customer expects their purchase),
