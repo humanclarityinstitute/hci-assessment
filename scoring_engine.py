@@ -326,7 +326,6 @@ def get_dimension_percentiles(question_scores, benchmarks, demographics):
             variables_dict = benchmarks.get('variables', {})
             bench = variables_dict.get(qs['variable'])
             if not bench:
-                print(f"[SCORING] Warning: No benchmark found for variable '{qs['variable']}'")
                 continue
             
             if seg == 'overall':
@@ -693,7 +692,7 @@ def select_shown_scores(dimension_results, demographics):
     """
     Select 3 most distinctive dimensions based on distance from 50th percentile.
     
-    Returns the 3 dimensions with the highest absolute deviation from 50 
+    Returns the names of the 3 dimensions with the highest absolute deviation from 50 
     (population centre). This makes the results page most interesting — 
     showing what's most unusual about the profile.
     """
@@ -712,16 +711,10 @@ def select_shown_scores(dimension_results, demographics):
     # Sort by distance (most extreme first)
     sorted_by_distance = sorted(with_distance, key=lambda x: x[2], reverse=True)
     
-    # Return top 3
+    # Return top 3 dimension names only (strings)
     shown = []
     for name, data, distance in sorted_by_distance[:3]:
-        shown.append({
-            'dimension': name,
-            'label': data['label'],
-            'percentile': data['percentiles']['overall'],
-            'normalised_score': data.get('normalised_score'),
-            'age_label': demographics.get('age_group', '')
-        })
+        shown.append(name)
     
     return shown
 
@@ -838,21 +831,12 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
     import os
     enhanced_path = benchmark_path.replace('benchmark_tables.json', 'benchmark_tables_enhanced.json')
     
-    print(f"[SCORING] Benchmark path provided: {benchmark_path}")
-    print(f"[SCORING] Enhanced path: {enhanced_path}")
-    print(f"[SCORING] Enhanced exists: {os.path.exists(enhanced_path)}")
-    print(f"[SCORING] Standard exists: {os.path.exists(benchmark_path)}")
-    
     if os.path.exists(enhanced_path):
-        print(f"[SCORING] Loading enhanced benchmark")
         with open(enhanced_path, 'r') as f:
             benchmarks = json.load(f)
     else:
-        print(f"[SCORING] Loading standard benchmark")
         with open(benchmark_path, 'r') as f:
             benchmarks = json.load(f)
-    
-    print(f"[SCORING] Loaded benchmark top-level keys: {list(benchmarks.keys())}")
 
     # Score all nine dimensions
     dimension_results = {}
@@ -912,16 +896,6 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
             'lowest_dimension': patterns['lowest'][0] if patterns['lowest'] else None,
         }
     }
-    
-    # DEBUG: Log what we're returning
-    print(f"[SCORING] About to return results")
-    print(f"[SCORING] dimension_results type: {type(dimension_results)}")
-    print(f"[SCORING] dimension_results keys: {list(dimension_results.keys())[:3]}")
-    if dimension_results:
-        first_key = list(dimension_results.keys())[0]
-        first_val = dimension_results[first_key]
-        print(f"[SCORING] First dimension key: {first_key} (type: {type(first_key)})")
-        print(f"[SCORING] First dimension value type: {type(first_val)}")
 
     return results
 
