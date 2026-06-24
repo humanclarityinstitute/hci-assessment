@@ -322,8 +322,11 @@ def get_dimension_percentiles(question_scores, benchmarks, demographics):
 
         item_percentiles = []
         for qs in question_scores.values():
-            bench = benchmarks.get('variables', {}).get(qs['variable'])
+            # Benchmarks are nested: benchmarks['variables'][variable_name]
+            variables_dict = benchmarks.get('variables', {})
+            bench = variables_dict.get(qs['variable'])
             if not bench:
+                print(f"[SCORING] Warning: No benchmark found for variable '{qs['variable']}'")
                 continue
             
             if seg == 'overall':
@@ -363,12 +366,14 @@ def score_dimension(dimension_name, responses, benchmarks, demographics):
 
     raw_total = 0
     question_scores = {}
+    missing_questions = []
 
     for i, q_key in enumerate(questions):
         raw = responses.get(q_key)
 
         if raw is None:
-            return None
+            missing_questions.append(q_key)
+            continue
 
         score = int(raw)
 
@@ -384,7 +389,16 @@ def score_dimension(dimension_name, responses, benchmarks, demographics):
 
         raw_total += score
 
-    n_questions = len(questions)
+    # If we have NO responses for this dimension, fail
+    if not question_scores:
+        print(f"WARNING: Dimension '{dimension_name}' has NO scored questions. Missing: {missing_questions}")
+        return None
+    
+    # If we have SOME but not all responses, warn but continue
+    if missing_questions:
+        print(f"WARNING: Dimension '{dimension_name}' missing {len(missing_questions)} questions: {missing_questions}")
+
+    n_questions = len(question_scores)  # Use actual answered questions, not total
     normalised = normalise_to_100(raw_total, n_questions)
 
     # Position via average-of-percentiles across EVERY item in the dimension
@@ -743,6 +757,11 @@ def find_best_benchmark(demographics, dimension_results, benchmarks):
         cohort_dim = cohort_data.get(dim_name)
         if cohort_dim:
             participant_pct = dim_data['percentiles']['overall']
+            
+            # Skip if participant percentile is missing
+            if participant_pct is None:
+                continue
+            
             cohort_mean_raw = cohort_dim.get('mean')  # Raw score (1-7)
             
             # Convert cohort mean raw score to approximate percentile
@@ -819,12 +838,21 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
     import os
     enhanced_path = benchmark_path.replace('benchmark_tables.json', 'benchmark_tables_enhanced.json')
     
+    print(f"[SCORING] Benchmark path provided: {benchmark_path}")
+    print(f"[SCORING] Enhanced path: {enhanced_path}")
+    print(f"[SCORING] Enhanced exists: {os.path.exists(enhanced_path)}")
+    print(f"[SCORING] Standard exists: {os.path.exists(benchmark_path)}")
+    
     if os.path.exists(enhanced_path):
+        print(f"[SCORING] Loading enhanced benchmark")
         with open(enhanced_path, 'r') as f:
             benchmarks = json.load(f)
     else:
+        print(f"[SCORING] Loading standard benchmark")
         with open(benchmark_path, 'r') as f:
             benchmarks = json.load(f)
+    
+    print(f"[SCORING] Loaded benchmark top-level keys: {list(benchmarks.keys())}")
 
     # Score all nine dimensions
     dimension_results = {}
@@ -884,6 +912,16 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
             'lowest_dimension': patterns['lowest'][0] if patterns['lowest'] else None,
         }
     }
+    
+    # DEBUG: Log what we're returning
+    print(f"[SCORING] About to return results")
+    print(f"[SCORING] dimension_results type: {type(dimension_results)}")
+    print(f"[SCORING] dimension_results keys: {list(dimension_results.keys())[:3]}")
+    if dimension_results:
+        first_key = list(dimension_results.keys())[0]
+        first_val = dimension_results[first_key]
+        print(f"[SCORING] First dimension key: {first_key} (type: {type(first_key)})")
+        print(f"[SCORING] First dimension value type: {type(first_val)}")
 
     return results
 
