@@ -675,6 +675,126 @@ def build_variable_highlights(dimension_results, benchmarks, demographics):
     return highlights
 
 
+def select_shown_scores(dimension_results, demographics):
+    """
+    Select 3 most distinctive dimensions based on distance from 50th percentile.
+    
+    Returns the 3 dimensions with the highest absolute deviation from 50 
+    (population centre). This makes the results page most interesting — 
+    showing what's most unusual about the profile.
+    """
+    scored = [
+        (name, data)
+        for name, data in dimension_results.items()
+        if data and data.get('percentiles', {}).get('overall') is not None
+    ]
+    
+    # Calculate distance from 50th percentile (population centre)
+    with_distance = [
+        (name, data, abs(data['percentiles']['overall'] - 50))
+        for name, data in scored
+    ]
+    
+    # Sort by distance (most extreme first)
+    sorted_by_distance = sorted(with_distance, key=lambda x: x[2], reverse=True)
+    
+    # Return top 3
+    shown = []
+    for name, data, distance in sorted_by_distance[:3]:
+        shown.append({
+            'dimension': name,
+            'label': data['label'],
+            'percentile': data['percentiles']['overall'],
+            'normalised_score': data.get('normalised_score'),
+            'age_label': demographics.get('age_group', '')
+        })
+    
+    return shown
+
+
+def find_best_benchmark(demographics, dimension_results, benchmarks):
+    """
+    Find the demographic cohort insight that matches the participant.
+    
+    Uses benchmark_tables_enhanced.json structure to find cohort data,
+    then generates an insight about how the participant compares to their cohort.
+    
+    Returns a dict with 'cohort_name' and 'text' keys, or None if no match.
+    """
+    age_group = demographics.get('age_group')
+    frequency = demographics.get('ai_tool_use_frequency')
+    
+    if not age_group:
+        return None
+    
+    # Look up cohort data in benchmarks
+    cohort_signals = benchmarks.get('cohort_signals', {})
+    cohort_data = cohort_signals.get(age_group)
+    
+    if not cohort_data:
+        return None
+    
+    # Calculate which dimensions are most different from cohort average
+    deviations = []
+    for dim_name, dim_data in dimension_results.items():
+        if not dim_data:
+            continue
+        
+        cohort_dim = cohort_data.get(dim_name)
+        if cohort_dim:
+            participant_pct = dim_data['percentiles']['overall']
+            cohort_mean_raw = cohort_dim.get('mean')  # Raw score (1-7)
+            
+            # Convert cohort mean raw score to approximate percentile
+            # (Heuristic: maps 1-7 scale to 0-100 percentile range)
+            if cohort_mean_raw:
+                cohort_mean_pct = (cohort_mean_raw - 1) * 16.67  # 1-7 → 0-100
+                cohort_mean_pct = max(1, min(99, cohort_mean_pct))  # Clamp to 1-99
+            else:
+                cohort_mean_pct = 50
+            
+            deviation = abs(participant_pct - cohort_mean_pct)
+            deviations.append((
+                dim_name,
+                dim_data.get('label', dim_name),
+                deviation,
+                participant_pct,
+                cohort_mean_pct
+            ))
+    
+    if not deviations:
+        return None
+    
+    # Sort by deviation (most different first)
+    deviations.sort(key=lambda x: x[2], reverse=True)
+    
+    # Build insight text from top deviations
+    top_deviations = deviations[:2]  # Use top 2 most distinctive
+    
+    dim_insights = []
+    for dim_name, dim_label, deviation, participant_pct, cohort_mean_pct in top_deviations:
+        direction = "notably higher" if participant_pct > cohort_mean_pct + 10 else ("higher" if participant_pct > cohort_mean_pct else ("notably lower" if participant_pct < cohort_mean_pct - 10 else "lower"))
+        dim_insights.append(f"{dim_label} ({direction})")
+    
+    if not dim_insights:
+        return None
+    
+    # Build the insight sentence
+    dims_text = ' and '.join(dim_insights)
+    frequency_text = f"use AI {frequency.lower()}" if frequency else "use AI"
+    
+    insight_text = (
+        f"Among people your age, your {dims_text} scores differ from the typical pattern. "
+        f"This distinctive combination appears in a smaller subset of your cohort, "
+        f"which means your profile shows a more unusual pairing of AI behaviours than most people like you."
+    )
+    
+    return {
+        'cohort_name': f"{age_group} year olds",
+        'text': insight_text
+    }
+
+
 def score_assessment(responses, demographics, benchmark_path='benchmark_tables.json'):
     """
     Main function — scores a complete assessment.
@@ -695,8 +815,16 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
     """
 
     # Load benchmark tables
-    with open(benchmark_path, 'r') as f:
-        benchmarks = json.load(f)
+    # Try enhanced version first, fall back to standard
+    import os
+    enhanced_path = benchmark_path.replace('benchmark_tables.json', 'benchmark_tables_enhanced.json')
+    
+    if os.path.exists(enhanced_path):
+        with open(enhanced_path, 'r') as f:
+            benchmarks = json.load(f)
+    else:
+        with open(benchmark_path, 'r') as f:
+            benchmarks = json.load(f)
 
     # Score all nine dimensions
     dimension_results = {}
@@ -748,6 +876,8 @@ def score_assessment(responses, demographics, benchmark_path='benchmark_tables.j
         'headline': headline,
         'perception_gaps': perception_gaps,
         'variable_highlights': variable_highlights,
+        'shown_scores': select_shown_scores(dimension_results, demographics),
+        'best_benchmark': find_best_benchmark(demographics, dimension_results, benchmarks),
         'summary': {
             'dimensions_scored': len([d for d in dimension_results.values() if d]),
             'highest_dimension': patterns['highest'][0] if patterns['highest'] else None,
