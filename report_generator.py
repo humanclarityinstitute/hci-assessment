@@ -317,7 +317,7 @@ def prepare_three_layer_context(participant_data, dimension):
             actual_score=participant_data.get('scores', {}).get(dimension, {}).get('raw', 0),
             frequency=participant_data.get('usage_frequency', 'sometimes'),
             age_group=participant_data.get('age_group', '35-44'),
-            actual_percentile=participant_data.get('scores', {}).get(dimension, {}).get('percentile', 50)
+            actual_percentile=participant_data.get('scores', {}).get(dimension, {}).get('percentiles', {}).get('overall', 50)
         )
         return context
     except Exception as e:
@@ -438,7 +438,7 @@ def generate_opening(results, client, signals, session_id=None):
     # Prepare data for prompt
     top_dimension = max(
         dimensions.items(),
-        key=lambda x: abs(x[1].get('percentile', 50) - 50)
+        key=lambda x: abs(x[1].get('percentiles', {}).get('overall', 50) - 50)
     ) if dimensions else ('unknown', {})
     
     # Get signal context for top dimension
@@ -449,12 +449,12 @@ def generate_opening(results, client, signals, session_id=None):
     This person has just completed the HCI AI Identity & Behaviour Assessment.
     
     Key data:
-    - Most distinctive dimension: {top_dimension[0]} at {top_dimension[1].get('percentile')}th percentile
+    - Most distinctive dimension: {top_dimension[0]} at {top_dimension[1].get('percentiles', {}).get('overall', 'unknown')}th percentile
     - Age group: {demographics.get('age_group', 'Unknown')}
     - Usage frequency: {demographics.get('frequency', 'Unknown')}
     
     Dimensions overview:
-    {json.dumps({k: v.get('percentile') for k, v in dimensions.items()}, indent=2)}
+    {json.dumps({k: v.get('percentiles', {}).get('overall') for k, v in dimensions.items()}, indent=2)}
     
     RESEARCH SIGNALS FOR THIS DIMENSION:
     {signal_text}
@@ -567,7 +567,7 @@ def generate_behaviour_story(results, client, signals, session_id=None):
     # Get top 5 dimensions
     sorted_dims = sorted(
         dimensions.items(),
-        key=lambda x: x[1].get('percentile', 50),
+        key=lambda x: x[1].get('percentiles', {}).get('overall', 50),
         reverse=True
     )[:5]
     
@@ -577,7 +577,7 @@ def generate_behaviour_story(results, client, signals, session_id=None):
     primary_signal_text = inject_signal_context(primary_context, 'Behavior Story')
     
     dim_summary = '\n'.join([
-        f"- {dim[0]}: {dim[1].get('percentile')}th percentile ({positional_language(dim[1].get('percentile'))})"
+        f"- {dim[0]}: {dim[1].get('percentiles', {}).get('overall')}th percentile ({positional_language(dim[1].get('percentiles', {}).get('overall'))})"
         for dim in sorted_dims
     ])
     
@@ -655,7 +655,7 @@ def generate_distinctive_responses(results, client, benchmark, signals, session_
     
     var_summary = '\n'.join([
         f"- {var.get('variable_name')}: Score {var.get('answer')}/7, "
-        f"{positional_language(var.get('percentile'))} ({var.get('percentile')}th percentile)"
+        f"{positional_language(var.get('percentiles', {}).get('overall'))} ({var.get('percentiles', {}).get('overall')}th percentile)"
         for var in variable_highlights
     ])
     
@@ -707,7 +707,7 @@ def generate_perception_gap(results, client, session_id=None):
     {json.dumps(perception_answers, indent=2)}
     
     Their actual dimensional positioning:
-    {json.dumps({k: v.get('percentile') for k, v in dimensions.items()}, indent=2)}
+    {json.dumps({k: v.get('percentiles', {}).get('overall') for k, v in dimensions.items()}, indent=2)}
     
     For each self-perception question:
     1. State what they think about themselves
@@ -746,14 +746,14 @@ def generate_trajectory(results, client, benchmark, signals, session_id=None):
     frequency = demographics.get('frequency', 'sometimes')
     
     # Get signal context for key dimensions
-    high_dims = {k: v for k, v in dimensions.items() if v.get('percentile', 0) > 71}
+    high_dims = {k: v for k, v in dimensions.items() if v.get('percentiles', {}).get('overall', 0) > 71}
     first_high_dim = list(high_dims.keys())[0] if high_dims else 'trust'
     
     trajectory_context = prepare_three_layer_context(results, first_high_dim)
     trajectory_signal_text = inject_signal_context(trajectory_context, 'Trajectory')
     
     moderate_dims = {k: v for k, v in dimensions.items() 
-                     if 41 <= v.get('percentile', 50) <= 70}
+                     if 41 <= v.get('percentiles', {}).get('overall', 50) <= 70}
     
     prompt = f"""
     This person's current profile:
@@ -975,10 +975,10 @@ You decide if this matters to you.
     
     # Insert positioning language into templates
     positioning_map = {
-        'verification': positional_language(dimensions.get('verification', {}).get('percentile')),
-        'agency': positional_language(dimensions.get('human_agency', {}).get('percentile')),
-        'emotional': positional_language(dimensions.get('emotional_regulation', {}).get('percentile')),
-        'thought': positional_language(dimensions.get('thought_partnership', {}).get('percentile'))
+        'verification': positional_language(dimensions.get('verification', {}).get('percentiles', {}).get('overall')),
+        'agency': positional_language(dimensions.get('human_agency', {}).get('percentiles', {}).get('overall')),
+        'emotional': positional_language(dimensions.get('emotional_regulation', {}).get('percentiles', {}).get('overall')),
+        'thought': positional_language(dimensions.get('thought_partnership', {}).get('percentiles', {}).get('overall'))
     }
     
     for key, template in templates.items():
@@ -1282,7 +1282,7 @@ def generate_deep_dive_part_1(results, client, benchmark, signals, session_id=No
     demographics = results.get('demographics', {})
     
     # Calculate overall percentile (average of all dimensions)
-    percentiles = [d.get('percentile', 50) for d in dimensions.values()]
+    percentiles = [d.get('percentiles', {}).get('overall', 50) for d in dimensions.values()]
     overall_percentile = int(statistics.mean(percentiles)) if percentiles else 50
     
     # Get signal context
@@ -1296,7 +1296,7 @@ def generate_deep_dive_part_1(results, client, benchmark, signals, session_id=No
     - Age group: {demographics.get('age_group', 'unknown')}
     
     All dimensions:
-    {json.dumps({k: v.get('percentile') for k, v in dimensions.items()}, indent=2)}
+    {json.dumps({k: v.get('percentiles', {}).get('overall') for k, v in dimensions.items()}, indent=2)}
     
     RESEARCH SIGNALS:
     {signal_text}
@@ -1345,7 +1345,7 @@ def generate_deep_dive_part_3(results, benchmark):
     # Identify distinctive dimensions within cohort
     distinctive_in_cohort = {}
     for dim_name, dim_data in dimensions.items():
-        percentile = dim_data.get('percentile', 50)
+        percentile = dim_data.get('percentiles', {}).get('overall', 50)
         cohort_mean = cohort_signals.get(dim_name, {}).get('mean', 50)
         
         # If more than 15 percentile points away from cohort mean, it's distinctive
@@ -1390,7 +1390,7 @@ def generate_deep_dive_part_4(results, client, signals, session_id=None):
         return "Insufficient data for rare combination analysis."
     
     # Create combinations (simplified: just highest and lowest)
-    sorted_dims = sorted(dim_items, key=lambda x: x[1].get('percentile', 50), reverse=True)
+    sorted_dims = sorted(dim_items, key=lambda x: x[1].get('percentiles', {}).get('overall', 50), reverse=True)
     combo1 = (sorted_dims[0][0], sorted_dims[-1][0])
     combo2 = (sorted_dims[1][0], sorted_dims[-2][0]) if len(sorted_dims) > 2 else combo1
     
@@ -1400,9 +1400,9 @@ def generate_deep_dive_part_4(results, client, signals, session_id=None):
     prompt = f"""
     This person has these rare combinations:
     
-    Combination 1: {combo1[0]} ({sorted_dims[0][1].get('percentile')}%ile) + {combo1[1]} ({sorted_dims[-1][1].get('percentile')}%ile)
+    Combination 1: {combo1[0]} ({sorted_dims[0][1].get('percentiles', {}).get('overall')}%ile) + {combo1[1]} ({sorted_dims[-1][1].get('percentiles', {}).get('overall')}%ile)
     
-    Combination 2: {combo2[0]} ({sorted_dims[1][1].get('percentile')}%ile) + {combo2[1]} ({sorted_dims[-2][1].get('percentile')}%ile)
+    Combination 2: {combo2[0]} ({sorted_dims[1][1].get('percentiles', {}).get('overall')}%ile) + {combo2[1]} ({sorted_dims[-2][1].get('percentiles', {}).get('overall')}%ile)
     
     RESEARCH SIGNALS:
     {signal_text}
@@ -1443,7 +1443,7 @@ def generate_deep_dive_part_5(results, client, session_id=None):
     # Sort by percentile to show high → low
     sorted_dims = sorted(
         dimensions.items(),
-        key=lambda x: x[1].get('percentile', 50),
+        key=lambda x: x[1].get('percentiles', {}).get('overall', 50),
         reverse=True
     )
     
@@ -1453,8 +1453,8 @@ def generate_deep_dive_part_5(results, client, session_id=None):
     prompt = f"""
     This person's 9-dimension profile:
     
-    Highest: {', '.join([f"{d[0]} ({d[1].get('percentile')}%ile)" for d in top_3_high])}
-    Lowest: {', '.join([f"{d[0]} ({d[1].get('percentile')}%ile)" for d in bottom_3_low])}
+    Highest: {', '.join([f"{d[0]} ({d[1].get('percentiles', {}).get('overall')}%ile)" for d in top_3_high])}
+    Lowest: {', '.join([f"{d[0]} ({d[1].get('percentiles', {}).get('overall')}%ile)" for d in bottom_3_low])}
     
     Analyze the architecture of their pattern:
     
