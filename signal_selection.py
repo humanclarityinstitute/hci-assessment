@@ -8,8 +8,11 @@ from benchmark_context_data import (
 )
 from hci_signals_library import SIGNALS, RESEARCH_NUMBERS
 from human_reference_layer import (
-    HBE_SIGNALS, VALUES_SIGNALS, REFRAMING_RULES, COHERENCE_PATTERNS,
-    PRESSURE_POINT_ASSESSMENTS
+    HBE_FRAMEWORK as HBE_SIGNALS,
+    VALUES_SIGNALS,
+    REFRAME_LIBRARY as REFRAMING_RULES,
+    HBE_COHORT_REFRAMES as COHERENCE_PATTERNS,
+    RESEARCH_INSIGHTS as PRESSURE_POINT_ASSESSMENTS
 )
 
 # ============================================================
