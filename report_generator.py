@@ -1073,7 +1073,7 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
     demographics = results.get('demographics', {})
     dimensions = results.get('dimensions', {})
     
-    total_steps = 11  # 6 core + 5 data-only sections
+    total_steps = 15  # 6 core + 5 data-only sections + 4 deep dive sections
     step = 0
     
     def progress(message):
@@ -1135,14 +1135,45 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
     progress('Building your next steps...')
     next_steps = generate_next_steps(results)
     
+    # ── DEEP DIVE OPENING ──────────────────────────────────────────────────────
+    progress('Opening deep dive...')
+    deep_dive_opening = """
+WHAT THIS DEEP DIVE DOES
+
+This deep dive goes deeper into your specific pattern.
+
+The core report shows you where you sit. This section shows what your positioning 
+reveals when examined against the full body of HCI's research — patterns, trajectories, 
+cohort signals, and what your specific combination means across different lenses.
+
+The core report is complete on its own. This section is supplementary for curious readers.
+    """
+    
+    # ── API CALL #7: Deep Dive Part 1 ──────────────────────────────────────────
+    progress('Examining your pattern across research lenses...')
+    deep_dive_part_1 = generate_deep_dive_part_1(results, client, benchmark, signals, session_id)
+    
+    # ── DEEP DIVE PART 3: Cohort in Context (data-only) ─────────────────────────
+    progress('Analyzing your cohort in context...')
+    deep_dive_part_3 = generate_deep_dive_part_3(results, benchmark)
+    
+    # ── API CALL #8: Deep Dive Part 4 ──────────────────────────────────────────
+    progress('Exploring your rare combination...')
+    deep_dive_part_4 = generate_deep_dive_part_4(results, client, signals, session_id)
+    
+    # ── API CALL #9: Deep Dive Part 5 ──────────────────────────────────────────
+    progress('Analyzing cross-dimensional architecture...')
+    deep_dive_part_5 = generate_deep_dive_part_5(results, client, session_id)
+    
     # ── Assemble Report ────────────────────────────────────────────────────────
     report = {
         'metadata': {
             'demographics': demographics,
             'generated_by': 'HCI AI Identity & Behaviour Assessment',
             'version': '7.0',
-            'total_api_calls': 6,
-            'optional_deep_dive_calls': 3,
+            'total_api_calls': 9,
+            'core_api_calls': 6,
+            'deep_dive_api_calls': 3,
             'signal_integration': {
                 'benchmark_data': BENCHMARK_DATA_AVAILABLE,
                 'signals_library': SIGNALS_LIBRARY_AVAILABLE,
@@ -1166,9 +1197,16 @@ def generate_premium_report(results, api_key=None, progress_callback=None, bench
         'section_9_what_to_protect': what_to_protect,
         'section_10_trajectory': trajectory,
         'section_11_next_steps': next_steps,
+        'deep_dive': {
+            'opening': deep_dive_opening,
+            'part_1_research_lenses': deep_dive_part_1,
+            'part_3_cohort_context': deep_dive_part_3,
+            'part_4_rare_combination': deep_dive_part_4,
+            'part_5_cross_dimensional': deep_dive_part_5,
+        }
     }
     
-    print(f'Premium report generation complete (6 API calls, 90s timeout + retry, three-layer signal integration)')
+    print(f'Premium report generation complete (9 API calls: 6 core + 3 deep dive, 90s timeout + retry)')
     return report
 
 
@@ -1226,6 +1264,224 @@ def generate_free_result(results, api_key=None):
         'dashboard': dashboard,
         'shown_scores': shown_scores,
     }
+
+
+# ============================================================
+# DEEP DIVE GENERATORS (Mandatory)
+# ============================================================
+
+def generate_deep_dive_part_1(results, client, benchmark, signals, session_id=None):
+    """
+    API CALL #7: Deep Dive Part 1 — Your Pattern Across Research Lenses
+    
+    Examine pattern through 4 lenses: overall positioning, frequency-adjusted,
+    rare combination, cross-dimensional.
+    """
+    
+    dimensions = results.get('dimensions', {})
+    demographics = results.get('demographics', {})
+    
+    # Calculate overall percentile (average of all dimensions)
+    percentiles = [d.get('percentile', 50) for d in dimensions.values()]
+    overall_percentile = int(statistics.mean(percentiles)) if percentiles else 50
+    
+    # Get signal context
+    signal_context = prepare_three_layer_context(results, list(dimensions.keys())[0] if dimensions else 'trust')
+    signal_text = inject_signal_context(signal_context, 'Deep Dive Part 1')
+    
+    prompt = f"""
+    This person's profile:
+    - Overall percentile: {overall_percentile}th across all 10,500 participants
+    - Usage frequency: {demographics.get('frequency', 'sometimes')}
+    - Age group: {demographics.get('age_group', 'unknown')}
+    
+    All dimensions:
+    {json.dumps({k: v.get('percentile') for k, v in dimensions.items()}, indent=2)}
+    
+    RESEARCH SIGNALS:
+    {signal_text}
+    
+    Examine their pattern through 4 lenses:
+    
+    1. Overall Positioning: What does sitting at the {overall_percentile}th percentile suggest about their relationship with AI?
+    
+    2. Frequency-Adjusted: How distinctive are they among people at their usage frequency?
+    
+    3. Rare Combination: Do their dimensions form an unusual combination in the research?
+    
+    4. Cross-Dimensional: How do their dimensions relate to each other? What emerges?
+    
+    Write 250-300 words total. Ground each lens in HCI's research.
+    Tone: illuminating, research-grounded.
+    Speak directly as "you".
+    """
+    
+    response = call_claude_with_resilience(
+        client,
+        model='claude-sonnet-4-6',
+        max_tokens=1000,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+        call_name='Deep Dive Part 1 — Research Lenses',
+        session_id=session_id
+    )
+    
+    return response
+
+
+def generate_deep_dive_part_3(results, benchmark):
+    """
+    Deep Dive Part 3: Your Cohort in Context
+    
+    Pre-written research signals + data showing how participant fits within age cohort.
+    """
+    
+    dimensions = results.get('dimensions', {})
+    demographics = results.get('demographics', {})
+    age_group = demographics.get('age_group', 'unknown')
+    
+    cohort_signals = benchmark.get('cohort_signals', {}).get(age_group, {})
+    
+    # Identify distinctive dimensions within cohort
+    distinctive_in_cohort = {}
+    for dim_name, dim_data in dimensions.items():
+        percentile = dim_data.get('percentile', 50)
+        cohort_mean = cohort_signals.get(dim_name, {}).get('mean', 50)
+        
+        # If more than 15 percentile points away from cohort mean, it's distinctive
+        if abs(percentile - cohort_mean) > 15:
+            distinctive_in_cohort[dim_name] = {
+                'percentile': percentile,
+                'cohort_mean': cohort_mean,
+                'difference': percentile - cohort_mean,
+                'direction': 'higher' if percentile > cohort_mean else 'lower'
+            }
+    
+    # Sort by distance from cohort mean
+    sorted_distinctive = sorted(
+        distinctive_in_cohort.items(),
+        key=lambda x: abs(x[1]['difference']),
+        reverse=True
+    )
+    
+    output = {
+        'title': 'YOUR COHORT IN CONTEXT',
+        'age_group': age_group,
+        'distinctive_in_cohort': dict(sorted_distinctive[:3]),
+        'research_signal': f'People in your age group ({age_group}) show specific patterns in how they engage with AI.'
+    }
+    
+    return output
+
+
+def generate_deep_dive_part_4(results, client, signals, session_id=None):
+    """
+    API CALL #8: Deep Dive Part 4 — What Your Rare Combination Reveals
+    
+    Deep research context about their specific rare combination.
+    """
+    
+    dimensions = results.get('dimensions', {})
+    demographics = results.get('demographics', {})
+    
+    # Find top 2 rare combinations
+    dim_items = list(dimensions.items())
+    if len(dim_items) < 2:
+        return "Insufficient data for rare combination analysis."
+    
+    # Create combinations (simplified: just highest and lowest)
+    sorted_dims = sorted(dim_items, key=lambda x: x[1].get('percentile', 50), reverse=True)
+    combo1 = (sorted_dims[0][0], sorted_dims[-1][0])
+    combo2 = (sorted_dims[1][0], sorted_dims[-2][0]) if len(sorted_dims) > 2 else combo1
+    
+    signal_context = prepare_three_layer_context(results, combo1[0])
+    signal_text = inject_signal_context(signal_context, 'Deep Dive Part 4')
+    
+    prompt = f"""
+    This person has these rare combinations:
+    
+    Combination 1: {combo1[0]} ({sorted_dims[0][1].get('percentile')}%ile) + {combo1[1]} ({sorted_dims[-1][1].get('percentile')}%ile)
+    
+    Combination 2: {combo2[0]} ({sorted_dims[1][1].get('percentile')}%ile) + {combo2[1]} ({sorted_dims[-2][1].get('percentile')}%ile)
+    
+    RESEARCH SIGNALS:
+    {signal_text}
+    
+    For each combination:
+    1. What do HCI's 21 datasets reveal about people with this combo?
+    2. How do these dimensions typically relate in the research?
+    3. What does this combo suggest about their relationship with AI?
+    4. Is this combo stable or does it tend to shift with frequency?
+    
+    Write 300-350 words total. Ground in HCI's research patterns.
+    Tone: research-grounded, illuminating.
+    Speak as "you".
+    """
+    
+    response = call_claude_with_resilience(
+        client,
+        model='claude-sonnet-4-6',
+        max_tokens=1200,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+        call_name='Deep Dive Part 4 — Rare Combination',
+        session_id=session_id
+    )
+    
+    return response
+
+
+def generate_deep_dive_part_5(results, client, session_id=None):
+    """
+    API CALL #9: Deep Dive Part 5 — Cross-Dimensional Story
+    
+    How dimensions work together; what the architecture suggests.
+    """
+    
+    dimensions = results.get('dimensions', {})
+    
+    # Sort by percentile to show high → low
+    sorted_dims = sorted(
+        dimensions.items(),
+        key=lambda x: x[1].get('percentile', 50),
+        reverse=True
+    )
+    
+    top_3_high = sorted_dims[:3]
+    bottom_3_low = sorted_dims[-3:]
+    
+    prompt = f"""
+    This person's 9-dimension profile:
+    
+    Highest: {', '.join([f"{d[0]} ({d[1].get('percentile')}%ile)" for d in top_3_high])}
+    Lowest: {', '.join([f"{d[0]} ({d[1].get('percentile')}%ile)" for d in bottom_3_low])}
+    
+    Analyze the architecture of their pattern:
+    
+    1. Architecture: How do high dimensions enable or support each other?
+    
+    2. Intentional Boundaries: What do low dimensions suggest they're protecting?
+    
+    3. Coherence: How well do these dimensions align with each other?
+    
+    4. What Research Shows: What does HCI's research reveal about people with this specific dimensional architecture?
+    
+    Write 300-350 words total. This is deep analysis, not just listing scores.
+    Tone: analytical, research-grounded, illuminating.
+    Speak as "you".
+    """
+    
+    response = call_claude_with_resilience(
+        client,
+        model='claude-sonnet-4-6',
+        max_tokens=1200,
+        system=GLOBAL_SYSTEM_PROMPT,
+        messages=[{'role': 'user', 'content': prompt}],
+        call_name='Deep Dive Part 5 — Cross-Dimensional',
+        session_id=session_id
+    )
+    
+    return response
 
 
 # ============================================================
