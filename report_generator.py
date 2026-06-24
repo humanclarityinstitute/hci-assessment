@@ -803,6 +803,8 @@ def generate_trajectory(results, client, benchmark, signals, session_id=None):
 def generate_dashboard(results, benchmark):
     """Section 1: Benchmark Dashboard — all 9 dimensions, no API"""
     
+    from scoring_engine import DIMENSIONS
+    
     dimensions = results.get('dimensions', {})
     demographics = results.get('demographics', {})
     age_group = demographics.get('age_group')
@@ -817,9 +819,14 @@ def generate_dashboard(results, benchmark):
     
     for dim_name, dim_data in dimensions.items():
         percentile = dim_data.get('percentiles', {}).get('overall', 50)
+        
+        # Get definition from DIMENSIONS config (using subtitle as definition)
+        dim_config = DIMENSIONS.get(dim_name, {})
+        definition = dim_config.get('subtitle', '')
+        
         dashboard['dimensions'][dim_name] = {
             'name': dim_data.get('label', dim_name),
-            'definition': dim_data.get('definition', ''),
+            'definition': definition,  # Now populated from DIMENSIONS config
             'percentile': percentile,
             'position': positional_language(percentile),
             'plain_english': plain_english_percentile(percentile),
@@ -859,6 +866,28 @@ def generate_how_typical(results, dimensions_spec):
         'distinctive': distinctive,
         'typical': typical
     }
+
+
+def calculate_distribution_from_responses(responses):
+    """
+    Convert list of raw responses to percentage distribution across 1-7 scale.
+    
+    Args:
+        responses: List of raw answers (1-7 values)
+    
+    Returns:
+        List of 7 percentages [pct_1, pct_2, ..., pct_7]
+    """
+    if not responses:
+        return [0, 0, 0, 0, 0, 0, 0]
+    
+    from collections import Counter
+    count = Counter(responses)
+    total = len(responses)
+    
+    return [
+        round((count.get(i, 0) / total) * 100, 1) for i in range(1, 8)
+    ]
 
 
 def generate_question_profile(results, benchmark, demographics):
@@ -904,25 +933,27 @@ def generate_question_profile(results, benchmark, demographics):
             variable_name = q_score.get('variable', '')
             respondent_answer = q_score.get('raw', 0)
             
-            # Get benchmark data for this variable
-            var_benchmark = benchmark.get(variable_name, {})
-            overall_dist = var_benchmark.get('overall', {})
-            age_dist = var_benchmark.get(age_group, {})
+            # Get benchmark data for this variable from nested structure
+            variables_dict = benchmark.get('variables', {})
+            var_data = variables_dict.get(variable_name, {})
             
-            # Calculate respondent's percentile on this question
+            # Get raw response lists
+            overall_responses = var_data.get('overall', [])
+            age_responses = var_data.get('by_age', {}).get(age_group, [])
+            
+            # Calculate distributions as percentages from raw responses
+            distribution = calculate_distribution_from_responses(overall_responses)
+            age_dist_percentages = calculate_distribution_from_responses(age_responses)
+            
+            # Calculate respondent's percentile on this question using raw responses
             respondent_percentile = percentile_from_distribution(
                 respondent_answer, 
-                overall_dist
+                overall_responses if isinstance(overall_responses, list) else []
             )
             age_percentile = percentile_from_distribution(
                 respondent_answer,
-                age_dist
-            ) if age_dist else respondent_percentile
-            
-            # Build distribution array (1-7 scale, as percentages)
-            distribution = [
-                overall_dist.get(str(i), 0) for i in range(1, 8)
-            ]
+                age_responses if isinstance(age_responses, list) else []
+            ) if age_responses else respondent_percentile
             
             # Plain English positioning
             position = positional_language(respondent_percentile) if respondent_percentile else 'near the population centre'
@@ -930,7 +961,7 @@ def generate_question_profile(results, benchmark, demographics):
             
             # Age group comparison
             age_label = age_group if age_group != 'Unknown' else 'your age group'
-            age_avg = age_dist.get('mean', 50) if age_dist else 50
+            age_avg = round(np.mean(age_responses), 1) if age_responses else 50
             
             questions_data.append({
                 'number': question_number,
@@ -942,7 +973,7 @@ def generate_question_profile(results, benchmark, demographics):
                 'respondent_percentile': respondent_percentile,
                 'respondent_position': position,
                 'respondent_plain_english': plain,
-                'distribution': distribution,  # [1%, 2%, 3%, 4%, 5%, 6%, 7%]
+                'distribution': distribution,  # [%_1, %_2, ..., %_7]
                 'age_group': age_label,
                 'age_percentile': age_percentile,
                 'age_group_mean': age_avg,
@@ -958,25 +989,34 @@ def generate_question_profile(results, benchmark, demographics):
     }
 
 
-def percentile_from_distribution(answer, distribution_dict):
+def percentile_from_distribution(answer, responses_list):
     """
     Calculate respondent's percentile given their answer (1-7) 
-    and a distribution dict like {1: 5, 2: 10, 3: 15, ...}.
+    and a list of raw responses from the population.
+    
+    Args:
+        answer: Respondent's answer (1-7)
+        responses_list: List of raw responses from population
     
     Returns: percentile (0-100)
     """
-    if not distribution_dict or answer is None:
+    if not responses_list or answer is None:
         return 50
     
-    # Sum all responses below this answer
-    cumulative = 0
-    for scale_point in range(1, answer):
-        cumulative += distribution_dict.get(str(scale_point), 0)
-    
-    # Add half of responses at this level
-    cumulative += distribution_dict.get(str(answer), 0) / 2
-    
-    return max(0, min(100, round(cumulative)))
+    # Handle both list and dict formats
+    if isinstance(responses_list, dict):
+        # Old format: dict with keys "1"-"7"
+        cumulative = 0
+        for scale_point in range(1, answer):
+            cumulative += responses_list.get(str(scale_point), 0)
+        cumulative += responses_list.get(str(answer), 0) / 2
+        return max(0, min(100, round(cumulative)))
+    else:
+        # New format: list of raw responses
+        # Count how many responses are <= the answer
+        count_at_or_below = sum(1 for r in responses_list if r <= answer)
+        percentile = (count_at_or_below / len(responses_list)) * 100
+        return max(0, min(100, round(percentile)))
 
 
 def generate_what_to_protect(results):
@@ -1091,16 +1131,33 @@ You decide if this matters to you.
         'sections': {}
     }
     
-    # Insert positioning language into templates
-    positioning_map = {
-        'verification': positional_language(dimensions.get('verification', {}).get('percentiles', {}).get('overall')),
-        'agency': positional_language(dimensions.get('human_agency', {}).get('percentiles', {}).get('overall')),
-        'emotional': positional_language(dimensions.get('emotional_regulation', {}).get('percentiles', {}).get('overall')),
-        'thought': positional_language(dimensions.get('thought_partnership', {}).get('percentiles', {}).get('overall'))
+    # Build positioning values for each dimension
+    positioning_values = {
+        'verification': positional_language(dimensions.get('verification', {}).get('percentiles', {}).get('overall', 50)),
+        'agency': positional_language(dimensions.get('human_agency', {}).get('percentiles', {}).get('overall', 50)),
+        'emotional': positional_language(dimensions.get('emotional_regulation', {}).get('percentiles', {}).get('overall', 50)),
+        'thought': positional_language(dimensions.get('thought_partnership', {}).get('percentiles', {}).get('overall', 50))
     }
     
+    # Insert positioning language into templates
     for key, template in templates.items():
-        output['sections'][key] = template.replace(f'[positioning_{key}]', positioning_map.get(key, 'in the middle'))
+        # Map key names to placeholder names
+        if key == 'verification':
+            placeholder = '[positioning_verification]'
+            positioning = positioning_values['verification']
+        elif key == 'agency':
+            placeholder = '[positioning_agency]'
+            positioning = positioning_values['agency']
+        elif key == 'emotional':
+            placeholder = '[positioning_emotional]'
+            positioning = positioning_values['emotional']
+        elif key == 'thought_partnership':
+            placeholder = '[positioning_thought]'
+            positioning = positioning_values['thought']
+        else:
+            continue
+        
+        output['sections'][key] = template.replace(placeholder, positioning)
     
     return output
 
