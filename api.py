@@ -1,11 +1,12 @@
 """
 HCI AI Identity & Behaviour Assessment
-API Layer — Version 5.3
+API Layer — Version 5.4
 
-Changes from v5.2:
-- Fixed imports to work with report_generator v7 (which has both generate_free_result and generate_premium_report)
-- All functionality from v5.2 preserved (Stripe, Resend, recovery, etc.)
-- No structural changes — purely an import fix
+Changes from v5.3:
+- Updated to work with report_generator v8 (clean, robust implementation)
+- Passes session_id to generate_premium_report() for logging and tracking
+- All functionality from v5.3 preserved (Stripe, Resend, recovery, etc.)
+- No structural changes — purely updated generator integration
 
 Changes from v5.1:
 - notify_timeout() — send internal alerts (to info@humanclarityinstitute.com)
@@ -59,7 +60,9 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-# FIXED: Import both functions from report_generator v7
+# UPDATED: Import both functions from report_generator v8
+# v8 generates complete premium reports with 9 API calls (6 core + 3 deep dive)
+# session_id is passed for logging and error tracking
 from scoring_engine import score_assessment
 from report_generator import generate_free_result, generate_premium_report
 from email_template import send_report_email
@@ -665,7 +668,11 @@ def premium():
 
         # 3) Payment confirmed — now, and only now, spend on generation.
         api_key = os.environ.get('ANTHROPIC_API_KEY')
-        report = generate_premium_report(full_results, api_key=api_key)
+        report = generate_premium_report(
+            results=full_results,
+            api_key=api_key,
+            session_id=session_id
+        )
 
         # Store immediately so refresh works
         if session_id:
@@ -1188,7 +1195,11 @@ def recover_report():
 
         # Generate the report
         api_key = os.environ.get('ANTHROPIC_API_KEY')
-        report = generate_premium_report(full_results, api_key=api_key)
+        report = generate_premium_report(
+            results=full_results,
+            api_key=api_key,
+            session_id=session_id
+        )
 
         # Store it
         store_premium_report(session_id, report)
