@@ -1094,10 +1094,76 @@ Your pattern is complete on its own. This deep dive goes deeper, examining your 
         raise
 
 # ============================================================
+# FREE TIER RESULTS GENERATOR (for /score endpoint)
+# ============================================================
+
+def generate_free_result(results: Dict, api_key: str = None) -> Dict:
+    """
+    Generate free tier results — dashboard only, no API calls.
+    Used by /score endpoint to return results page data.
+    
+    Returns compact results with:
+    - dashboard: all 9 dimensions with percentiles
+    - shown_scores: top 3 most distinctive dimensions
+    - summary: brief overview
+    
+    NO API CALLS — purely data extraction from scoring_engine output.
+    """
+    
+    dimensions = results.get('dimensions', {})
+    demographics = results.get('demographics', {})
+    
+    # Generate dashboard data
+    dashboard = generate_dashboard(results)
+    
+    # Get top 3 most distinctive dimensions (furthest from 50th percentile)
+    shown_scores = results.get('shown_scores', [])
+    if not shown_scores and dimensions:
+        dim_list = [
+            (name, data.get('percentiles', {}).get('overall', 50))
+            for name, data in dimensions.items()
+        ]
+        # Sort by distance from 50th percentile
+        dim_list.sort(key=lambda x: abs(x[1] - 50), reverse=True)
+        shown_scores = [name for name, _ in dim_list[:3]]
+    
+    # Extract percentiles for shown scores
+    shown_scores_data = {}
+    for dim_name in shown_scores:
+        if dim_name in dimensions:
+            dim_data = dimensions[dim_name]
+            percentile = dim_data.get('percentiles', {}).get('overall', 50)
+            shown_scores_data[dim_name] = {
+                'label': dim_data.get('label', dim_name),
+                'percentile': percentile,
+                'position': positional_language(percentile),
+                'plain_english': plain_english_percentile(percentile),
+            }
+    
+    # Build response
+    free_result = {
+        'metadata': {
+            'session_id': results.get('session_id'),
+            'demographics': demographics,
+            'version': '8.0',
+        },
+        'dashboard': dashboard,
+        'shown_scores': shown_scores_data,
+        'summary': {
+            'highest_dimension': results.get('summary', {}).get('highest_dimension'),
+            'lowest_dimension': results.get('summary', {}).get('lowest_dimension'),
+            'headline': results.get('headline', ''),
+        }
+    }
+    
+    return free_result
+
+# ============================================================
 # EXPORTS
 # ============================================================
 
 __all__ = [
+    'generate_free_result',
     'generate_premium_report',
     'call_claude_with_resilience',
     'plain_english_percentile',
