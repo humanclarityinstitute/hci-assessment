@@ -93,7 +93,8 @@ REPORT_PDF_BUCKET = os.environ.get('REPORT_PDF_BUCKET', 'reports')
 # ============================================================
 
 def store_response(payload, result_type='free', session_id=None,
-                   full_results=None, report_email=None):
+                   full_results=None, report_email=None,
+                   consent=None, consent_timestamp=None):
     """
     Store assessment response in Supabase.
 
@@ -132,6 +133,10 @@ def store_response(payload, result_type='free', session_id=None,
             record['full_results'] = full_results
         if report_email:
             record['report_email'] = report_email
+        if consent is not None:
+            record['consent'] = consent
+        if consent_timestamp:
+            record['consent_timestamp'] = consent_timestamp
 
         body = json.dumps(record).encode('utf-8')
 
@@ -448,6 +453,8 @@ def score():
             session_id=session_id,
             full_results=results,
             report_email=report_email,
+            consent=request_data.get('consent', False),
+            consent_timestamp=request_data.get('consent_timestamp'),
         )
 
         # Build dimension scores with age percentile
