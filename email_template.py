@@ -112,7 +112,9 @@ def generate_report_email(report, demographics, report_url='https://humanclarity
     methodology = report.get('methodology_note') or report.get('methodology') or ''
 
     # Build the nine compact dimension rows in v2.1 order.
-    profiles = report.get('dimension_profiles', {}) or {}
+    # Extract dimension data from dashboard section (report structure v9.0)
+    dashboard = report.get('section_1_dashboard', {}) or {}
+    profiles = dashboard.get('dimensions', {}) or {}
     dim_rows = ''.join(
         _dim_summary_row(profiles[k]) for k in DIM_ORDER if profiles.get(k)
     )
