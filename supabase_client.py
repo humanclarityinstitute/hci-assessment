@@ -122,6 +122,18 @@ class SupabaseClient:
             print(f"Error fetching assessment: {str(e)}")
             return None
     
+    def get_assessment(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Alias for fetch_assessment() - retrieve assessment data by session_id.
+        
+        Args:
+            session_id: Session identifier to fetch
+        
+        Returns:
+            Dictionary of assessment data or None if not found
+        """
+        return self.fetch_assessment(session_id)
+    
     def check_session_exists(self, session_id: str) -> bool:
         """
         Check if a session already exists in Supabase
