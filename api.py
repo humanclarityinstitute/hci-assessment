@@ -469,6 +469,7 @@ def webhook_stripe():
             
             stripe_session_id = checkout_data['stripe_session_id']
             customer_email = checkout_data['customer_email']
+            report_email = customer_email  # Email report to the Stripe customer's address
             
             # Fetch Stripe session to get client_reference_id (assessment session_id)
             stripe_session = fetch_stripe_session(stripe_session_id)
