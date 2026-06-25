@@ -172,23 +172,7 @@ class SupabaseClient:
             True if session exists, False otherwise
         """
         return self.get_assessment(session_id) is not None
-
-
-def get_supabase_client() -> SupabaseClient:
-    """
-    Factory function to create Supabase client from environment variables.
     
-    Returns:
-        Initialized SupabaseClient instance
-    """
-    supabase_url = os.getenv('SUPABASE_URL')
-    supabase_key = os.getenv('SUPABASE_KEY')
-    
-    if not supabase_url or not supabase_key:
-        raise ValueError("SUPABASE_URL and SUPABASE_KEY environment variables must be set")
-    
-    return SupabaseClient(supabase_url, supabase_key)
-
     def mark_as_paid(self, session_id: str) -> bool:
         """
         Mark an assessment as paid (premium report purchased).
@@ -305,3 +289,19 @@ def get_supabase_client() -> SupabaseClient:
         except Exception as e:
             print(f"Error updating assessment: {str(e)}")
             return False
+
+
+def get_supabase_client() -> SupabaseClient:
+    """
+    Factory function to create Supabase client from environment variables.
+    
+    Returns:
+        Initialized SupabaseClient instance
+    """
+    supabase_url = os.getenv('SUPABASE_URL')
+    supabase_key = os.getenv('SUPABASE_KEY')
+    
+    if not supabase_url or not supabase_key:
+        raise ValueError("SUPABASE_URL and SUPABASE_KEY environment variables must be set")
+    
+    return SupabaseClient(supabase_url, supabase_key)
