@@ -26,6 +26,8 @@ import os
 import sys
 import json
 import traceback
+import urllib.request
+import urllib.parse
 from datetime import datetime
 
 # Add current directory to path
@@ -51,6 +53,17 @@ CORS(app)
 
 # Configuration
 BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json')
+
+# Report storage configuration
+REPORT_TEMPLATE_PATH = os.environ.get(
+    'REPORT_TEMPLATE_PATH',
+    os.path.join(os.path.dirname(__file__), 'hci-report-page.html')
+)
+REPORT_BASE_URL = os.environ.get(
+    'REPORT_BASE_URL',
+    'https://humanclarityinstitute.com/ai-assessment/report/'
+)
+REPORT_PDF_BUCKET = os.environ.get('REPORT_PDF_BUCKET', 'reports')
 # ============================================================
 # HELPER: Fetch Stripe Session
 # ============================================================
@@ -89,6 +102,62 @@ def fetch_stripe_session(stripe_session_id):
     
     except Exception as e:
         print(f'Failed to fetch Stripe session {stripe_session_id}: {e}')
+        return None
+
+
+# ============================================================
+# HELPER: Upload PDF to Supabase Storage
+# ============================================================
+
+def upload_report_pdf(session_id: str, pdf_bytes: bytes) -> str:
+    """
+    Upload PDF bytes to Supabase Storage and return public URL.
+    
+    Used to store generated PDFs in a bucket instead of the database,
+    reducing table bloat and allowing direct browser access.
+    
+    Args:
+        session_id (str): Session identifier (becomes filename)
+        pdf_bytes (bytes): PDF file contents
+    
+    Returns:
+        str: Public URL to the PDF, or None on failure (non-fatal)
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+        if not supabase_url or not supabase_key or not pdf_bytes or not session_id:
+            print(f'PDF upload skipped (missing config)')
+            return None
+
+        path = f'{urllib.parse.quote(session_id)}.pdf'
+        upload_url = f'{supabase_url}/storage/v1/object/{REPORT_PDF_BUCKET}/{path}'
+
+        req = urllib.request.Request(
+            upload_url,
+            data=pdf_bytes,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Content-Type': 'application/pdf',
+                'x-upsert': 'true',
+            },
+            method='POST',
+        )
+        
+        response = urllib.request.urlopen(req, timeout=20)
+        response.read()
+        response.close()
+
+        public_url = (
+            f'{supabase_url}/storage/v1/object/public/'
+            f'{REPORT_PDF_BUCKET}/{path}'
+        )
+        print(f'Report PDF uploaded for session {session_id}')
+        return public_url
+
+    except Exception as e:
+        print(f'PDF upload failed (non-critical): {e}')
         return None
 
 
@@ -535,33 +604,55 @@ def webhook_stripe():
                 pdf_bytes = None
                 pdf_url = None
                 try:
-                    pdf_handler = get_report_pdf()
-                    pdf_bytes, pdf_url = pdf_handler.generate_and_upload(report_html_str, session_id)
-                    print(f'PDF generated and uploaded for session {session_id}: {pdf_url}')
+                    from report_pdf import build_report_pdf
+                    
+                    demographics = full_results.get('demographics', {})
+                    pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+                    
+                    if pdf_bytes:
+                        pdf_url = upload_report_pdf(session_id, pdf_bytes)
+                        print(f'PDF generated and uploaded for session {session_id}')
+                    else:
+                        print(f'PDF generation returned None for session {session_id}')
                 except Exception as e:
                     print(f'PDF generation failed (non-fatal): {e}')
                     # Continue without PDF
                 
-                # Send email with report
+                # Send email with full report + PDF
                 try:
+                    from email_template import send_report_email
+                    
                     report_email = assessment.get('report_email') or customer_email
                     if report_email:
-                        email = get_email_template()
-                        email.send_report_email(
-                            to=report_email,
-                            session_id=session_id,
+                        report_url = (
+                            f'{REPORT_BASE_URL}?session_id={session_id}'
+                            if session_id else REPORT_BASE_URL
+                        )
+                        
+                        demographics = full_results.get('demographics', {})
+                        
+                        email_result = send_report_email(
+                            report_email,
+                            report_dict,
+                            demographics,
+                            os.environ.get('RESEND_API_KEY'),
+                            report_url=report_url,
+                            pdf_bytes=pdf_bytes,
                             pdf_url=pdf_url
                         )
-                        print(f'Report email sent to {report_email}')
+                        
+                        if email_result and email_result.get('success'):
+                            print(f'Report email sent to {report_email}')
+                        else:
+                            print(f'Email send failed: {email_result}')
                 except Exception as e:
                     print(f'Email send failed (non-fatal): {e}')
                 
-                # Update DB with cached report
+                # Update DB with cached report and PDF URL
                 try:
                     db.update_report(
                         session_id=session_id,
-                        report_dict=report_dict,
-                        report_html=report_html_str,
+                        premium_report=report_dict,
                         report_pdf_url=pdf_url
                     )
                     print(f'Report cached in DB for session {session_id}')
@@ -737,44 +828,80 @@ def premium():
                 'error': f'Report generation failed: {str(e)}'
             }), 500
         
-        # Step 7: Generate PDF and upload to Supabase
+        # Step 7: Generate PDF using current report_pdf module
+        pdf_bytes = None
+        pdf_url = None
         try:
-            pdf_handler = get_report_pdf()
-            pdf_bytes, pdf_url = pdf_handler.generate_and_upload(report_html_str, session_id)
+            from report_pdf import build_report_pdf
             
-            if not pdf_url:
-                print(f'PDF generation failed for session {session_id}')
-                # Don't fail entirely - report still displays in browser
-                pdf_url = None
+            # Get demographics for PDF rendering
+            demographics = full_results.get('demographics', {})
+            
+            # Build PDF from report dict using our current report_pdf module
+            pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+            
+            if pdf_bytes:
+                # Upload to Supabase Storage (not database)
+                pdf_url = upload_report_pdf(session_id, pdf_bytes)
+                if pdf_url:
+                    print(f'Report PDF uploaded: {pdf_url}')
+                else:
+                    print(f'PDF upload failed for session {session_id}')
+            else:
+                print(f'PDF generation returned None for session {session_id}')
         
         except Exception as e:
             print(f'PDF generation error: {e}')
-            pdf_url = None
+            traceback.print_exc()
+            # Non-fatal - report still displays in browser without PDF
         
-        # Step 8: Send email with report link
+        # Step 8: Send email with full report + PDF
         email_sent = False
         try:
             if report_email:
-                email = get_email_template()
-                email_result = email.send_report_email(
-                    report_email,
-                    session_id,
-                    pdf_url=pdf_url
+                from email_template import send_report_email
+                
+                # Build report URL for email links
+                report_url = (
+                    f'{REPORT_BASE_URL}?session_id={session_id}'
+                    if session_id else REPORT_BASE_URL
                 )
-                if email_result.get('success'):
+                
+                # Get demographics for email personalization
+                demographics = full_results.get('demographics', {})
+                
+                # Send email with full report data + PDF bytes
+                # This gives users:
+                # 1. Rich HTML email with report content
+                # 2. PDF attachment (if generated)
+                # 3. Link to view online
+                email_result = send_report_email(
+                    report_email,
+                    report_dict,                    # Full report for email rendering
+                    demographics,                   # For personalization
+                    os.environ.get('RESEND_API_KEY'),  # API key
+                    report_url=report_url,          # URL for email links
+                    pdf_bytes=pdf_bytes,            # Bytes for email attachment
+                    pdf_url=pdf_url                 # URL for fallback link
+                )
+                
+                if email_result and email_result.get('success'):
                     email_sent = True
                     print(f'Report email sent to {report_email}')
                 else:
-                    print(f'Email send failed: {email_result.get("message")}')
+                    error_msg = email_result.get('message') if email_result else 'Unknown error'
+                    print(f'Email send failed: {error_msg}')
         
         except Exception as e:
             print(f'Email sending error: {e}')
+            traceback.print_exc()
         
-        # Step 9: Store report in Supabase for later retrieval
+        # Step 9: Cache report in Supabase (both dict AND PDF URL)
         try:
             db.update_report(
                 session_id,
-                premium_report=report_dict  # Correct field name (not report_html)
+                premium_report=report_dict,    # Full report data as JSON
+                report_pdf_url=pdf_url         # URL to PDF in Storage
             )
             print(f'Report cached for session {session_id}')
         
@@ -827,13 +954,13 @@ def get_report():
         if not assessment.get('paid'):
             return jsonify({'success': False, 'error': 'Report not purchased'}), 403
         
-        report_html = assessment.get('report_html')
-        if not report_html:
+        report_data = assessment.get('premium_report')
+        if not report_data:
             return jsonify({'success': False, 'error': 'Report not yet generated'}), 404
         
         return jsonify({
             'success': True,
-            'report': report_html
+            'report': report_data
         }), 200
     
     except Exception as e:
