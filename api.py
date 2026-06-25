@@ -796,58 +796,29 @@ def premium():
             traceback.print_exc()
             # Non-fatal - report still displays in browser without PDF
         
-        # Step 8: Send email with report link (using actual EmailTemplate class)
+        # Step 8: Send email with report link (delegate to email_template)
         email_sent = False
         try:
             if report_email:
-                email_handler = get_email_template()
-                # The actual method on EmailTemplate class
-                email_html = email_handler.format_report_email(
-                    report_email,
-                    session_id
-                )
-                
-                if email_html:
-                    # Send via Resend
-                    resend_key = os.environ.get('RESEND_API_KEY')
-                    if resend_key:
-                        # Use Resend API to send
-                        try:
-                            import urllib.request
-                            import json
-                            
-                            resend_url = 'https://api.resend.com/emails'
-                            payload = {
-                                'from': 'reports@humanclarityinstitute.com',
-                                'to': report_email,
-                                'subject': 'Your HCI Assessment Report is Ready',
-                                'html': email_html
-                            }
-                            
-                            req = urllib.request.Request(
-                                resend_url,
-                                data=json.dumps(payload).encode(),
-                                headers={
-                                    'Authorization': f'Bearer {resend_key}',
-                                    'Content-Type': 'application/json',
-                                    'User-Agent': 'HCI-Reports/1.0'
-                                },
-                                method='POST'
-                            )
-                            
-                            response = urllib.request.urlopen(req, timeout=10)
-                            response_data = json.loads(response.read())
-                            
-                            if response_data.get('id'):
-                                email_sent = True
-                                print(f'Report email sent to {report_email}')
-                            else:
-                                print(f'Email send failed: {response_data}')
-                        
-                        except Exception as e:
-                            print(f'Resend API error: {e}')
-                    else:
-                        print('RESEND_API_KEY not configured')
+                from email_template import send_report_email as send_email
+                resend_key = os.environ.get('RESEND_API_KEY')
+                if resend_key:
+                    # Delegate to email_template.send_report_email() which has the correct sender
+                    success = send_email(
+                        to_email=report_email,
+                        report=report_dict,
+                        demographics=full_results.get('demographics', {}),
+                        resend_api_key=resend_key,
+                        report_url=f'{REPORT_BASE_URL}?session_id={session_id}',
+                        pdf_bytes=pdf_bytes,
+                        pdf_url=pdf_url,
+                        pdf_filename='HCI-AI-Identity-Report.pdf'
+                    )
+                    if success:
+                        email_sent = True
+                        print(f'Report email sent to {report_email}')
+                else:
+                    print('RESEND_API_KEY not configured')
         
         except Exception as e:
             print(f'Email sending error: {e}')
