@@ -47,6 +47,45 @@ CORS(app)
 
 # Configuration
 BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json')
+# ============================================================
+# HELPER: Fetch Stripe Session
+# ============================================================
+
+def fetch_stripe_session(stripe_session_id):
+    """
+    Fetch Stripe checkout session details.
+    
+    Used to:
+    - Verify payment status (payment_status == 'paid')
+    - Recover client_reference_id (assessment session_id)
+    - Get customer email
+    
+    Args:
+        stripe_session_id (str): Stripe checkout session ID
+    
+    Returns:
+        dict: Session data, or None if not found/error
+    """
+    if not stripe_session_id:
+        return None
+    
+    try:
+        import urllib.request
+        stripe_config = get_stripe_config()
+        
+        url = f'https://api.stripe.com/v1/checkout/sessions/{stripe_session_id}'
+        req = urllib.request.Request(
+            url,
+            headers={'Authorization': f'Bearer {stripe_config.secret_key}'},
+        )
+        
+        response = urllib.request.urlopen(req, timeout=15)
+        session_data = json.loads(response.read())
+        return session_data
+    
+    except Exception as e:
+        print(f'Failed to fetch Stripe session {stripe_session_id}: {e}')
+        return None
 
 
 # ============================================================
@@ -447,7 +486,8 @@ def premium():
     
     Request:
     {
-        "session_id": "assessment-session-id",
+        "session_id": "assessment-session-id",  (optional - can be recovered from Stripe)
+        "stripe_session_id": "stripe_session_id",  (optional - used to verify payment)
         "full_results": {...}  (optional, retrieved from DB if not provided)
     }
     
@@ -459,32 +499,69 @@ def premium():
     
     This endpoint:
     1. Checks if report is already cached (prevent duplicate generation)
-    2. Marks assessment as paid
-    3. Calls report_generator (Layer 3) to create HTML report
-    4. Generates PDF and uploads to Supabase Storage
-    5. Sends email with report link
-    6. Caches report in Supabase
+    2. Verifies payment via Stripe (if stripe_session_id provided)
+    3. Recovers session_id from Stripe client_reference_id if needed
+    4. Marks assessment as paid
+    5. Calls report_generator (Layer 3) to create HTML report
+    6. Generates PDF and uploads to Supabase Storage
+    7. Sends email with report link
+    8. Caches report in Supabase
     """
     try:
         request_data = request.get_json() or {}
         session_id = request_data.get('session_id')
+        stripe_session_id = request_data.get('stripe_session_id')
         full_results = request_data.get('full_results')
-        
-        if not session_id:
-            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+        report_email = request_data.get('report_email')
         
         db = get_supabase_client()
         
-        # Step 1: Check cache
+        # Step 1: Recover session_id from Stripe if not provided
+        # This handles the redirect case where session_id might not be in URL
+        stripe_session = None
+        if stripe_session_id:
+            stripe_session = fetch_stripe_session(stripe_session_id)
+            if stripe_session and not session_id:
+                session_id = stripe_session.get('client_reference_id')
+                print(f'Recovered session_id from Stripe: {session_id}')
+        
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided or recoverable'}), 400
+        
+        # Step 2: Check cache first
         cached_report = db.get_cached_report(session_id)
         if cached_report:
             print(f'Report cache hit for session {session_id}')
             return jsonify({
                 'success': True,
-                'message': 'Report retrieved from cache'
+                'message': 'Report retrieved from cache',
+                'cached': True
             }), 200
         
-        # Step 2: Get full_results if not provided
+        # Step 3: Verify payment (STRICT GATE)
+        # If Stripe session was provided, verify payment was actually made
+        if stripe_session_id:
+            if not stripe_session:
+                return jsonify({
+                    'success': False,
+                    'error': 'Payment verification failed. Please contact support.'
+                }), 402
+            
+            payment_status = stripe_session.get('payment_status')
+            if payment_status != 'paid':
+                print(f'Payment not confirmed for Stripe session {stripe_session_id}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Payment not confirmed. If you just paid, please refresh this page.'
+                }), 402
+            
+            # Get customer email from Stripe (preferred over form email)
+            customer_details = stripe_session.get('customer_details') or {}
+            stripe_email = customer_details.get('email') or stripe_session.get('customer_email')
+            if stripe_email:
+                report_email = stripe_email
+        
+        # Step 4: Get full_results if not provided
         if not full_results:
             full_results = db.get_full_results(session_id)
             if not full_results:
@@ -493,10 +570,10 @@ def premium():
                     'error': 'Assessment data not found'
                 }), 404
         
-        # Step 3: Mark as paid
-        db.mark_as_paid(session_id)
+        # Step 5: Mark as paid
+        db.mark_as_paid(session_id, stripe_session_id=stripe_session_id)
         
-        # Step 4: Generate report (Layer 3 - to be implemented)
+        # Step 6: Generate report (Layer 3 - to be implemented)
         # For now, return placeholder
         report_html = {
             'dashboard': 'Report will be generated here',
@@ -504,16 +581,13 @@ def premium():
             # Full report would have 10+ sections
         }
         
-        # Step 5: Generate PDF and upload
+        # Step 7: Generate PDF and upload
         pdf_handler = get_report_pdf()
         # TODO: Convert report_html to actual HTML string
         report_html_str = json.dumps(report_html)  # Placeholder
         pdf_bytes, pdf_url = pdf_handler.generate_and_upload(report_html_str, session_id)
         
-        # Step 6: Send email
-        assessment = db.get_assessment(session_id)
-        report_email = assessment.get('report_email') if assessment else None
-        
+        # Step 8: Send email
         if report_email:
             email = get_email_template()
             email_result = email.send_report_email(
@@ -524,7 +598,7 @@ def premium():
             if email_result.get('success'):
                 print(f'Report email sent to {report_email}')
         
-        # Step 7: Cache report
+        # Step 9: Cache report
         db.update_report(session_id, report_html=report_html, report_pdf_url=pdf_url)
         
         return jsonify({
