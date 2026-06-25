@@ -33,10 +33,10 @@ class SupabaseClient:
         
         Args:
             session_id: Unique session identifier
-            **kwargs: All assessment data fields (responses, dimensions, scores, demographics, etc)
+            **kwargs: All assessment data fields (responses, demographics, full_results, etc)
         
         Returns:
-            True if successful, False otherwise
+            Dict with 'success' key (True/False) and optional 'message' key
         """
         try:
             url = f'{self.supabase_url}/rest/v1/assessment_responses'
@@ -85,9 +85,12 @@ class SupabaseClient:
             print(f"Error storing assessment: {str(e)}")
             return {'success': False, 'message': str(e)}
     
-    def fetch_assessment(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def get_assessment(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
-        Fetch assessment data from Supabase by session_id
+        Retrieve complete assessment record by session_id.
+        
+        Returns the full assessment object with all fields: responses, demographics,
+        full_results, email, consent, timestamp, etc.
         
         Args:
             session_id: Session identifier to fetch
@@ -122,21 +125,45 @@ class SupabaseClient:
             print(f"Error fetching assessment: {str(e)}")
             return None
     
-    def get_assessment(self, session_id: str) -> Optional[Dict[str, Any]]:
+    def get_full_results(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
-        Alias for fetch_assessment() - retrieve assessment data by session_id.
+        Retrieve only the full_results field from an assessment.
+        
+        This is a convenience method for extracting just the scoring results
+        without fetching the entire assessment record.
         
         Args:
             session_id: Session identifier to fetch
         
         Returns:
-            Dictionary of assessment data or None if not found
+            Full results dictionary or None if not found
         """
-        return self.fetch_assessment(session_id)
+        assessment = self.get_assessment(session_id)
+        if assessment:
+            return assessment.get('full_results')
+        return None
+    
+    def get_cached_report(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve cached premium report if it exists.
+        
+        This checks if a premium report has already been generated and cached
+        for this session_id.
+        
+        Args:
+            session_id: Session identifier to check
+        
+        Returns:
+            Cached report data or None if not found
+        """
+        assessment = self.get_assessment(session_id)
+        if assessment:
+            return assessment.get('cached_report')
+        return None
     
     def check_session_exists(self, session_id: str) -> bool:
         """
-        Check if a session already exists in Supabase
+        Check if a session already exists in Supabase.
         
         Args:
             session_id: Session identifier to check
@@ -144,12 +171,12 @@ class SupabaseClient:
         Returns:
             True if session exists, False otherwise
         """
-        return self.fetch_assessment(session_id) is not None
+        return self.get_assessment(session_id) is not None
 
 
 def get_supabase_client() -> SupabaseClient:
     """
-    Factory function to create Supabase client from environment variables
+    Factory function to create Supabase client from environment variables.
     
     Returns:
         Initialized SupabaseClient instance
@@ -161,3 +188,80 @@ def get_supabase_client() -> SupabaseClient:
         raise ValueError("SUPABASE_URL and SUPABASE_KEY environment variables must be set")
     
     return SupabaseClient(supabase_url, supabase_key)
+
+    def mark_as_paid(self, session_id: str) -> bool:
+        """
+        Mark an assessment as paid (premium report purchased).
+        
+        Updates the assessment record to set paid=true.
+        
+        Args:
+            session_id: Session identifier
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            url = f'{self.supabase_url}/rest/v1/assessment_responses?session_id=eq.{session_id}'
+            
+            body = json.dumps({'paid': True}).encode('utf-8')
+            
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={
+                    'Content-Type': 'application/json',
+                    'apikey': self.supabase_key,
+                    'Authorization': f'Bearer {self.supabase_key}',
+                    'Prefer': 'return=minimal',
+                },
+                method='PATCH'
+            )
+            
+            response = urllib.request.urlopen(req, timeout=5)
+            response.read()
+            response.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error marking as paid: {str(e)}")
+            return False
+    
+    def update_report(self, session_id: str, **kwargs) -> bool:
+        """
+        Update report-related fields for an assessment.
+        
+        Used to cache generated report HTML and PDF URL.
+        
+        Args:
+            session_id: Session identifier
+            **kwargs: Fields to update (report_html, report_pdf_url, etc)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            url = f'{self.supabase_url}/rest/v1/assessment_responses?session_id=eq.{session_id}'
+            
+            body = json.dumps(kwargs).encode('utf-8')
+            
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={
+                    'Content-Type': 'application/json',
+                    'apikey': self.supabase_key,
+                    'Authorization': f'Bearer {self.supabase_key}',
+                    'Prefer': 'return=minimal',
+                },
+                method='PATCH'
+            )
+            
+            response = urllib.request.urlopen(req, timeout=5)
+            response.read()
+            response.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error updating report: {str(e)}")
+            return False
