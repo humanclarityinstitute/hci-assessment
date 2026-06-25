@@ -41,6 +41,10 @@ from stripe_config import get_stripe_config
 from email_template import get_email_template
 from report_pdf import get_report_pdf
 
+# Import Layer 3 (Report generation)
+from report_generator import generate_premium_report
+from hci_report_page_builder import build_report_html
+
 # Create Flask app
 app = Flask(__name__)
 CORS(app)
@@ -573,33 +577,102 @@ def premium():
         # Step 5: Mark as paid
         db.mark_as_paid(session_id, stripe_session_id=stripe_session_id)
         
-        # Step 6: Generate report (Layer 3 - to be implemented)
-        # For now, return placeholder
-        report_html = {
-            'dashboard': 'Report will be generated here',
-            'section1': 'Section 1 content',
-            # Full report would have 10+ sections
-        }
-        
-        # Step 7: Generate PDF and upload
-        pdf_handler = get_report_pdf()
-        # TODO: Convert report_html to actual HTML string
-        report_html_str = json.dumps(report_html)  # Placeholder
-        pdf_bytes, pdf_url = pdf_handler.generate_and_upload(report_html_str, session_id)
-        
-        # Step 8: Send email
-        if report_email:
-            email = get_email_template()
-            email_result = email.send_report_email(
-                report_email,
-                session_id,
-                pdf_url=pdf_url
+        # Step 6: Generate premium report (Layer 3)
+        # This calls report_generator which makes 9 Claude API calls
+        try:
+            api_key = os.environ.get('ANTHROPIC_API_KEY')
+            if not api_key:
+                print('ANTHROPIC_API_KEY not configured')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report generation not available'
+                }), 503
+            
+            print(f'Generating premium report for session {session_id}')
+            
+            # Generate report dict (9 API calls + 4 data sections)
+            report_dict = generate_premium_report(
+                results=full_results,
+                api_key=api_key,
+                session_id=session_id
             )
-            if email_result.get('success'):
-                print(f'Report email sent to {report_email}')
+            
+            if not report_dict:
+                print(f'Report generator returned empty dict for session {session_id}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report generation failed'
+                }), 500
+            
+            # Convert report_dict to professional HTML for PDF
+            print(f'Building HTML for session {session_id}')
+            report_html_str = build_report_html(report_dict)
+            
+            if not report_html_str:
+                print(f'HTML builder returned empty string for session {session_id}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report rendering failed'
+                }), 500
         
-        # Step 9: Cache report
-        db.update_report(session_id, report_html=report_html, report_pdf_url=pdf_url)
+        except ImportError as e:
+            print(f'Missing report generator module: {e}')
+            return jsonify({
+                'success': False,
+                'error': 'Report generator not available'
+            }), 500
+        except Exception as e:
+            print(f'Report generation error: {e}')
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'error': f'Report generation failed: {str(e)}'
+            }), 500
+        
+        # Step 7: Generate PDF and upload to Supabase
+        try:
+            pdf_handler = get_report_pdf()
+            pdf_bytes, pdf_url = pdf_handler.generate_and_upload(report_html_str, session_id)
+            
+            if not pdf_url:
+                print(f'PDF generation failed for session {session_id}')
+                # Don't fail entirely - report still displays in browser
+                pdf_url = None
+        
+        except Exception as e:
+            print(f'PDF generation error: {e}')
+            pdf_url = None
+        
+        # Step 8: Send email with report link
+        email_sent = False
+        try:
+            if report_email:
+                email = get_email_template()
+                email_result = email.send_report_email(
+                    report_email,
+                    session_id,
+                    pdf_url=pdf_url
+                )
+                if email_result.get('success'):
+                    email_sent = True
+                    print(f'Report email sent to {report_email}')
+                else:
+                    print(f'Email send failed: {email_result.get("message")}')
+        
+        except Exception as e:
+            print(f'Email sending error: {e}')
+        
+        # Step 9: Store report in Supabase for later retrieval
+        try:
+            db.update_report(
+                session_id,
+                report_html=report_dict,  # Store dict for browser display
+                report_pdf_url=pdf_url
+            )
+            print(f'Report cached for session {session_id}')
+        
+        except Exception as e:
+            print(f'Report caching error: {e}')
         
         return jsonify({
             'success': True,
