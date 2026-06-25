@@ -676,8 +676,14 @@ def premium():
                     'error': 'Assessment data not found'
                 }), 404
         
-        # Step 5: Mark as paid
-        db.mark_as_paid(session_id, stripe_session_id=stripe_session_id)
+        # Step 5: Mark as paid and store stripe_session_id (SAME ROW)
+        from datetime import datetime
+        db.update_assessment(
+            session_id=session_id,
+            paid=True,
+            paid_at=datetime.utcnow().isoformat(),
+            stripe_session_id=stripe_session_id
+        )
         
         # Step 6: Generate premium report (Layer 3)
         # This calls report_generator which makes 9 Claude API calls
