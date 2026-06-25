@@ -85,6 +85,7 @@ class StripeConfig:
                 'line_items[0][price]': price_id,
                 'line_items[0][quantity]': '1',
                 'billing_address_collection': 'auto',
+                'client_reference_id': session_id,  # Link payment back to assessment session
             }
             
             # Optional: collect customer email for delivery
