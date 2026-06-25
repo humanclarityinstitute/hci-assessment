@@ -1,339 +1,235 @@
 """
-email_template.py
-HCI Assessment Platform — Email Template and Delivery
+HCI Premium Report Email — v2.1 (lightweight summary + PDF attachment)
 
-Purpose:
-  - Format report email with HTML template
-  - Send emails via Resend API
-  - Handle attachments (PDF reports)
-  - Error handling and retries
+Design decision (locked): the email is a SHORT, scannable summary that mirrors
+the free results page voice — positional language + plain-English, no bare
+percentiles, no charts. The full experience lives in two places:
+  1. the interactive web report (CTA button -> report_url), and
+  2. a downloadable PDF of the full report, attached to this email.
 
-All email operations go through this module.
+v2.1 rules honoured here:
+  - NO bare "Xth percentile" anywhere (cards or prose). We render only the
+    positional word + plain-English string that the generator produces.
+  - No archetypes, no "tensions" language.
+  - British English. Brand: navy #1B2A4A, brand blue #4054B2, cream #F9F7F2.
+
+------------------------------------------------------------------------------
+FIELD MAP — CONFIRM AGAINST report_generator.py BEFORE DEPLOY
+------------------------------------------------------------------------------
+This template reads the v2.1 report object. The exact key names below are the
+ONLY thing tying it to the generator, so they are isolated here on purpose.
+Everything is read with a safe default: a missing key degrades to blank, never
+to a wrong number (that is what produced the old "0th percentile" bug).
 """
 
-import os
+import base64
 import json
-from typing import Optional, Dict, Any
+import urllib.request
+from datetime import datetime
 
 
-class EmailTemplate:
-    """Email template and delivery handler."""
-    
-    def __init__(self, api_key: Optional[str] = None):
-        """
-        Initialize email handler.
-        
-        Args:
-            api_key (str, optional): Resend API key. Defaults to RESEND_API_KEY env var
-        """
-        self.api_key = api_key or os.environ.get('RESEND_API_KEY')
-        self.from_address = 'info@humanclarityinstitute.com'
-        self.report_base_url = os.environ.get(
-            'REPORT_BASE_URL',
-            'https://humanclarityinstitute.com/ai-assessment/report'
-        )
-    
-    def format_report_email(self, recipient_email: str, session_id: str,
-                          first_name: Optional[str] = None) -> str:
-        """
-        Format premium report email HTML.
-        
-        Args:
-            recipient_email (str): Email address of recipient
-            session_id (str): Assessment session ID
-            first_name (str, optional): Recipient first name
-        
-        Returns:
-            str: HTML email body
-        """
-        report_link = f'{self.report_base_url}?session_id={session_id}'
-        name_greeting = f'Hi {first_name},' if first_name else 'Hi,'
-        
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body {{
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                    line-height: 1.6;
-                    color: #333;
-                    background-color: #f5f5f5;
-                    padding: 0;
-                    margin: 0;
-                }}
-                .container {{
-                    max-width: 600px;
-                    margin: 0 auto;
-                    background-color: #ffffff;
-                    padding: 40px;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }}
-                .header {{
-                    margin-bottom: 30px;
-                    border-bottom: 2px solid #007bff;
-                    padding-bottom: 20px;
-                }}
-                .header h1 {{
-                    margin: 0;
-                    color: #007bff;
-                    font-size: 24px;
-                }}
-                .content {{
-                    margin: 20px 0;
-                    line-height: 1.8;
-                }}
-                .cta-button {{
-                    display: inline-block;
-                    margin: 30px 0;
-                    padding: 14px 32px;
-                    background-color: #007bff;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    font-weight: 600;
-                    font-size: 16px;
-                    transition: background-color 0.2s;
-                }}
-                .cta-button:hover {{
-                    background-color: #0056b3;
-                }}
-                .footer {{
-                    margin-top: 40px;
-                    padding-top: 20px;
-                    border-top: 1px solid #eee;
-                    font-size: 12px;
-                    color: #666;
-                }}
-                .link {{
-                    color: #007bff;
-                    text-decoration: none;
-                }}
-                .link:hover {{
-                    text-decoration: underline;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Your HCI Assessment Report is Ready</h1>
-                </div>
-                
-                <div class="content">
-                    <p>{name_greeting}</p>
-                    
-                    <p>Your comprehensive AI Identity & Behaviour Assessment report has been generated and is ready for you to review.</p>
-                    
-                    <p>Your report includes:</p>
-                    <ul>
-                        <li>Percentile rankings across 9 behavioural dimensions</li>
-                        <li>Detailed insights about your AI use patterns</li>
-                        <li>Comparison with your demographic cohort</li>
-                        <li>Perception gaps and distinctive patterns</li>
-                        <li>Research context and explanations</li>
-                    </ul>
-                    
-                    <p style="text-align: center; margin: 40px 0;">
-                        <a href="{report_link}" class="cta-button">View Your Full Report</a>
-                    </p>
-                    
-                    <p>You can also copy this link into your browser:</p>
-                    <p style="word-break: break-all; background-color: #f5f5f5; padding: 10px; border-radius: 4px; font-size: 12px;">
-                        <a href="{report_link}" class="link">{report_link}</a>
-                    </p>
-                    
-                    <p>The report is saved securely and can be accessed anytime using the link above.</p>
-                    
-                    <p>If you have any questions about your results, please don't hesitate to reach out.</p>
-                    
-                    <p>
-                        Best regards,<br>
-                        <strong>Human Clarity Institute</strong>
-                    </p>
-                </div>
-                
-                <div class="footer">
-                    <p>
-                        © 2026 Human Clarity Institute. All rights reserved.<br>
-                        <a href="https://humanclarityinstitute.com" class="link">Visit our website</a> | 
-                        <a href="https://humanclarityinstitute.com/privacy" class="link">Privacy Policy</a>
-                    </p>
-                    <p>
-                        Session ID: {session_id}
-                    </p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return html.strip()
-    
-    def send_report_email(self, recipient_email: str, session_id: str,
-                         first_name: Optional[str] = None,
-                         pdf_url: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Send premium report email via Resend.
-        
-        Args:
-            recipient_email (str): Email address to send to
-            session_id (str): Assessment session ID
-            first_name (str, optional): Recipient first name
-            pdf_url (str, optional): URL to PDF for downloading
-        
-        Returns:
-            dict: {success: bool, message: str, email_id: str or None}
-        """
-        try:
-            if not self.api_key:
-                return {
-                    'success': False,
-                    'message': 'RESEND_API_KEY not configured',
-                    'email_id': None
-                }
-            
-            import urllib.request
-            
-            # Format email HTML
-            html_body = self.format_report_email(recipient_email, session_id, first_name)
-            
-            # Build request payload
-            payload = {
-                'from': self.from_address,
-                'to': recipient_email,
-                'subject': 'Your HCI Assessment Report is Ready',
-                'html': html_body,
-            }
-            
-            # Add PDF link as reply-to hint
-            payload['reply_to'] = self.from_address
-            
-            body = json.dumps(payload).encode('utf-8')
-            
-            # POST to Resend API
-            url = 'https://api.resend.com/emails'
-            req = urllib.request.Request(
-                url,
-                data=body,
-                headers={
-                    'Authorization': f'Bearer {self.api_key}',
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'HCI-Reports/1.0',  # Required by Resend to bypass Cloudflare
-                },
-                method='POST'
-            )
-            
-            response = urllib.request.urlopen(req, timeout=15)
-            response_data = json.loads(response.read())
-            
-            email_id = response_data.get('id')
-            if email_id:
-                print(f'Report email sent to {recipient_email} (ID: {email_id})')
-                return {
-                    'success': True,
-                    'message': f'Email sent to {recipient_email}',
-                    'email_id': email_id
-                }
-            else:
-                return {
-                    'success': False,
-                    'message': 'Email send returned no ID',
-                    'email_id': None
-                }
-        
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode()
-            print(f'Resend API error: {error_body}')
-            return {
-                'success': False,
-                'message': f'Email API error: {error_body}',
-                'email_id': None
-            }
-        except Exception as e:
-            print(f'send_report_email failed: {e}')
-            return {
-                'success': False,
-                'message': f'Email send failed: {str(e)}',
-                'email_id': None
-            }
-    
-    def send_alert_email(self, alert_type: str, session_id: str,
-                        error_message: str) -> Dict[str, Any]:
-        """
-        Send internal alert email (for failures).
-        
-        Used when report generation fails, to notify support team.
-        
-        Args:
-            alert_type (str): 'generation_timeout', 'generation_error', etc.
-            session_id (str): Assessment session ID
-            error_message (str): Error details
-        
-        Returns:
-            dict: {success: bool, message: str}
-        """
-        try:
-            if not self.api_key:
-                return {'success': False, 'message': 'RESEND_API_KEY not configured'}
-            
-            import urllib.request
-            
-            subject = f'[HCI Alert] Report Generation Failed: {alert_type}'
-            body = f"""
-            Report generation failed for session {session_id}.
-            
-            Alert Type: {alert_type}
-            Error: {error_message}
-            
-            Please investigate.
-            """
-            
-            payload = {
-                'from': self.from_address,
-                'to': self.from_address,  # Send to ourselves
-                'subject': subject,
-                'text': body,
-            }
-            
-            body_json = json.dumps(payload).encode('utf-8')
-            
-            url = 'https://api.resend.com/emails'
-            req = urllib.request.Request(
-                url,
-                data=body_json,
-                headers={
-                    'Authorization': f'Bearer {self.api_key}',
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'HCI-Reports/1.0',
-                },
-                method='POST'
-            )
-            
-            response = urllib.request.urlopen(req, timeout=15)
-            response.read()
-            
-            return {'success': True, 'message': 'Alert email sent'}
-        
-        except Exception as e:
-            print(f'Alert email failed (non-critical): {e}')
-            return {'success': False, 'message': str(e)}
+# Nine dimensions, v2.1 report order.
+DIM_ORDER = [
+    'reliance', 'trust', 'verification', 'decision_delegation',
+    'human_agency', 'disclosure', 'emotional_regulation',
+    'thought_partnership', 'social_transparency',
+]
 
 
-# Singleton instance (created once at startup)
-_email_instance = None
+def _first_paragraph(text):
+    """Lightweight: show only the opening paragraph of a longer section."""
+    if not text:
+        return ''
+    return text.split('\n\n')[0].replace('\n', ' ').strip()
 
 
-def get_email_template() -> EmailTemplate:
+def _dim_summary_row(dim):
     """
-    Get or create email template singleton.
-    
-    Returns:
-        EmailTemplate: Singleton instance
+    One compact dimension row: label + subtitle, positional word, plain-English.
+    No percentile number, no chart, no full narrative — those live in the
+    PDF / web report.
+
+    Reads report_generator's dimension_profiles fields:
+      label, subtitle, position (the Section-3 positional word), plain_english.
+    We render the positional word + plain-English string only — never a bare
+    percentile (v2.1).
     """
-    global _email_instance
-    if _email_instance is None:
-        _email_instance = EmailTemplate()
-    return _email_instance
+    label = dim.get('label', '')
+    subtitle = dim.get('subtitle', '')
+    position = (dim.get('position') or '').strip()
+    if position:
+        position = position[0].upper() + position[1:]  # "notably high" -> "Notably high"
+    plain = dim.get('plain_english', '')
+
+    position_pill = (
+        f'<span style="display:inline-block;background:#EDEBFB;color:#3D2B8C;'
+        f'font-size:11px;font-weight:700;padding:3px 11px;border-radius:20px;'
+        f'letter-spacing:0.02em;">{position}</span>'
+    ) if position else ''
+
+    return f"""
+    <tr><td style="padding:0 0 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="background:#F8F9FC;border-radius:8px;border-left:3px solid #4054B2;">
+        <tr><td style="padding:16px 18px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="vertical-align:top;">
+                <p style="margin:0;color:#1B2A4A;font-size:15px;font-weight:700;">{label}</p>
+                <p style="margin:2px 0 0;color:#6B7280;font-size:12px;">{subtitle}</p>
+              </td>
+              <td align="right" style="vertical-align:top;">{position_pill}</td>
+            </tr>
+          </table>
+          <p style="margin:10px 0 0;color:#4054B2;font-size:13px;font-weight:600;line-height:1.5;">{plain}</p>
+        </td></tr>
+      </table>
+    </td></tr>"""
+
+
+def generate_report_email(report, demographics, report_url='https://humanclarityinstitute.com', pdf_url=None):
+    """Generate the lightweight HTML summary email (PDF carries the full report).
+
+    pdf_url: optional durable link to the stored PDF, shown as a fallback so a
+    stripped attachment or a lost inbox never loses the report.
+    """
+
+    age_group = demographics.get('age_group', '')
+    country = demographics.get('country', '')
+    frequency = demographics.get('ai_tool_use_frequency', '')
+    date_str = datetime.utcnow().strftime('%d %B %Y')
+
+    # Most surprising finding -> short opener. In report_generator this is the
+    # 'opening' field (generate_opening). 'overview' is the separate AI-Identity
+    # overview, used only as a fallback.
+    surprising = _first_paragraph(
+        report.get('opening')
+        or report.get('overview')
+        or ''
+    )
+
+    # Methodology stays the fixed verbatim "10,000+" text from the generator.
+    methodology = report.get('methodology_note') or report.get('methodology') or ''
+
+    # Build the nine compact dimension rows in v2.1 order.
+    profiles = report.get('dimension_profiles', {}) or {}
+    dim_rows = ''.join(
+        _dim_summary_row(profiles[k]) for k in DIM_ORDER if profiles.get(k)
+    )
+
+    # Durable PDF download link (fallback if the attachment is stripped/lost).
+    pdf_link_html = (
+        f'<p style="margin:14px 0 0;color:#6B7280;font-size:12px;">'
+        f'Prefer a direct download? <a href="{pdf_url}" style="color:#4054B2;font-weight:600;">'
+        f'Download your report PDF</a></p>'
+    ) if pdf_url else ''
+
+    return f"""<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your AI Identity Report — Human Clarity Institute</title>
+</head>
+<body style="margin:0;padding:0;background:#F4F6FB;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F6FB;padding:32px 16px;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+  <!-- Header -->
+  <tr><td style="background:#1B2A4A;border-radius:12px 12px 0 0;padding:34px 40px;">
+    <p style="margin:0 0 10px;color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Human Clarity Institute · AI Identity &amp; Behaviour Assessment</p>
+    <h1 style="margin:0 0 12px;color:#ffffff;font-size:27px;font-weight:800;letter-spacing:-0.5px;line-height:1.15;">Your AI Identity Report</h1>
+    <p style="margin:0;color:rgba(255,255,255,0.45);font-size:13px;">{age_group} &nbsp;·&nbsp; {country} &nbsp;·&nbsp; {frequency} AI user &nbsp;·&nbsp; {date_str}</p>
+  </td></tr>
+
+  <!-- Most surprising finding (short) -->
+  <tr><td style="background:#F9F7F2;border:1px solid #D9CEBD;border-top:none;padding:26px 40px;">
+    <p style="margin:0 0 8px;color:#6B7280;font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Your most surprising finding</p>
+    <p style="margin:0;color:#1B2A4A;font-size:15px;line-height:1.7;font-weight:500;">{surprising}</p>
+  </td></tr>
+
+  <!-- CTA: full report (PDF + web) -->
+  <tr><td style="background:#ffffff;padding:26px 40px 8px;text-align:center;">
+    <p style="margin:0 0 16px;color:#1A1A1A;font-size:14px;line-height:1.6;">Your full report — every dimension, the cross-dimensional patterns, your perception gap and the complete 39-question appendix — is <strong>attached as a PDF</strong> and available to read online.</p>
+    <a href="{report_url}" style="display:inline-block;background:#4054B2;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 30px;border-radius:8px;">View your full report online →</a>
+    {pdf_link_html}
+  </td></tr>
+
+  <!-- Nine dimension summary -->
+  <tr><td style="background:#ffffff;padding:18px 40px 6px;">
+    <p style="margin:0 0 14px;color:#6B7280;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">Your nine dimensions at a glance</p>
+    <table width="100%" cellpadding="0" cellspacing="0">{dim_rows}</table>
+  </td></tr>
+
+  <!-- Methodology (fixed verbatim, 10,000+) -->
+  <tr><td style="background:#ffffff;border-radius:0 0 12px 12px;padding:18px 40px 24px;border-top:1px solid #E2E6EF;">
+    <p style="margin:14px 0 8px;color:#9CA3AF;font-size:11px;line-height:1.7;">{methodology}</p>
+    <p style="margin:0;color:#9CA3AF;font-size:11px;">Benchmark data and methodology: <a href="https://github.com/humanclarityinstitute" style="color:#4054B2;">github.com/humanclarityinstitute</a></p>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="padding:24px 0;text-align:center;">
+    <p style="margin:0;color:#9CA3AF;font-size:12px;">Human Clarity Institute &nbsp;·&nbsp; <a href="https://humanclarityinstitute.com" style="color:#4054B2;text-decoration:none;">humanclarityinstitute.com</a></p>
+    <p style="margin:8px 0 0;color:#9CA3AF;font-size:11px;">This report was generated specifically for you. It is not intended for redistribution.</p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+
+
+def send_report_email(to_email, report, demographics, resend_api_key,
+                      report_url='https://humanclarityinstitute.com',
+                      pdf_bytes=None,
+                      pdf_url=None,
+                      pdf_filename='HCI-AI-Identity-Report.pdf'):
+    """
+    Send the summary email via Resend, with the full report attached as PDF.
+
+    pdf_bytes: attach the PDF if provided.
+    pdf_url:   durable link to the stored PDF, shown in-body as a fallback so a
+               stripped attachment or a lost inbox never loses the report.
+    If both are None the email still sends (summary + web link) — so a PDF
+    hiccup never blocks delivery.
+    """
+    html_content = generate_report_email(report, demographics, report_url, pdf_url=pdf_url)
+
+    body = {
+        'from': 'reports@updates.humanclarityinstitute.com',
+        'to': [to_email],
+        'reply_to': 'info@humanclarityinstitute.com',
+        'subject': 'Your AI Identity & Behaviour Report — Human Clarity Institute',
+        'html': html_content,
+    }
+
+    if pdf_bytes:
+        body['attachments'] = [{
+            'filename': pdf_filename,
+            'content': base64.b64encode(pdf_bytes).decode('utf-8'),
+        }]
+
+    req = urllib.request.Request(
+        'https://api.resend.com/emails',
+        data=json.dumps(body).encode('utf-8'),
+        headers={
+            'Authorization': f'Bearer {resend_api_key}',
+            'Content-Type': 'application/json',
+            # Resend's API sits behind Cloudflare, which blocks the default
+            # Python-urllib User-Agent with a 403 (Cloudflare error 1010).
+            # Sending a normal User-Agent lets the request through.
+            'User-Agent': 'HCI-Reports/1.0',
+        },
+        method='POST',
+    )
+
+    try:
+        response = urllib.request.urlopen(req, timeout=15)
+        result = json.loads(response.read())
+        print(f'Email sent successfully: {result.get("id")}')
+        return True
+    except Exception as e:
+        print(f'Email send failed (non-critical): {e}')
+        return False
