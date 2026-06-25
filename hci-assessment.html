@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HCI AI Identity & Behaviour Assessment</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #1B2A4A;
+    --blue: #4054B2;
+    --blue2: #2C5F8A;
+    --cream: #F9F7F4;
+    --text: #1a1a2e;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --white: #ffffff;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--cream);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── ASTRA OVERRIDES ── */
+  .ast-container, .entry-content, .ast-article-single {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  /* ── WRAPPER ── */
+  #hci-assessment {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+
+
+  /* ── PROGRESS BAR ── */
+  .progress-wrap {
+    margin-bottom: 40px;
+  }
+
+  .progress-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .progress-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--navy);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .progress-count {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .progress-track {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--blue2), var(--blue));
+    border-radius: 2px;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ── SCREENS ── */
+  .screen {
+    display: none;
+    animation: fadeUp 0.4s ease;
+  }
+
+  .screen.active { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── INTRO SCREEN ── */
+  .intro-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 16px;
+  }
+
+  .intro-title {
+    font-size: clamp(28px, 5vw, 42px);
+    font-weight: 700;
+    color: var(--navy);
+    line-height: 1.15;
+    margin-bottom: 20px;
+  }
+
+  .intro-subtitle {
+    font-size: 17px;
+    color: #444;
+    line-height: 1.65;
+    margin-bottom: 32px;
+    max-width: 580px;
+  }
+
+  .intro-meta {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 40px;
+    flex-wrap: wrap;
+  }
+
+  .intro-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .intro-meta-item svg {
+    color: var(--blue);
+  }
+
+  /* ── DIMENSION SCREEN ── */
+  .dim-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 8px;
+  }
+
+  .dim-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 6px;
+  }
+
+  .dim-subtitle {
+    font-size: 15px;
+    color: var(--muted);
+    margin-bottom: 36px;
+  }
+
+  /* ── QUESTION CARD ── */
+  .question-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 28px 24px;
+    margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+
+  .question-card.answered {
+    border-color: var(--blue);
+  }
+
+  .question-text {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--navy);
+    line-height: 1.5;
+    margin-bottom: 24px;
+  }
+
+  /* ── SCALE ── */
+  .scale-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .scale-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    padding: 0 2px;
+  }
+
+  .scale-dots {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+  }
+
+  .dot-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s;
+    position: relative;
+  }
+
+  .dot-btn:hover { transform: scale(1.15); }
+
+  .dot-btn .dot-circle {
+    border-radius: 50%;
+    background: transparent;
+    border: 2.5px solid #9ca3af;
+    transition: background 0.2s, transform 0.2s, border-color 0.2s;
+    display: block;
+  }
+
+  .dot-btn:hover .dot-circle {
+    border-color: var(--blue);
+    background: #eef1ff;
+  }
+
+  /* Graduating sizes — outer dots largest, middle smallest, like 16 Personalities */
+  .dot-btn[data-val="1"] .dot-circle { width: 38px; height: 38px; }
+  .dot-btn[data-val="2"] .dot-circle { width: 32px; height: 32px; }
+  .dot-btn[data-val="3"] .dot-circle { width: 26px; height: 26px; }
+  .dot-btn[data-val="4"] .dot-circle { width: 20px; height: 20px; }
+  .dot-btn[data-val="5"] .dot-circle { width: 26px; height: 26px; }
+  .dot-btn[data-val="6"] .dot-circle { width: 32px; height: 32px; }
+  .dot-btn[data-val="7"] .dot-circle { width: 38px; height: 38px; }
+
+  .dot-btn.selected .dot-circle {
+    background: var(--blue);
+    transform: scale(1.2);
+  }
+
+
+
+  .dot-btn.selected:hover .dot-circle {
+    background: var(--blue);
+  }
+
+  /* ── DEMOGRAPHICS / PERCEPTION ── */
+  .form-group {
+    margin-bottom: 24px;
+  }
+
+  .form-label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--navy);
+    margin-bottom: 8px;
+  }
+
+  .form-select {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    color: var(--text);
+    background: var(--white);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .form-select:focus {
+    outline: none;
+    border-color: var(--blue);
+  }
+
+  /* Perception choice buttons */
+  .perception-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .perception-btn {
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--white);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .perception-btn:hover { border-color: var(--blue2); background: #f0f4ff; }
+  .perception-btn.selected { border-color: var(--blue); background: #eef1ff; color: var(--navy); font-weight: 500; }
+
+  /* ── EMAIL SCREEN ── */
+  .email-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 12px;
+  }
+
+  .email-subtitle {
+    font-size: 15px;
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 32px;
+  }
+
+  .email-input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 16px;
+    color: var(--text);
+    margin-bottom: 8px;
+    transition: border-color 0.2s;
+  }
+
+  .email-input:focus {
+    outline: none;
+    border-color: var(--blue);
+  }
+
+  .email-note {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 28px;
+  }
+
+  /* ── CONSENT CHECKBOX ── */
+  .consent-box {
+    background: #f5f5f5;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 28px;
+  }
+
+  .consent-label {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+
+  .consent-input {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    margin-top: 2px;
+    cursor: pointer;
+    accent-color: var(--blue);
+  }
+
+  .consent-text {
+    flex: 1;
+  }
+
+  /* ── BUTTONS ── */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--navy);
+    color: var(--white);
+    border: none;
+    padding: 14px 32px;
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    text-decoration: none;
+  }
+
+  .btn-primary:hover { background: var(--blue); }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 32px;
+  }
+
+  .btn-back {
+    background: none;
+    border: none;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.2s;
+  }
+
+  .btn-back:hover { color: var(--navy); }
+
+  /* ── VALIDATION ── */
+  .error-msg {
+    color: #c0392b;
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+  }
+
+  /* ── SUBMITTING STATE ── */
+  .submitting-screen {
+    text-align: center;
+    padding: 60px 20px;
+  }
+
+  .spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 24px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .submitting-text {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--navy);
+    margin-bottom: 8px;
+  }
+
+  .submitting-sub {
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 600px) {
+    #hci-assessment { padding: 24px 16px 60px; }
+    .question-card { padding: 20px 16px; }
+    .intro-meta { gap: 16px; }
+    .dim-title { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+<div id="hci-assessment">
+
+
+
+  <!-- PROGRESS BAR -->
+  <div class="progress-wrap" id="progressWrap" style="display:none">
+    <div class="progress-meta">
+      <span class="progress-label" id="progressLabel">Trust</span>
+      <span class="progress-count" id="progressCount">1 of 12</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- SCREEN 0: INTRO                           -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="screen active" id="screen-intro">
+    <p class="intro-eyebrow">AI Identity & Behaviour Assessment</p>
+    <h1 class="intro-title">How is AI changing the way you think, decide, and relate?</h1>
+    <p class="intro-subtitle">This assessment measures your AI behaviours across nine dimensions — from how much you trust AI, to how it shapes your thinking and emotional life. See exactly where your patterns sit compared to others like you.</p>
+    <div class="intro-meta">
+      <div class="intro-meta-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        4–5 minutes
+      </div>
+      <div class="intro-meta-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Anonymous & confidential
+      </div>
+      <div class="intro-meta-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        39 questions
+      </div>
+    </div>
+    <button class="btn-primary" onclick="goTo(1)">
+      Begin Assessment
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </button>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- SCREENS 1–9: DIMENSIONS                   -->
+  <!-- ══════════════════════════════════════════ -->
+
+  <!-- SCREEN 1: TRUST -->
+  <div class="screen" id="screen-1">
+    <p class="dim-eyebrow">Section 1 of 9</p>
+    <h2 class="dim-title">Trust</h2>
+    <p class="dim-subtitle">Do I trust AI?</p>
+    <div id="questions-1"></div>
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(0)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(1)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-1">Please answer all questions before continuing.</p>
+  </div>
+
+  <!-- SCREEN 2: DISCLOSURE -->
+  <div class="screen" id="screen-2">
+    <p class="dim-eyebrow">Section 2 of 9</p>
+    <h2 class="dim-title">Disclosure</h2>
+    <p class="dim-subtitle">What do I tell AI?</p>
+    <div id="questions-2"></div>
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(1)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(2)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-2">Please answer all questions before continuing.</p>
+  </div>
+
+  <!-- SCREEN 3: RELIANCE -->
+  <div class="screen" id="screen-3">
+    <p class="dim-eyebrow">Section 3 of 9</p>
+    <h2 class="dim-title">Reliance</h2>
+    <p class="dim-subtitle">How dependent am I becoming?</p>
+    <div id="questions-3"></div>
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(2)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(3)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-3">Please answer all questions before continuing.</p>
+  </div>
+
+  <!-- SCREEN 4: DECISION DELEGATION -->
+  <div class="screen" id="screen-4">
+    <p class="dim-eyebrow">Section 4 of 9</p>
+    <h2 class="dim-title">Decision Delegation</h2>
+    <p class="dim-subtitle">How much judgement do I outsource?</p>
+    <div id="questions-4"></div>
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(3)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(4)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-4">Please answer all questions before continuing.</p>
+  </div>
+
+  <!-- SCREEN 5: VERIFICATION -->
+  <div class="screen" id="screen-5">
+    <p class="dim-eyebrow">Section 5 of 9</p>
+    <h2 class="dim-title">Verification</h2>
+    <p class="dim-subtitle">Do I check what AI tells me?</p>
+    <div id="questions-5"></div>
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(4)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(5)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-5">Please answer all questions before continuing.</p>
+  </div>
+
+  <!-- SCREEN 6: HUMAN AGENCY -->
+  <div class="screen" id="screen-6">
+    <p class="dim-eyebrow">Section 6 of 9</p>
+    <h2 class="dim-title">Human Agency</h2>
+    <p class="dim-subtitle">Am I still directing my own thinking?</p>
+    <div id="questions-6"></div>
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(5)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(6)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-6">Please answer all questions before continuing.</p>
+  </div>
+
+  <!-- SCREEN 7: EMOTIONAL REGULATION -->
+  <div class="screen" id="screen-7">
+    <p class="dim-eyebrow">Section 7 of 9</p>
+    <h2 class="dim-title">Emotional Regulation</h2>
+    <p class="dim-subtitle">Does AI play a role in my emotional life?</p>
+    <div id="questions-7"></div>
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(6)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(7)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-7">Please answer all questions before continuing.</p>
+  </div>
+
+  <!-- SCREEN 8: THOUGHT PARTNERSHIP -->
+  <div class="screen" id="screen-8">
+    <p class="dim-eyebrow">Section 8 of 9</p>
+    <h2 class="dim-title">Thought Partnership</h2>
+    <p class="dim-subtitle">Do I use AI as an external thinking partner?</p>
+    <div id="questions-8"></div>
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(7)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(8)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-8">Please answer all questions before continuing.</p>
+  </div>
+
+  <!-- SCREEN 9: SOCIAL TRANSPARENCY -->
+  <div class="screen" id="screen-9">
+    <p class="dim-eyebrow">Section 9 of 9</p>
+    <h2 class="dim-title">Social Transparency</h2>
+    <p class="dim-subtitle">Do I tell other people about my AI use?</p>
+    <div id="questions-9"></div>
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(8)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(9)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-9">Please answer all questions before continuing.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- SCREEN 10: DEMOGRAPHICS                   -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="screen" id="screen-10">
+    <p class="dim-eyebrow">Almost done</p>
+    <h2 class="dim-title">About You</h2>
+    <p class="dim-subtitle">These details allow us to benchmark your results against people like you.</p>
+
+    <div class="form-group">
+      <label class="form-label">Age group</label>
+      <select class="form-select" id="age_group">
+        <option value="">Select your age group</option>
+        <option value="18 - 24">18 – 24</option>
+        <option value="25 - 34">25 – 34</option>
+        <option value="35 - 44">35 – 44</option>
+        <option value="45 - 54">45 – 54</option>
+        <option value="55 - 65">55 – 65</option>
+        <option value="Over 65">Over 65</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Gender</label>
+      <select class="form-select" id="gender">
+        <option value="">Select</option>
+        <option value="Man">Man</option>
+        <option value="Woman">Woman</option>
+        <option value="Non-binary">Non-binary</option>
+        <option value="Prefer not to say">Prefer not to say</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Country</label>
+      <select class="form-select" id="country">
+        <option value="">Select your country</option>
+        <option value="United Kingdom">United Kingdom</option>
+        <option value="United States">United States</option>
+        <option value="Canada">Canada</option>
+        <option value="Ireland">Ireland</option>
+        <option value="Australia">Australia</option>
+        <option value="New Zealand">New Zealand</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">How often do you use AI tools?</label>
+      <select class="form-select" id="ai_tool_use_frequency">
+        <option value="">Select frequency</option>
+        <option value="Never">Never</option>
+        <option value="Rarely">Rarely</option>
+        <option value="Occasionally">Occasionally</option>
+        <option value="Sometimes">Sometimes</option>
+        <option value="Often">Often</option>
+        <option value="Very often">Very often</option>
+        <option value="Everyday">Everyday</option>
+      </select>
+    </div>
+
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(9)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(10)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-10">Please complete all fields before continuing.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- SCREEN 11: PERCEPTION                     -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="screen" id="screen-11">
+    <p class="dim-eyebrow">Final questions</p>
+    <h2 class="dim-title">Compared to others</h2>
+    <p class="dim-subtitle">How do you see yourself relative to most people?</p>
+
+    <div class="form-group">
+      <label class="form-label">Compared to most people, how much do you use AI?</label>
+      <div class="perception-options" id="perceived_usage">
+        <button class="perception-btn" onclick="selectPerception('perceived_usage', 'Much less than most people', this)">Much less than most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_usage', 'Somewhat less than most people', this)">Somewhat less than most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_usage', 'About the same as most people', this)">About the same as most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_usage', 'Somewhat more than most people', this)">Somewhat more than most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_usage', 'Much more than most people', this)">Much more than most people</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Compared to most people, how much do you rely on AI?</label>
+      <div class="perception-options" id="perceived_reliance">
+        <button class="perception-btn" onclick="selectPerception('perceived_reliance', 'Much less than most people', this)">Much less than most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_reliance', 'Somewhat less than most people', this)">Somewhat less than most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_reliance', 'About the same as most people', this)">About the same as most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_reliance', 'Somewhat more than most people', this)">Somewhat more than most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_reliance', 'Much more than most people', this)">Much more than most people</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Compared to most people, how dependent on AI are you?</label>
+      <div class="perception-options" id="perceived_dependence">
+        <button class="perception-btn" onclick="selectPerception('perceived_dependence', 'Much less than most people', this)">Much less than most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_dependence', 'Somewhat less than most people', this)">Somewhat less than most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_dependence', 'About the same as most people', this)">About the same as most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_dependence', 'Somewhat more than most people', this)">Somewhat more than most people</button>
+        <button class="perception-btn" onclick="selectPerception('perceived_dependence', 'Much more than most people', this)">Much more than most people</button>
+      </div>
+    </div>
+
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(10)">← Back</button>
+      <button class="btn-primary" onclick="nextSection(11)">Continue →</button>
+    </div>
+    <p class="error-msg" id="err-11">Please answer all three questions before continuing.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- SCREEN 12: EMAIL                          -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="screen" id="screen-12">
+    <p class="dim-eyebrow">One last thing</p>
+    <h2 class="email-title">Where should we send your results?</h2>
+    <p class="email-subtitle">Your results are ready instantly. We'll use this address to deliver your full report if you choose to purchase one.</p>
+    <input type="email" class="email-input" id="report_email" placeholder="your@email.com" />
+    <p class="email-note">We respect your privacy. No spam, ever.</p>
+    
+    <div class="consent-box">
+      <label class="consent-label">
+        <input type="checkbox" id="consent_checkbox" class="consent-input" />
+        <span class="consent-text">I am 18+ and consent to take this assessment. I understand: (1) my responses will be processed by Anthropic to generate my personalised report, which remains private; (2) my anonymised responses (stripped of all identifiers) will be added to our benchmark library, used to compare future participants results, and may be published for research purposes; I agree to the Privacy Policy and Terms of Service.</span>
+      </label>
+    </div>
+    
+    <div class="btn-nav">
+      <button class="btn-back" onclick="goTo(11)">← Back</button>
+      <button class="btn-primary" id="submitBtn" onclick="submitAssessment()">
+        See My Results →
+      </button>
+    </div>
+    <p class="error-msg" id="err-12">Please enter a valid email address and check the consent box.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- SCREEN 13: SUBMITTING                     -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="screen" id="screen-submitting">
+    <div class="submitting-screen">
+      <div class="spinner"></div>
+      <p class="submitting-text">Analysing your responses…</p>
+      <p class="submitting-sub">Comparing your patterns against the benchmark population</p>
+    </div>
+  </div>
+
+</div><!-- end #hci-assessment -->
+
+<script>
+// ══════════════════════════════════════════════
+// QUESTION DATA
+// ══════════════════════════════════════════════
+const DIMENSIONS = [
+  {
+    screen: 1,
+    questions: [
+      { key: 'trust_q1', text: 'When AI gives me information, I generally trust it is accurate.' },
+      { key: 'trust_q2', text: 'I feel confident relying on information or recommendations generated by AI.' },
+      { key: 'trust_q3', text: 'I worry that AI will present incorrect information as if it were fact.' },
+      { key: 'trust_q4', text: 'When I feel uncertain, I am more likely to trust guidance from AI systems.' },
+
+    ]
+  },
+  {
+    screen: 2,
+    questions: [
+      { key: 'disc_q1', text: 'I feel comfortable sharing personal thoughts or emotions with AI that I would not share with most people.' },
+      { key: 'disc_q2', text: 'I feel emotionally safer expressing myself to AI than I do to many people in my life.' },
+      { key: 'disc_q3', text: 'There are things I have told AI that I have never told another person.' },
+      { key: 'disc_q4', text: 'I am more open with AI about some topics than I am with people in my life.' },
+    ]
+  },
+  {
+    screen: 3,
+    questions: [
+      { key: 'rel_q1', text: 'I feel uneasy or restless when I cannot use AI tools for an extended period.' },
+      { key: 'rel_q2', text: 'I struggle to function effectively without assistance from digital or AI systems.' },
+      { key: 'rel_q3', text: 'I rely on digital or AI suggestions to make many everyday work or personal decisions.' },
+      { key: 'rel_q4', text: 'I often rely on AI even when I could work things out on my own.' },
+      { key: 'rel_q5', text: 'Some of my abilities have weakened because AI systems now perform those tasks for me.' },
+    ]
+  },
+  {
+    screen: 4,
+    questions: [
+      { key: 'del_q1', text: 'I regularly hand over decisions to AI systems that I previously made myself.' },
+      { key: 'del_q2', text: 'When I use AI for decisions, I usually accept its recommendations without making significant changes.' },
+      { key: 'del_q3', text: 'I sometimes follow AI recommendations even when they do not feel right to me.' },
+      { key: 'del_q4', text: 'I am comfortable relying on AI systems for important decisions that could significantly affect my life or work.' },
+      { key: 'del_q5', text: 'When I feel uncertain about a decision, I am more likely to rely on AI guidance.' },
+    ]
+  },
+  {
+    screen: 5,
+    questions: [
+      { key: 'ver_q1', text: 'I regularly double-check information provided by AI using other sources.' },
+      { key: 'ver_q2', text: 'I often skip checking AI information because it takes too much time or effort.' },
+      { key: 'ver_q3', text: 'When information feels complicated or mentally demanding, I am more likely to accept it without checking carefully.' },
+      { key: 'ver_q4', text: 'I use independent sources to confirm whether AI-generated information is accurate.' },
+    ]
+  },
+  {
+    screen: 6,
+    questions: [
+      { key: 'agency_q1', text: 'My actions feel self-directed rather than driven by external forces.' },
+      { key: 'agency_q2', text: 'I feel in control of decisions when using AI or automated systems.' },
+      { key: 'agency_q3', text: 'Using AI tools has changed how much I trust my own judgement.' },
+      { key: 'agency_q4', text: 'I sometimes feel influenced by systems without being fully aware of how.' },
+      { key: 'agency_q5', text: 'I sometimes question what is genuinely "mine" versus shaped by suggestions from AI tools.' },
+    ]
+  },
+  {
+    screen: 7,
+    questions: [
+      { key: 'emot_q1', text: 'AI sometimes gives me a sense of relief or support when I feel emotionally overwhelmed.' },
+      { key: 'emot_q2', text: 'I receive emotional support or comfort from AI tools.' },
+      { key: 'emot_q3', text: 'Over time, my emotional or conversational boundaries with AI have become more open.' },
+      { key: 'emot_q4', text: 'When I feel stressed, anxious, or emotionally overwhelmed, I often turn to AI to help me process my thoughts.' },
+    ]
+  },
+  {
+    screen: 8,
+    questions: [
+      { key: 'thought_q1', text: 'I use AI as a sounding board — thinking out loud and developing ideas through conversation.' },
+      { key: 'thought_q2', text: 'I use AI to challenge or stress-test my own beliefs and assumptions.' },
+      { key: 'thought_q3', text: 'AI has changed how deeply I engage with my own thinking.' },
+      { key: 'thought_q4', text: 'I tend to use AI in ways that confirm what I already think rather than challenge it.' },
+    ]
+  },
+  {
+    screen: 9,
+    questions: [
+      { key: 'soc_q1', text: 'I openly acknowledge when AI has contributed to my work or thinking.' },
+      { key: 'soc_q2', text: 'I downplay or hide how much I use AI when talking to friends or family.' },
+      { key: 'soc_q3', text: 'I feel comfortable telling people in my life how I really use AI.' },
+      { key: 'soc_q4', text: 'There is a gap between how much I actually use AI and what I let others believe.' },
+    ]
+  },
+];
+
+const SCREEN_LABELS = [
+  'Introduction',
+  'Trust', 'Disclosure', 'Reliance', 'Decision Delegation',
+  'Verification', 'Human Agency', 'Emotional Regulation',
+  'Thought Partnership', 'Social Transparency',
+  'About You', 'Comparisons', 'Email', 'Submitting'
+];
+
+const TOTAL_SCREENS = 13;
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let responses = {};
+let perceptions = {};
+let currentScreen = 0;
+
+// ══════════════════════════════════════════════
+// BUILD QUESTION CARDS
+// ══════════════════════════════════════════════
+function buildQuestions() {
+  DIMENSIONS.forEach(dim => {
+    const container = document.getElementById(`questions-${dim.screen}`);
+    if (!container) return;
+    container.innerHTML = dim.questions.map(q => `
+      <div class="question-card" id="card-${q.key}">
+        <p class="question-text">${q.text}</p>
+        <div class="scale-wrap">
+          <div class="scale-labels">
+            <span>Strongly Disagree</span>
+            <span>Strongly Agree</span>
+          </div>
+          <div class="scale-dots">
+            ${[1,2,3,4,5,6,7].map(v => `
+              <button class="dot-btn" data-val="${v}" data-key="${q.key}" onclick="selectDot('${q.key}', ${v}, this)" aria-label="${v}">
+                <span class="dot-circle"></span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `).join('');
+  });
+}
+
+// ══════════════════════════════════════════════
+// DOT SELECTION
+// ══════════════════════════════════════════════
+function selectDot(key, val, btn) {
+  // Deselect all in this question
+  const allBtns = document.querySelectorAll(`.dot-btn[data-key="${key}"]`);
+  allBtns.forEach(b => b.classList.remove('selected'));
+  // Select clicked
+  btn.classList.add('selected');
+  responses[key] = val;
+  // Mark card answered
+  const card = document.getElementById(`card-${key}`);
+  if (card) card.classList.add('answered');
+}
+
+// ══════════════════════════════════════════════
+// PERCEPTION SELECTION
+// ══════════════════════════════════════════════
+function selectPerception(field, val, btn) {
+  const container = document.getElementById(field);
+  container.querySelectorAll('.perception-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  perceptions[field] = val;
+}
+
+// ══════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════
+function goTo(screenNum) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const target = screenNum === 0
+    ? document.getElementById('screen-intro')
+    : document.getElementById(`screen-${screenNum}`);
+  if (target) {
+    target.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  currentScreen = screenNum;
+  updateProgress(screenNum);
+}
+
+function updateProgress(screenNum) {
+  const wrap = document.getElementById('progressWrap');
+  const fill = document.getElementById('progressFill');
+  const label = document.getElementById('progressLabel');
+  const count = document.getElementById('progressCount');
+
+  if (screenNum === 0) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  const pct = Math.round((screenNum / TOTAL_SCREENS) * 100);
+  fill.style.width = pct + '%';
+  label.textContent = SCREEN_LABELS[screenNum] || '';
+  count.textContent = `${screenNum} of ${TOTAL_SCREENS}`;
+}
+
+// ══════════════════════════════════════════════
+// VALIDATION & NEXT
+// ══════════════════════════════════════════════
+function nextSection(screenNum) {
+  const errEl = document.getElementById(`err-${screenNum}`);
+
+  // Dimension screens 1-9
+  if (screenNum >= 1 && screenNum <= 9) {
+    const dim = DIMENSIONS[screenNum - 1];
+    const unanswered = dim.questions.filter(q => !responses[q.key]);
+    if (unanswered.length > 0) {
+      if (errEl) errEl.style.display = 'block';
+      // Highlight first unanswered
+      const firstCard = document.getElementById(`card-${unanswered[0].key}`);
+      if (firstCard) firstCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+  }
+
+  // Demographics screen 10
+  if (screenNum === 10) {
+    const fields = ['age_group', 'gender', 'country', 'ai_tool_use_frequency'];
+    const missing = fields.filter(f => !document.getElementById(f).value);
+    if (missing.length > 0) {
+      if (errEl) errEl.style.display = 'block';
+      return;
+    }
+  }
+
+  // Perception screen 11
+  if (screenNum === 11) {
+    const needed = ['perceived_usage', 'perceived_reliance', 'perceived_dependence'];
+    const missing = needed.filter(f => perceptions[f] === undefined || perceptions[f] === null || perceptions[f] === '');
+    if (missing.length > 0) {
+      if (errEl) errEl.style.display = 'block';
+      return;
+    }
+  }
+
+  if (errEl) errEl.style.display = 'none';
+  goTo(screenNum + 1);
+}
+
+// ══════════════════════════════════════════════
+// COMPREHENSIVE VALIDATION
+// ══════════════════════════════════════════════
+function validateAllAnswers() {
+  const errors = [];
+  
+  // Check all 9 dimension screens (screens 1-9)
+  for (let i = 1; i <= 9; i++) {
+    const dim = DIMENSIONS[i - 1];
+    for (const q of dim.questions) {
+      if (responses[q.key] === undefined || responses[q.key] === null || responses[q.key] === '') {
+        errors.push(`Missing response: ${q.key}`);
+      }
+    }
+  }
+  
+  // Check demographics
+  const demoFields = ['age_group', 'gender', 'country', 'ai_tool_use_frequency'];
+  for (const field of demoFields) {
+    const val = document.getElementById(field).value;
+    if (!val || val === '') {
+      errors.push(`Missing demographic: ${field}`);
+    }
+  }
+  
+  // Check perceptions
+  const perceptionFields = ['perceived_usage', 'perceived_reliance', 'perceived_dependence'];
+  for (const field of perceptionFields) {
+    if (perceptions[field] === undefined || perceptions[field] === null || perceptions[field] === '') {
+      errors.push(`Missing perception: ${field}`);
+    }
+  }
+  
+  // Check email
+  const email = document.getElementById('report_email').value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.push('Invalid or missing email');
+  }
+  
+  // Check consent
+  const consentCheckbox = document.getElementById('consent_checkbox');
+  if (!consentCheckbox || !consentCheckbox.checked) {
+    errors.push('Consent not checked');
+  }
+  
+  return errors;
+}
+
+// ══════════════════════════════════════════════
+// SUBMIT
+// ══════════════════════════════════════════════
+function submitAssessment() {
+  // FINAL COMPREHENSIVE VALIDATION
+  const validationErrors = validateAllAnswers();
+  if (validationErrors.length > 0) {
+    console.error('Validation failed:', validationErrors);
+    const emailErr = document.getElementById('err-12');
+    emailErr.textContent = 'Some required fields are missing. Please go back and complete all answers.';
+    emailErr.style.display = 'block';
+    return;
+  }
+
+  const email = document.getElementById('report_email').value.trim();
+  const emailErr = document.getElementById('err-12');
+  const consentCheckbox = document.getElementById('consent_checkbox');
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    emailErr.style.display = 'block';
+    return;
+  }
+
+  if (!consentCheckbox || !consentCheckbox.checked) {
+    emailErr.textContent = 'Please enter a valid email address and check the consent box.';
+    emailErr.style.display = 'block';
+    return;
+  }
+
+  emailErr.style.display = 'none';
+
+  // Collect demographics
+  const demographics = {
+    age_group: document.getElementById('age_group').value,
+    gender: document.getElementById('gender').value,
+    country: document.getElementById('country').value,
+    ai_tool_use_frequency: document.getElementById('ai_tool_use_frequency').value,
+  };
+
+  // Build full payload
+  const payload = {
+    responses: { ...responses, ...perceptions },
+    demographics: { ...demographics },
+    report_email: email,
+    consent: true,
+    consent_timestamp: new Date().toISOString(),
+  };
+  
+  // Show submitting screen
+  goTo('submitting');
+  document.getElementById('screen-submitting').style.display = 'block';
+
+  // Post to Railway
+  fetch('https://web-production-381d3.up.railway.app/score', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  .then(r => {
+    if (!r.ok) throw new Error('API error ' + r.status);
+    return r.json();
+  })
+  .then(data => {
+    // Store full results in sessionStorage
+    sessionStorage.setItem('hci_full_results', JSON.stringify(data.full_results));
+    sessionStorage.setItem('hci_session_id', data.session_id);
+    sessionStorage.setItem('hci_report_email', email);
+
+    // Build results URL
+    const params = new URLSearchParams({ 
+      ...responses, 
+      ...perceptions, 
+      ...demographics, 
+      report_email: email,
+      session_id: data.session_id 
+    });
+    window.location.href = 'https://humanclarityinstitute.com/ai-assessment/results/?' + params.toString();
+  })
+  .catch(err => {
+    console.error('Submission error:', err);
+    // Go back to email screen with error
+    goTo(12);
+    const errEl = document.getElementById('err-12');
+    errEl.textContent = 'Something went wrong. Please try again.';
+    errEl.style.display = 'block';
+  });
+}
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+buildQuestions();
+</script>
+</body>
+</html>
