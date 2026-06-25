@@ -68,7 +68,7 @@ class SupabaseClient:
             )
             
             # Send the request
-            response = urllib.request.urlopen(req, timeout=5)
+            response = urllib.request.urlopen(req, timeout=30)
             response.read()  # Consume response
             response.close()
             
@@ -110,7 +110,7 @@ class SupabaseClient:
                 method='GET'
             )
             
-            response = urllib.request.urlopen(req, timeout=5)
+            response = urllib.request.urlopen(req, timeout=30)
             data = json.loads(response.read().decode('utf-8'))
             response.close()
             
@@ -202,13 +202,17 @@ class SupabaseClient:
                 method='PATCH'
             )
             
-            response = urllib.request.urlopen(req, timeout=5)
+            response = urllib.request.urlopen(req, timeout=30)
             response.read()
             response.close()
             return True
             
+        except urllib.error.HTTPError as e:
+            error_details = e.read().decode('utf-8')
+            print(f"Error marking as paid: HTTP {e.code}: {error_details}")
+            return False
         except Exception as e:
-            print(f"Error marking as paid: {str(e)}")
+            print(f"Error marking as paid: {type(e).__name__}: {str(e)}")
             return False
     
     def update_report(self, session_id: str, **kwargs) -> bool:
@@ -241,13 +245,17 @@ class SupabaseClient:
                 method='PATCH'
             )
             
-            response = urllib.request.urlopen(req, timeout=5)
+            response = urllib.request.urlopen(req, timeout=30)
             response.read()
             response.close()
             return True
             
+        except urllib.error.HTTPError as e:
+            error_details = e.read().decode('utf-8')
+            print(f"Error updating report: HTTP {e.code}: {error_details}")
+            return False
         except Exception as e:
-            print(f"Error updating report: {str(e)}")
+            print(f"Error updating report: {type(e).__name__}: {str(e)}")
             return False
     
     def update_assessment(self, session_id: str, **kwargs) -> bool:
@@ -281,13 +289,17 @@ class SupabaseClient:
                 method='PATCH'
             )
             
-            response = urllib.request.urlopen(req, timeout=5)
+            response = urllib.request.urlopen(req, timeout=30)
             response.read()
             response.close()
             return True
             
+        except urllib.error.HTTPError as e:
+            error_details = e.read().decode('utf-8')
+            print(f"Error updating assessment: HTTP {e.code}: {error_details}")
+            return False
         except Exception as e:
-            print(f"Error updating assessment: {str(e)}")
+            print(f"Error updating assessment: {type(e).__name__}: {str(e)}")
             return False
 
 
