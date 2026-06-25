@@ -86,6 +86,7 @@ class StripeConfig:
                 'line_items[0][quantity]': '1',
                 'billing_address_collection': 'auto',
                 'client_reference_id': session_id,  # Link payment back to assessment session
+                'allow_promotion_codes': 'true',  # Enable coupon/promo code field on checkout
             }
             
             # Optional: collect customer email for delivery
