@@ -53,17 +53,6 @@ CORS(app)
 
 # Configuration
 BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json')
-
-# Report storage configuration
-REPORT_TEMPLATE_PATH = os.environ.get(
-    'REPORT_TEMPLATE_PATH',
-    os.path.join(os.path.dirname(__file__), 'hci-report-page.html')
-)
-REPORT_BASE_URL = os.environ.get(
-    'REPORT_BASE_URL',
-    'https://humanclarityinstitute.com/ai-assessment/report/'
-)
-REPORT_PDF_BUCKET = os.environ.get('REPORT_PDF_BUCKET', 'reports')
 # ============================================================
 # HELPER: Fetch Stripe Session
 # ============================================================
@@ -105,60 +94,6 @@ def fetch_stripe_session(stripe_session_id):
         return None
 
 
-# ============================================================
-# HELPER: Upload PDF to Supabase Storage
-# ============================================================
-
-def upload_report_pdf(session_id: str, pdf_bytes: bytes) -> str:
-    """
-    Upload PDF bytes to Supabase Storage and return public URL.
-    
-    Used to store generated PDFs in a bucket instead of the database,
-    reducing table bloat and allowing direct browser access.
-    
-    Args:
-        session_id (str): Session identifier (becomes filename)
-        pdf_bytes (bytes): PDF file contents
-    
-    Returns:
-        str: Public URL to the PDF, or None on failure (non-fatal)
-    """
-    try:
-        supabase_url = os.environ.get('SUPABASE_URL')
-        supabase_key = os.environ.get('SUPABASE_KEY')
-        if not supabase_url or not supabase_key or not pdf_bytes or not session_id:
-            print(f'PDF upload skipped (missing config)')
-            return None
-
-        path = f'{urllib.parse.quote(session_id)}.pdf'
-        upload_url = f'{supabase_url}/storage/v1/object/{REPORT_PDF_BUCKET}/{path}'
-
-        req = urllib.request.Request(
-            upload_url,
-            data=pdf_bytes,
-            headers={
-                'apikey': supabase_key,
-                'Authorization': f'Bearer {supabase_key}',
-                'Content-Type': 'application/pdf',
-                'x-upsert': 'true',
-            },
-            method='POST',
-        )
-        
-        response = urllib.request.urlopen(req, timeout=20)
-        response.read()
-        response.close()
-
-        public_url = (
-            f'{supabase_url}/storage/v1/object/public/'
-            f'{REPORT_PDF_BUCKET}/{path}'
-        )
-        print(f'Report PDF uploaded for session {session_id}')
-        return public_url
-
-    except Exception as e:
-        print(f'PDF upload failed (non-critical): {e}')
-        return None
 
 
 # ============================================================
@@ -604,13 +539,10 @@ def webhook_stripe():
                 pdf_bytes = None
                 pdf_url = None
                 try:
-                    from report_pdf import build_report_pdf
-                    
-                    demographics = full_results.get('demographics', {})
-                    pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
-                    
-                    if pdf_bytes:
-                        pdf_url = upload_report_pdf(session_id, pdf_bytes)
+                    pdf_handler = get_report_pdf()
+                    result = pdf_handler.generate_and_upload(report_html_str, session_id)
+                    if result:
+                        pdf_bytes, pdf_url = result
                         print(f'PDF generated and uploaded for session {session_id}')
                     else:
                         print(f'PDF generation returned None for session {session_id}')
@@ -618,37 +550,54 @@ def webhook_stripe():
                     print(f'PDF generation failed (non-fatal): {e}')
                     # Continue without PDF
                 
-                # Send email with full report + PDF
+                # Send email with report
                 try:
-                    from email_template import send_report_email
-                    
-                    report_email = assessment.get('report_email') or customer_email
                     if report_email:
-                        report_url = (
-                            f'{REPORT_BASE_URL}?session_id={session_id}'
-                            if session_id else REPORT_BASE_URL
-                        )
-                        
-                        demographics = full_results.get('demographics', {})
-                        
-                        email_result = send_report_email(
+                        email_handler = get_email_template()
+                        email_html = email_handler.format_report_email(
                             report_email,
-                            report_dict,
-                            demographics,
-                            os.environ.get('RESEND_API_KEY'),
-                            report_url=report_url,
-                            pdf_bytes=pdf_bytes,
-                            pdf_url=pdf_url
+                            session_id
                         )
                         
-                        if email_result and email_result.get('success'):
-                            print(f'Report email sent to {report_email}')
-                        else:
-                            print(f'Email send failed: {email_result}')
+                        if email_html:
+                            resend_key = os.environ.get('RESEND_API_KEY')
+                            if resend_key:
+                                try:
+                                    import json
+                                    resend_url = 'https://api.resend.com/emails'
+                                    payload = {
+                                        'from': 'reports@humanclarityinstitute.com',
+                                        'to': report_email,
+                                        'subject': 'Your HCI Assessment Report is Ready',
+                                        'html': email_html
+                                    }
+                                    
+                                    req = urllib.request.Request(
+                                        resend_url,
+                                        data=json.dumps(payload).encode(),
+                                        headers={
+                                            'Authorization': f'Bearer {resend_key}',
+                                            'Content-Type': 'application/json',
+                                            'User-Agent': 'HCI-Reports/1.0'
+                                        },
+                                        method='POST'
+                                    )
+                                    
+                                    response = urllib.request.urlopen(req, timeout=10)
+                                    response_data = json.loads(response.read())
+                                    
+                                    if response_data.get('id'):
+                                        print(f'Report email sent to {report_email}')
+                                    else:
+                                        print(f'Email send failed: {response_data}')
+                                
+                                except Exception as e:
+                                    print(f'Resend API error: {e}')
+                
                 except Exception as e:
                     print(f'Email send failed (non-fatal): {e}')
                 
-                # Update DB with cached report and PDF URL
+                # Update DB with cached report
                 try:
                     db.update_report(
                         session_id=session_id,
@@ -828,25 +777,16 @@ def premium():
                 'error': f'Report generation failed: {str(e)}'
             }), 500
         
-        # Step 7: Generate PDF using current report_pdf module
+        # Step 7: PDF generation (using actual get_report_pdf() class)
         pdf_bytes = None
         pdf_url = None
         try:
-            from report_pdf import build_report_pdf
-            
-            # Get demographics for PDF rendering
-            demographics = full_results.get('demographics', {})
-            
-            # Build PDF from report dict using our current report_pdf module
-            pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
-            
-            if pdf_bytes:
-                # Upload to Supabase Storage (not database)
-                pdf_url = upload_report_pdf(session_id, pdf_bytes)
-                if pdf_url:
-                    print(f'Report PDF uploaded: {pdf_url}')
-                else:
-                    print(f'PDF upload failed for session {session_id}')
+            pdf_handler = get_report_pdf()
+            # The actual method on ReportPDF class
+            result = pdf_handler.generate_and_upload(report_html_str, session_id)
+            if result:
+                pdf_bytes, pdf_url = result
+                print(f'Report PDF uploaded: {pdf_url}')
             else:
                 print(f'PDF generation returned None for session {session_id}')
         
@@ -855,53 +795,69 @@ def premium():
             traceback.print_exc()
             # Non-fatal - report still displays in browser without PDF
         
-        # Step 8: Send email with full report + PDF
+        # Step 8: Send email with report link (using actual EmailTemplate class)
         email_sent = False
         try:
             if report_email:
-                from email_template import send_report_email
-                
-                # Build report URL for email links
-                report_url = (
-                    f'{REPORT_BASE_URL}?session_id={session_id}'
-                    if session_id else REPORT_BASE_URL
-                )
-                
-                # Get demographics for email personalization
-                demographics = full_results.get('demographics', {})
-                
-                # Send email with full report data + PDF bytes
-                # This gives users:
-                # 1. Rich HTML email with report content
-                # 2. PDF attachment (if generated)
-                # 3. Link to view online
-                email_result = send_report_email(
+                email_handler = get_email_template()
+                # The actual method on EmailTemplate class
+                email_html = email_handler.format_report_email(
                     report_email,
-                    report_dict,                    # Full report for email rendering
-                    demographics,                   # For personalization
-                    os.environ.get('RESEND_API_KEY'),  # API key
-                    report_url=report_url,          # URL for email links
-                    pdf_bytes=pdf_bytes,            # Bytes for email attachment
-                    pdf_url=pdf_url                 # URL for fallback link
+                    session_id
                 )
                 
-                if email_result and email_result.get('success'):
-                    email_sent = True
-                    print(f'Report email sent to {report_email}')
-                else:
-                    error_msg = email_result.get('message') if email_result else 'Unknown error'
-                    print(f'Email send failed: {error_msg}')
+                if email_html:
+                    # Send via Resend
+                    resend_key = os.environ.get('RESEND_API_KEY')
+                    if resend_key:
+                        # Use Resend API to send
+                        try:
+                            import urllib.request
+                            import json
+                            
+                            resend_url = 'https://api.resend.com/emails'
+                            payload = {
+                                'from': 'reports@humanclarityinstitute.com',
+                                'to': report_email,
+                                'subject': 'Your HCI Assessment Report is Ready',
+                                'html': email_html
+                            }
+                            
+                            req = urllib.request.Request(
+                                resend_url,
+                                data=json.dumps(payload).encode(),
+                                headers={
+                                    'Authorization': f'Bearer {resend_key}',
+                                    'Content-Type': 'application/json',
+                                    'User-Agent': 'HCI-Reports/1.0'
+                                },
+                                method='POST'
+                            )
+                            
+                            response = urllib.request.urlopen(req, timeout=10)
+                            response_data = json.loads(response.read())
+                            
+                            if response_data.get('id'):
+                                email_sent = True
+                                print(f'Report email sent to {report_email}')
+                            else:
+                                print(f'Email send failed: {response_data}')
+                        
+                        except Exception as e:
+                            print(f'Resend API error: {e}')
+                    else:
+                        print('RESEND_API_KEY not configured')
         
         except Exception as e:
             print(f'Email sending error: {e}')
             traceback.print_exc()
         
-        # Step 9: Cache report in Supabase (both dict AND PDF URL)
+        # Step 9: Cache report in Supabase
         try:
             db.update_report(
                 session_id,
                 premium_report=report_dict,    # Full report data as JSON
-                report_pdf_url=pdf_url         # URL to PDF in Storage
+                report_pdf_url=pdf_url         # URL to PDF in Storage (if available)
             )
             print(f'Report cached for session {session_id}')
         
