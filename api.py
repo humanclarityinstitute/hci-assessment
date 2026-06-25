@@ -253,7 +253,7 @@ def score():
             dimension_scores=scoring_results.get('dimension_scores', {}),
             perception_gaps=scoring_results.get('perception_gaps', []),
             patterns=scoring_results.get('rare_combinations', []),
-            response_percentiles=response_percentiles,
+            percentiles=response_percentiles,
             report_email=report_email,
             consent=consent,
             consent_timestamp=consent_timestamp
