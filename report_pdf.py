@@ -30,8 +30,19 @@ class ReportPDF:
         self.supabase_url = os.environ.get('SUPABASE_URL')
         self.supabase_key = os.environ.get('SUPABASE_KEY')
         self.storage_bucket = os.environ.get('REPORT_PDF_BUCKET', 'reports')
+        
+        # Determine PDFShift endpoint (sandbox vs production)
+        # PDFSHIFT_SANDBOX=true uses sandbox.pdfshift.io (for testing with sandbox keys)
+        # PDFSHIFT_SANDBOX=false or unset uses api.pdfshift.io (production)
+        self.sandbox_mode = os.environ.get('PDFSHIFT_SANDBOX', '').lower() in ('true', '1', 'yes')
+        self.pdfshift_url = 'https://sandbox.pdfshift.io/v3/convert/html' if self.sandbox_mode else 'https://api.pdfshift.io/v3/convert/html'
+        
         self.max_retries = 3
         self.retry_delay = 2  # seconds
+        
+        if self.pdfshift_key:
+            mode_label = 'SANDBOX' if self.sandbox_mode else 'PRODUCTION'
+            print(f'PDFShift initialized: {mode_label} mode ({self.pdfshift_url})')
     
     def build_report_pdf(self, html_content: str, session_id: str) -> Optional[bytes]:
         """
@@ -69,9 +80,14 @@ class ReportPDF:
             body = json.dumps(payload).encode('utf-8')
             
             # POST to PDFShift API with retries
-            url = 'https://api.pdfshift.io/v3/convert/html'
+            # URL is determined in __init__ based on PDFSHIFT_SANDBOX setting
+            url = self.pdfshift_url
+            # PDFShift uses Basic Auth (key:password format), not Bearer token
+            import base64
+            auth_string = f'{self.pdfshift_key}:'.encode('utf-8')
+            auth_b64 = base64.b64encode(auth_string).decode('utf-8')
             headers = {
-                'Authorization': f'Bearer {self.pdfshift_key}',
+                'Authorization': f'Basic {auth_b64}',
                 'Content-Type': 'application/json',
             }
             
