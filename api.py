@@ -46,6 +46,12 @@ from report_pdf import get_report_pdf
 from report_generator import generate_premium_report
 from hci_report_page_builder import build_report_html
 
+# Report storage configuration
+REPORT_BASE_URL = os.environ.get(
+    'REPORT_BASE_URL',
+    'https://humanclarityinstitute.com/ai-assessment/report/'
+)
+
 # Create Flask app
 app = Flask(__name__)
 CORS(app)
