@@ -199,13 +199,13 @@ class BenchmarkBuilder:
             int: Percentile rank (0-100)
         """
         try:
-            if 'variables' not in self.benchmark_data:
+            if 'variables' not in self.data:
                 return 50  # Safe default
             
-            if variable_key not in self.benchmark_data['variables']:
+            if variable_key not in self.data['variables']:
                 return 50  # Safe default
             
-            var_data = self.benchmark_data['variables'][variable_key]
+            var_data = self.data['variables'][variable_key]
             
             # Get the appropriate distribution based on segment
             if segment:
@@ -249,13 +249,13 @@ class BenchmarkBuilder:
             int: Sample size for this variable/segment, or 0 if not found
         """
         try:
-            if 'variables' not in self.benchmark_data:
+            if 'variables' not in self.data:
                 return 0
             
-            if variable_key not in self.benchmark_data['variables']:
+            if variable_key not in self.data['variables']:
                 return 0
             
-            var_data = self.benchmark_data['variables'][variable_key]
+            var_data = self.data['variables'][variable_key]
             
             # Get the appropriate sample size based on segment
             if segment:
