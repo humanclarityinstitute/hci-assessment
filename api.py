@@ -774,8 +774,7 @@ def premium():
         try:
             db.update_report(
                 session_id,
-                report_html=report_dict,  # Store dict for browser display
-                report_pdf_url=pdf_url
+                premium_report=report_dict  # Correct field name (not report_html)
             )
             print(f'Report cached for session {session_id}')
         
