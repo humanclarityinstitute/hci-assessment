@@ -1,961 +1,564 @@
 """
-HCI AI Identity & Behaviour Assessment — Report Generator v9.0
+hci_report_page_builder.py
 
-Generates premium reports with 9 focused API calls:
-- 6 core calls (Opening, Rare Combos, Behaviour, Distinctive, Perception Gap, Trajectory)
-- 3 deep dive calls (Research Lenses, Rare Combo Deep, Cross-Dimensional)
+Builds professional HTML report pages from report_dict output.
+Used for both PDF generation (via PDFShift) and browser display.
 
-Plus 4 data-only sections (Dashboard, How Typical, Question Profile, Cohort Context)
-
-All calls wrapped with resilience (90s timeout + single retry).
-NO PARTIAL REPORTS — if any call fails, entire report fails.
-PDF generated and stored in Supabase Storage.
-Failure alerts sent to info@humanclarityinstitute.com
+Takes the report_dict structure from report_generator.py and converts it
+to formatted HTML using locked design tokens from hci-report-design.css.
 """
 
 import json
-import time
-import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, Any, Optional
 
-# ============================================================
-# MANDATORY IMPORTS — FAIL HARD IF MISSING
-# ============================================================
 
-try:
-    import anthropic
-    from anthropic import APITimeoutError
-except ImportError as e:
-    raise ImportError("anthropic package required. pip install anthropic") from e
+def escape_html(text: str) -> str:
+    """Escape HTML special characters."""
+    if not text:
+        return ""
+    return (str(text)
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+            .replace('"', '&quot;')
+            .replace("'", '&#39;'))
 
-try:
-    from signal_selection import (
-        prepare_complete_signal_context,
-        format_signal_context_for_api_prompt
-    )
-except ImportError as e:
-    raise ImportError("signal_selection.py required. Check repo.") from e
 
-try:
-    from benchmark_context_data import (
-        FREQUENCY_GRADIENTS,
-        AGE_COHORT_PATTERNS,
-        DISTINCTIVE_FLAGS,
-        KEY_FINDINGS_FOR_REPORTS,
-        PRESSURE_POINTS,
-        RESEARCH_NUMBERS
-    )
-except ImportError as e:
-    raise ImportError("benchmark_context_data.py required. Check repo.") from e
-
-try:
-    from hci_signals_library import SIGNALS
-except ImportError as e:
-    raise ImportError("hci_signals_library.py required. Check repo.") from e
-
-try:
-    from human_reference_layer import (
-        HBE_FRAMEWORK,
-        VALUES_SIGNALS,
-        get_values_reframe,
-        apply_research_insight
-    )
-except ImportError as e:
-    raise ImportError("human_reference_layer.py required. Check repo.") from e
-
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
-CALL_TIMEOUT_SECONDS = 90
-MAX_RETRIES_PER_CALL = 1
-ALERT_EMAIL = "info@humanclarityinstitute.com"
-MODEL = "claude-sonnet-4-6"
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# ============================================================
-# SYSTEM PROMPT (LOCKED)
-# ============================================================
-
-GLOBAL_SYSTEM_PROMPT = """
-You are writing sections of a personalised research report for the
-Human Clarity Institute's AI Identity & Behaviour Assessment.
-
-Your role is to generate genuine insight that leaves people feeling
-more self-aware and curious about themselves — never judged,
-deficient, or concerned about their behaviour.
-
-INSTITUTIONAL VOICE:
-- Warm but precise. Intellectually rigorous. Never sterile.
-- Write as a thoughtful researcher who has studied this specific
-  person's data — not as a template being filled in.
-- Personal but grounded in data. Future-positive. Never alarming.
-
-FRAMING RULES:
-- Every score reveals something genuinely interesting.
-  There are no good or bad scores — only different patterns.
-- Never suggest someone has a problem or should change.
-- Difference from the population is always interesting, never deficit.
-- All scores are patterns at this point in time — not fixed traits.
-
-TONE RULES:
-- Speak directly to the person as "you"
-- Write in second person throughout
-- Every section ends with curiosity, not concern
-- Never list problems — explore patterns
-
-PERCENTILE LANGUAGE:
-- State position as plain English: "higher than 97 out of every 100 people"
-- Pair it with the positional phrase ("notably high", "near the population centre")
-- Do NOT use a bare "Xth percentile" number anywhere in the prose
-- Always lead with the human meaning, never the number
-
-LANGUAGE TO NEVER USE:
-- concerning, worrying, problematic, at risk
-- you should, you need to, you must
-- loss of agency, cognitive decline, addiction, dependency
-- alarming, dangerous, red flag
-
-LANGUAGE TO USE:
-- interesting, revealing, distinctive, worth exploring
-- your pattern, your positioning, your profile
-- people with similar profiles tend to...
-- what appears worth protecting
-- raises an interesting question
-"""
-
-# ============================================================
-# RESILIENCE & FAILURE HANDLING
-# ============================================================
-
-def notify_failure(call_name: str, error: Exception, session_id: str, user_email: str):
-    """
-    Alert admins when API call fails.
-    In production: sends email to info@humanclarityinstitute.com
-    """
-    timestamp = datetime.utcnow().isoformat()
-    error_type = type(error).__name__
-    error_msg = str(error)[:200]
+def format_prose(text: str) -> str:
+    """Convert prose text to HTML paragraphs."""
+    if not text:
+        return ""
     
-    alert = f"""
-REPORT GENERATION FAILURE ALERT
+    paragraphs = text.strip().split('\n\n')
+    html = ""
+    for para in paragraphs:
+        if para.strip():
+            html += f'<p class="narrative-paragraph">{escape_html(para.strip())}</p>'
+    return html
 
-Session ID: {session_id}
-User Email: {user_email}
-Failed Call: {call_name}
-Error Type: {error_type}
-Error Message: {error_msg}
-Timestamp: {timestamp}
-
-ADMIN ACTION REQUIRED:
-Go to: https://web-production-381d3.up.railway.app/recover-report
-Paste session ID above and click "Rebuild Report"
-
-The system will regenerate all 9 API calls and send a new report to the user.
-    """
-    
-    logger.error(alert)
-    # TODO: In production, send email to ALERT_EMAIL
-    # For now, log it
-    print(alert)
-
-
-def call_claude_with_resilience(
-    client,
-    model: str,
-    max_tokens: int,
-    system: str,
-    messages: List[Dict],
-    call_name: str,
-    session_id: str = None
-) -> str:
-    """
-    Call Claude with 90s timeout + single retry on timeout.
-    NO PARTIAL REPORTS — if this fails, the whole report fails.
-    """
-    
-    for attempt in range(MAX_RETRIES_PER_CALL + 1):
-        start_time = time.time()
-        
-        try:
-            message = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=messages,
-                timeout=float(CALL_TIMEOUT_SECONDS),
-            )
-            
-            duration = time.time() - start_time
-            
-            if duration > 30:
-                logger.info(
-                    f"[SLOW] {call_name} completed in {duration:.1f}s "
-                    f"(session: {session_id})"
-                )
-            
-            return message.content[0].text.strip()
-        
-        except APITimeoutError as e:
-            duration = time.time() - start_time
-            logger.warning(
-                f"[TIMEOUT] {call_name} timed out after {duration:.1f}s "
-                f"(attempt {attempt + 1}/{MAX_RETRIES_PER_CALL + 1})"
-            )
-            
-            if attempt < MAX_RETRIES_PER_CALL:
-                time.sleep(1)
-                continue
-            else:
-                logger.error(
-                    f"[FATAL] {call_name} failed on final attempt. "
-                    f"NO PARTIAL REPORTS — entire report generation aborted."
-                )
-                raise
-        
-        except Exception as e:
-            logger.error(
-                f"[ERROR] {call_name} failed: {type(e).__name__}: {str(e)[:100]}"
-            )
-            raise
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
 
 def plain_english_percentile(p: Optional[int]) -> str:
     """Convert percentile to plain English."""
-    if not p:
+    if p is None or p == '':
         return "at the population centre"
-    if p >= 75:
-        return f"higher than {p} out of every 100 people"
-    elif p >= 50:
-        return f"higher than {p} out of every 100 people"
-    else:
-        return f"lower than {100-p} out of every 100 people"
-
-
-def get_most_distinctive_variable(responses: Dict, response_percentiles: Dict) -> tuple:
-    """
-    Find the question with the largest deviation from 50th percentile.
-    Returns: (question_key, percentile, raw_score)
-    """
-    max_divergence = 0
-    most_distinctive = None
-    
-    for q_key, percentile in response_percentiles.items():
-        if isinstance(percentile, dict):
-            p = percentile.get('percentile_overall', 50)
-        else:
-            p = percentile
-        
-        divergence = abs(p - 50)
-        if divergence > max_divergence:
-            max_divergence = divergence
-            most_distinctive = (q_key, p)
-    
-    return most_distinctive if most_distinctive else ('unknown', 50)
-
-
-def get_perception_gaps(results: Dict) -> List[Dict]:
-    """Extract perception gaps from results."""
-    gaps = results.get('full_results', {}).get('perception_gaps', [])
-    return gaps if isinstance(gaps, list) else []
-
-
-def get_rare_combinations(results: Dict) -> List[Dict]:
-    """Extract rare combinations from results."""
-    combos = results.get('full_results', {}).get('rare_combinations', [])
-    return combos if isinstance(combos, list) else []
-
-# ============================================================
-# API CALL GENERATORS — 9 TOTAL
-# ============================================================
-
-def generate_opening(results: Dict, client, session_id: str) -> str:
-    """API CALL #1: Opening — Top 3 Findings"""
-    
-    logger.info("[1/9] Opening — Top 3 Findings")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    perception_gaps = get_perception_gaps(results)
-    rare_combos = get_rare_combinations(results)
-    response_percentiles = results.get('response_percentiles', {})
-    
-    # Get signal context for most distinctive dimension
-    top_dim_name = max(
-        dimensions.keys(),
-        key=lambda x: abs(dimensions[x].get('percentile_overall', 50) - 50)
-    ) if dimensions else 'trust'
-    
-    top_dim_percentile = dimensions.get(top_dim_name, {}).get('percentile_overall', 50)
-    
-    signal_context = prepare_complete_signal_context(
-        dimension=top_dim_name,
-        actual_score=dimensions.get(top_dim_name, {}).get('raw_score', 3.5),
-        frequency=demographics.get('ai_tool_use_frequency', 'sometimes'),
-        age_group=demographics.get('age_group', '25-34'),
-        actual_percentile=top_dim_percentile
-    )
-    
-    signal_text = format_signal_context_for_api_prompt(signal_context, 'Opening')
-    
-    # Find largest perception gap
-    largest_gap = max(perception_gaps, key=lambda x: abs(x.get('magnitude', 0))) if perception_gaps else None
-    
-    # Get rare combo context
-    combo_text = ""
-    if rare_combos:
-        combo = rare_combos[0]
-        combo_key = f"{combo.get('dimension_1')}_{combo.get('dimension_2')}"
-        if combo_key in SIGNALS.get('combinations', {}):
-            combo_text = SIGNALS['combinations'][combo_key].get('what_it_reveals', '')
-    
-    prompt = f"""
-This person's profile has three striking features:
-
-DATA POINT 1 — MOST DISTINCTIVE DIMENSION:
-{top_dim_name.replace('_', ' ').title()}: {plain_english_percentile(top_dim_percentile)}
-
-RESEARCH SIGNALS:
-{signal_text}
-
-{f'''DATA POINT 2 — PERCEPTION GAP:
-{largest_gap['dimension']}: They estimated {largest_gap['self_estimate_percentile']}th percentile,
-actually score {largest_gap['actual_percentile']}th percentile. Gap: {largest_gap['magnitude']} points.
-''' if largest_gap else ''}
-
-{f'''DATA POINT 3 — RARE COMBINATION:
-{combo_text}
-''' if combo_text else ''}
-
-Write three paragraphs (50-75 words each) that:
-1. Open with what's striking about their most distinctive dimension
-2. Observe their perception gap (if exists)
-3. Highlight their rare combination (if exists)
-
-Frame as findings, not questions. Use plain language. Speak directly as "you".
-Tone: "Here's what stands out about you."
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Opening — Top 3 Findings',
-        session_id=session_id
-    )
-
-
-def generate_rare_combinations(results: Dict, client, session_id: str) -> str:
-    """API CALL #2: Rare Combinations Analysis"""
-    
-    logger.info("[2/9] Rare Combinations")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    rare_combos = get_rare_combinations(results)
-    demographics = results.get('demographics', {})
-    
-    if not rare_combos:
-        return "No rare combinations detected in this profile."
-    
-    combo = rare_combos[0]
-    dim1 = combo.get('dimension_1', 'unknown')
-    dim2 = combo.get('dimension_2', 'unknown')
-    
-    combo_key = f"{dim1}_{dim2}"
-    combo_signal = SIGNALS.get('combinations', {}).get(combo_key, {})
-    
-    prompt = f"""
-This person has a distinctive combination:
-
-{dim1.title()}: {combo.get('percentile_dim1')}th percentile
-{dim2.title()}: {combo.get('percentile_dim2')}th percentile
-
-This combination appears in approximately {combo.get('rarity_percent', 5)}% of HCI's research.
-
-Research shows this combination is interesting because:
-{combo_signal.get('why_unusual', 'This reveals a distinctive pattern.')}
-
-What it reveals about their relationship with AI:
-{combo_signal.get('what_it_reveals', 'Worth exploring further.')}
-
-Write 150-200 words analyzing what this rare combination suggests about their 
-engagement with AI. Ground in research. Speak directly to them.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=800,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Rare Combinations',
-        session_id=session_id
-    )
-
-
-def generate_behaviour_story(results: Dict, client, session_id: str) -> str:
-    """API CALL #3: Behaviour Story"""
-    
-    logger.info("[3/9] Behaviour Story")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    
-    # Build dimension summary
-    dim_summary = ""
-    for dim_name, dim_data in dimensions.items():
-        percentile = dim_data.get('percentile_overall', 50)
-        dim_summary += f"- {dim_name.title()}: {percentile}th percentile\n"
-    
-    prompt = f"""
-Here is this person's complete profile across all 9 dimensions:
-
-{dim_summary}
-
-Demographics:
-- Age group: {demographics.get('age_group', 'unknown')}
-- AI usage frequency: {demographics.get('ai_tool_use_frequency', 'unknown')}
-
-Write a 300-400 word narrative that tells the "story" of how this person engages
-with AI. Not a list of scores — a connected narrative.
-
-What pattern emerges when you look at all 9 dimensions together?
-How do these dimensions relate and support each other?
-What's distinctive about their overall approach to AI?
-
-Tone: You're a researcher who has studied this person's data. Tell the story
-of their relationship with AI in a way that makes them feel understood.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Behaviour Story',
-        session_id=session_id
-    )
-
-
-def generate_distinctive_responses(results: Dict, client, session_id: str) -> str:
-    """API CALL #4: Distinctive Responses"""
-    
-    logger.info("[4/9] Distinctive Responses")
-    
-    response_percentiles = results.get('response_percentiles', {})
-    
-    # Find most distinctive responses (furthest from 50th percentile)
-    distinctive = []
-    for q_key, p_data in response_percentiles.items():
-        if isinstance(p_data, dict):
-            percentile = p_data.get('percentile_overall', 50)
-        else:
-            percentile = p_data
-        
-        divergence = abs(percentile - 50)
-        if divergence > 20:
-            distinctive.append((q_key, percentile, divergence))
-    
-    distinctive.sort(key=lambda x: x[2], reverse=True)
-    top_distinctive = distinctive[:3]
-    
-    distinctive_text = "\n".join([
-        f"- {q_key}: {p}th percentile"
-        for q_key, p, _ in top_distinctive
-    ])
-    
-    prompt = f"""
-This person has these distinctive question-level responses:
-
-{distinctive_text}
-
-Analyze what these distinctive responses reveal:
-1. What pattern emerges across these responses?
-2. Do they cluster around a theme or dimension?
-3. What do they suggest about this person's approach to AI?
-
-Write 200-250 words that illuminate what these specific responses reveal
-about their pattern. Ground in the data. Make it personal.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=800,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Distinctive Responses',
-        session_id=session_id
-    )
-
-
-def generate_perception_gap(results: Dict, client, session_id: str) -> str:
-    """API CALL #5: Perception Gap"""
-    
-    logger.info("[5/9] Perception Gap")
-    
-    gaps = get_perception_gaps(results)
-    
-    if not gaps:
-        return "No significant perception gaps detected in this profile."
-    
-    gap_text = "\n".join([
-        f"- {g['dimension']}: Estimated {g['self_estimate_percentile']}th, "
-        f"actually {g['actual_percentile']}th ({g['magnitude']} point gap)"
-        for g in gaps[:3]
-    ])
-    
-    prompt = f"""
-This person has perception gaps between how they estimate their positioning
-and where they actually score:
-
-{gap_text}
-
-Analyze what these gaps reveal:
-1. What's the largest and most interesting gap?
-2. What do overestimates suggest? Underestimates?
-3. What does this self-awareness pattern indicate?
-
-Write 200-250 words that synthesize what these perception gaps reveal.
-Frame as observation, not judgment.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=800,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Perception Gap',
-        session_id=session_id
-    )
-
-
-def generate_trajectory(results: Dict, client, session_id: str) -> str:
-    """API CALL #6: Trajectory & Outlook"""
-    
-    logger.info("[6/9] Trajectory & Outlook")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    
-    # Get highest and lowest
-    sorted_dims = sorted(
-        dimensions.items(),
-        key=lambda x: x[1].get('percentile_overall', 50)
-    )
-    
-    lowest = sorted_dims[0][0] if sorted_dims else 'unknown'
-    highest = sorted_dims[-1][0] if sorted_dims else 'unknown'
-    
-    prompt = f"""
-This person's current profile shows:
-- Highest dimension: {highest.title()} 
-- Lowest dimension: {lowest.title()}
-- Age group: {demographics.get('age_group', 'unknown')}
-- Usage frequency: {demographics.get('ai_tool_use_frequency', 'unknown')}
-
-Based on their current positioning and research on how AI engagement patterns
-evolve, what trajectory might this person be on?
-
-1. What does research show about people with this profile pattern?
-2. Where might they find growth or challenge?
-3. What appears worth protecting as their use evolves?
-4. What would intentional engagement look like for them?
-
-Write 250-300 words exploring their likely trajectory. 
-Tone: Forward-positive, curious about possibilities.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Trajectory & Outlook',
-        session_id=session_id
-    )
-
-
-def generate_deep_dive_1(results: Dict, client, session_id: str) -> str:
-    """API CALL #7: Deep Dive Part 1 — Research Lenses"""
-    
-    logger.info("[7/9] Deep Dive Part 1 — Research Lenses")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    
-    # Build dimension overview
-    dim_overview = "\n".join([
-        f"- {k.title()}: {v.get('percentile_overall', 50)}th percentile"
-        for k, v in dimensions.items()
-    ])
-    
-    prompt = f"""
-This person's complete profile:
-
-{dim_overview}
-
-Age group: {demographics.get('age_group', 'unknown')}
-Usage frequency: {demographics.get('ai_tool_use_frequency', 'unknown')}
-
-Examine this profile through multiple research lenses:
-
-LENS 1: INTENTIONALITY
-How intentional vs passive does their profile suggest?
-
-LENS 2: AGENCY & BOUNDARY-SETTING  
-How well do they maintain human agency?
-
-LENS 3: TRUST & VERIFICATION
-How does their trust align with their verification behavior?
-
-LENS 4: RELATIONAL ENGAGEMENT
-How relational vs instrumental is their engagement?
-
-LENS 5: COHERENCE
-How coherent is their overall pattern?
-
-Write 400-500 words applying these lenses to their specific profile.
-Make it deep and specific — not generic. Show how research explains their pattern.
-
-Tone: Research-grounded, analytical, illuminating.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1200,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Deep Dive Part 1 — Research Lenses',
-        session_id=session_id
-    )
-
-
-def generate_deep_dive_4(results: Dict, client, session_id: str) -> str:
-    """API CALL #8: Deep Dive Part 4 — Rare Combination Deep"""
-    
-    logger.info("[8/9] Deep Dive Part 4 — Rare Combination Deep")
-    
-    rare_combos = get_rare_combinations(results)
-    
-    if not rare_combos:
-        return "No rare combinations for deep dive."
-    
-    combo = rare_combos[0]
-    
-    prompt = f"""
-This person has a rare combination:
-
-{combo.get('dimension_1', 'X').title()}: {combo.get('percentile_dim1', 50)}th percentile
-{combo.get('dimension_2', 'Y').title()}: {combo.get('percentile_dim2', 50)}th percentile
-
-This combination appears in approximately {combo.get('rarity_percent', 5)}% of the research.
-
-Draw from HCI's 21-dataset research to explore:
-
-1. What do people with this combination typically look like?
-2. How does this combination relate to usage patterns?
-3. What other dimensions typically co-occur with this combo?
-4. What does research show about stability of this combo?
-5. What does this combo reveal about their relationship with AI?
-
-Write 350-400 words providing deep, research-grounded context about this
-specific combination. Not generic — show what research reveals.
-
-Tone: Research-grounded, illuminating, specific to their data.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1200,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Deep Dive Part 4 — Rare Combination Deep',
-        session_id=session_id
-    )
-
-
-def generate_deep_dive_5(results: Dict, client, session_id: str) -> str:
-    """API CALL #9: Deep Dive Part 5 — Cross-Dimensional Story"""
-    
-    logger.info("[9/9] Deep Dive Part 5 — Cross-Dimensional Story")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    
-    dim_overview = "\n".join([
-        f"- {k.title()}: {v.get('percentile_overall', 50)}th percentile"
-        for k, v in dimensions.items()
-    ])
-    
-    prompt = f"""
-This person's complete 9-dimension profile:
-
-{dim_overview}
-
-Analyze the cross-dimensional architecture:
-
-1. How do high dimensions enable or reinforce each other?
-2. How do low dimensions suggest intentional boundaries?
-3. What's the "architecture" — how dimensions relate?
-4. Are high dimensions coherent or in tension?
-5. Do low dimensions represent passive absence or active boundary-setting?
-
-What does research show about people with THIS specific dimensional architecture?
-
-Write 350-400 words analyzing how dimensions work together and what that
-reveals about their relationship with AI.
-
-Tone: Analytical, research-grounded. Explore the architecture not just 
-individual dimensions.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1200,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Deep Dive Part 5 — Cross-Dimensional Story',
-        session_id=session_id
-    )
-
-# ============================================================
-# DATA-ONLY SECTIONS (NO API CALLS)
-# ============================================================
-
-def generate_dashboard(results: Dict) -> Dict:
-    """DATA-ONLY: Dashboard of all 9 dimensions"""
-    
-    logger.info("[Dashboard] Compiling 9 dimensions")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    
-    dashboard = {
-        'title': 'Benchmark Dashboard',
-        'dimensions': {}
-    }
-    
-    for dim_name, dim_data in dimensions.items():
-        percentile = dim_data.get('percentile_overall', 50)
-        
-        # Get research signal for this dimension
-        signal = SIGNALS.get('dimensions', {}).get(dim_name, {})
-        if percentile >= 60:
-            insight = signal.get('high', 'At the high end of this dimension')
-        elif percentile <= 40:
-            insight = signal.get('low', 'At the low end of this dimension')
-        else:
-            insight = signal.get('typical', 'In the middle range')
-        
-        dashboard['dimensions'][dim_name] = {
-            'percentile': percentile,
-            'percentile_text': plain_english_percentile(percentile),
-            'raw_score': dim_data.get('raw_score', 3.5),
-            'research_insight': insight
-        }
-    
-    return dashboard
-
-
-def generate_how_typical(results: Dict) -> Dict:
-    """DATA-ONLY: How typical vs distinctive"""
-    
-    logger.info("[How Typical] Analyzing distinctive variables")
-    
-    response_percentiles = results.get('response_percentiles', {})
-    
-    distinctive = []
-    typical = []
-    
-    for q_key, p_data in response_percentiles.items():
-        percentile = p_data.get('percentile_overall', 50) if isinstance(p_data, dict) else p_data
-        
-        if abs(percentile - 50) > 25:
-            distinctive.append((q_key, percentile))
-        elif abs(percentile - 50) < 10:
-            typical.append((q_key, percentile))
-    
-    return {
-        'title': 'Distinctive vs Typical',
-        'distinctive_count': len(distinctive),
-        'typical_count': len(typical),
-        'distinctive_questions': distinctive[:5],
-        'typical_questions': typical[:5]
-    }
-
-
-def generate_question_profile(results: Dict) -> Dict:
-    """DATA-ONLY: All 39 questions with their percentiles"""
-    
-    logger.info("[Question Profile] Compiling all 39 questions")
-    
-    response_percentiles = results.get('response_percentiles', {})
-    responses = results.get('responses', {})
-    
-    profile = {
-        'title': 'Question Profile',
-        'total_questions': len(response_percentiles),
-        'questions': []
-    }
-    
-    for q_key in sorted(response_percentiles.keys()):
-        p_data = response_percentiles[q_key]
-        percentile = p_data.get('percentile_overall', 50) if isinstance(p_data, dict) else p_data
-        response_value = responses.get(q_key, 4)
-        
-        profile['questions'].append({
-            'question_id': q_key,
-            'response': response_value,
-            'percentile': percentile,
-            'percentile_text': plain_english_percentile(percentile)
-        })
-    
-    return profile
-
-
-def generate_cohort_context(results: Dict) -> Dict:
-    """DATA-ONLY: Age group / cohort context"""
-    
-    logger.info("[Cohort Context] Analyzing cohort patterns")
-    
-    demographics = results.get('demographics', {})
-    age_group = demographics.get('age_group', '25-34')
-    
-    cohort_signal = SIGNALS.get('cohorts', {}).get(age_group, {})
-    
-    return {
-        'title': 'Your Cohort in Research',
-        'age_group': age_group,
-        'cohort_description': cohort_signal.get('description', 'Unknown cohort'),
-        'what_distinctive': cohort_signal.get('what_high', []),
-        'pressure_points': cohort_signal.get('what_pressured', []),
-        'research_signal': cohort_signal.get('signal', 'Research context available')
-    }
-
-# ============================================================
-# MAIN REPORT GENERATOR
-# ============================================================
-
-def generate_premium_report(
-    results: Dict,
-    api_key: str = None,
-    session_id: str = None
-) -> Dict:
-    """
-    Generate complete premium report using 9 focused API calls.
-    
-    ALL 9 CALLS REQUIRED — NO SKIPPING
-    NO PARTIAL REPORTS — FAIL COMPLETELY OR SUCCEED COMPLETELY
-    """
-    
-    client = anthropic.Anthropic(api_key=api_key)
-    
-    session_id = session_id or results.get('session_id', 'unknown')
-    demographics = results.get('demographics', {})
-    
-    logger.info(f"[REPORT] Starting premium report generation — Session {session_id}")
-    logger.info(f"[REPORT] Starting 9 API calls (6 core + 3 deep dive)...")
     
     try:
-        # ── API CALL #1: Opening ──────────────────────────────────────────────
-        opening = generate_opening(results, client, session_id)
+        p = int(p)
+    except (ValueError, TypeError):
+        return "at the population centre"
+    
+    if p >= 50:
+        return f"Higher than {p} out of every 100 people"
+    else:
+        return f"Lower than {100-p} out of every 100 people"
+
+
+def positional_label(p: Optional[int]) -> str:
+    """Convert percentile to positional label."""
+    if p is None or p == '':
+        return "near the population centre"
+    
+    try:
+        p = int(p)
+    except (ValueError, TypeError):
+        return "near the population centre"
+    
+    if p >= 96:
+        return "exceptionally high"
+    elif p >= 86:
+        return "notably high"
+    elif p >= 71:
+        return "above the population centre"
+    elif p >= 41:
+        return "near the population centre"
+    elif p >= 26:
+        return "below the population centre"
+    elif p >= 11:
+        return "notably low"
+    else:
+        return "exceptionally low"
+
+
+def build_dimension_cards(dimensions: Dict[str, Any]) -> str:
+    """Build HTML for dimension cards (Section 1: Dashboard)."""
+    if not dimensions:
+        return ""
+    
+    html = '<div class="dimension-grid">\n'
+    
+    for dim_name, dim_data in dimensions.items():
+        if not isinstance(dim_data, dict):
+            continue
         
-        # ── DASHBOARD (no API) ────────────────────────────────────────────────
-        dashboard = generate_dashboard(results)
+        percentile = dim_data.get('percentile', 50)
+        raw_score = dim_data.get('raw_score', 3.5)
+        plain = plain_english_percentile(percentile)
+        pos = positional_label(percentile)
         
-        # ── HOW TYPICAL (no API) ──────────────────────────────────────────────
-        how_typical = generate_how_typical(results)
+        html += f'''
+        <div class="dimension-card">
+            <div class="dimension-label">{escape_html(dim_name.upper())}</div>
+            <div class="dimension-name">{escape_html(dim_name.title())}</div>
+            <div style="margin-bottom: 8pt; font-size: 10.5px; line-height: 1.3; color: #666;">
+                {escape_html(dim_data.get('research_insight', ''))}
+            </div>
+            <div style="margin-bottom: 8pt;">
+                <span class="score-number">{percentile}</span>
+                <span style="margin-left: 6pt; font-size: 10.5px; color: #666;">percentile</span>
+            </div>
+            <div class="percentile-bar">
+                <div class="percentile-fill" style="width: {percentile}%;"></div>
+            </div>
+            <div style="border-top: 0.5pt solid #e0e0e0; padding-top: 8pt; font-size: 10.5px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 3pt;">
+                    <span style="color: #666;">Your position</span>
+                    <span style="font-weight: 500; color: #0066cc;">{escape_html(pos)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #666;">Plain English</span>
+                    <span style="font-weight: 500; color: #0066cc; font-size: 9px;">{escape_html(plain)}</span>
+                </div>
+            </div>
+        </div>
+'''
+    
+    html += '</div>\n'
+    return html
+
+
+def build_question_profile(questions: list) -> str:
+    """Build HTML for question-level profile (Section 6)."""
+    if not questions or not isinstance(questions, list):
+        return ""
+    
+    html = ""
+    current_dim = ""
+    
+    for q in questions:
+        if not isinstance(q, dict):
+            continue
         
-        # ── API CALL #2: Rare Combinations ────────────────────────────────────
-        rare_combos = generate_rare_combinations(results, client, session_id)
+        # Add dimension header if changed
+        q_dim = q.get('dimension', 'unknown')
+        if q_dim != current_dim:
+            if current_dim != "":
+                html += "</div>\n"
+            current_dim = q_dim
+            html += f'<div class="question-dimension"><h3>{escape_html(q_dim.upper())}</h3>\n'
         
-        # ── API CALL #3: Behaviour Story ──────────────────────────────────────
-        behaviour_story = generate_behaviour_story(results, client, session_id)
+        # Build histogram
+        distribution = q.get('distribution', [])
+        bars_html = ""
+        if distribution:
+            max_dist = max(distribution) if distribution else 1
+            for i, pct in enumerate(distribution):
+                if max_dist > 0:
+                    height = (pct / max_dist * 100)
+                else:
+                    height = 0
+                bars_html += f'<div class="histogram-bar" style="height: {height}%; background: #ccc;"></div>'
         
-        # ── QUESTION PROFILE (no API) ─────────────────────────────────────────
-        question_profile = generate_question_profile(results)
+        q_num = q.get('number', i+1)
+        q_var = q.get('variable', 'unknown')
+        q_answer = q.get('respondent_answer', '?')
+        q_percentile = q.get('respondent_percentile', 50)
+        q_position = positional_label(q_percentile)
+        q_plain = plain_english_percentile(q_percentile)
+        q_age_group = q.get('age_group', '25-34')
+        q_age_percentile = q.get('age_percentile', 50)
         
-        # ── API CALL #4: Distinctive Responses ────────────────────────────────
-        distinctive_responses = generate_distinctive_responses(results, client, session_id)
-        
-        # ── API CALL #5: Perception Gap ───────────────────────────────────────
-        perception_gap = generate_perception_gap(results, client, session_id)
-        
-        # ── API CALL #6: Trajectory & Outlook ─────────────────────────────────
-        trajectory = generate_trajectory(results, client, session_id)
-        
-        # ── DEEP DIVE OPENING ─────────────────────────────────────────────────
-        deep_dive_opening = """
-Your pattern is complete on its own. This deep dive goes deeper, examining your profile 
-through multiple research lenses and showing what your specific combination reveals about 
-your relationship with AI.
-        """.strip()
-        
-        # ── API CALL #7: Deep Dive Part 1 ────────────────────────────────────
-        deep_dive_part_1 = generate_deep_dive_1(results, client, session_id)
-        
-        # ── COHORT CONTEXT (no API) ───────────────────────────────────────────
-        cohort_context = generate_cohort_context(results)
-        
-        # ── API CALL #8: Deep Dive Part 4 ────────────────────────────────────
-        deep_dive_part_4 = generate_deep_dive_4(results, client, session_id)
-        
-        # ── API CALL #9: Deep Dive Part 5 ────────────────────────────────────
-        deep_dive_part_5 = generate_deep_dive_5(results, client, session_id)
-        
-        # ── Assemble Report ───────────────────────────────────────────────────
-        logger.info("[REPORT] Assembling final report...")
-        
-        report = {
-            'metadata': {
-                'session_id': session_id,
-                'demographics': demographics,
-                'generated_at': datetime.utcnow().isoformat(),
-                'version': '9.0',
-            },
-            'opening': opening,
-            'section_1_dashboard': dashboard,
-            'section_3_how_typical': how_typical,
-            'section_4_what_different': rare_combos,
-            'section_5_behaviour_story': behaviour_story,
-            'section_6_question_profile': question_profile,
-            'section_7_distinctive_responses': distinctive_responses,
-            'section_8_perception_gap': perception_gap,
-            'section_10_trajectory': trajectory,
-            'deep_dive': {
-                'opening': deep_dive_opening,
-                'part_1_research_lenses': deep_dive_part_1,
-                'part_3_cohort_context': cohort_context,
-                'part_4_rare_combination': deep_dive_part_4,
-                'part_5_cross_dimensional': deep_dive_part_5,
-            }
+        html += f'''
+        <div class="question-card">
+            <div class="question-header">
+                <span class="question-number">Q{q_num}</span>
+                <span class="question-key">{escape_html(q_var)}</span>
+            </div>
+            
+            <div class="question-answer">
+                <span class="answer-label">Your answer:</span>
+                <span class="answer-value">{escape_html(str(q_answer))}</span>
+                <span class="answer-scale">/7</span>
+            </div>
+            
+            <div class="histogram-container">
+                <div class="histogram">{bars_html}</div>
+                <div class="histogram-scale">
+                    <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span>
+                </div>
+            </div>
+            
+            <div class="question-comparison">
+                <div class="percentile-line">
+                    <span class="label">Your percentile:</span>
+                    <span class="value">{q_percentile}th</span>
+                    <span class="position">({escape_html(q_position)})</span>
+                </div>
+                <div class="plain-english">{escape_html(q_plain)}</div>
+                <div class="age-comparison">
+                    vs {escape_html(q_age_group)}: {q_age_percentile}th percentile
+                </div>
+            </div>
+        </div>
+'''
+    
+    if current_dim != "":
+        html += "</div>\n"
+    
+    return html
+
+
+def build_report_html(report_dict: Dict[str, Any]) -> str:
+    """
+    Build complete HTML report from report_dict.
+    
+    Args:
+        report_dict: Output from report_generator.generate_premium_report()
+    
+    Returns:
+        str: Complete HTML string ready for PDF or display
+    """
+    
+    if not isinstance(report_dict, dict):
+        return "<p>Error: Invalid report data</p>"
+    
+    metadata = report_dict.get('metadata', {})
+    demographics = metadata.get('demographics', {})
+    
+    # Extract key sections
+    opening = report_dict.get('opening', '')
+    section_1_dashboard = report_dict.get('section_1_dashboard', {})
+    section_3_how_typical = report_dict.get('section_3_how_typical', {})
+    section_4_what_different = report_dict.get('section_4_what_different', '')
+    section_5_behaviour_story = report_dict.get('section_5_behaviour_story', '')
+    section_6_question_profile = report_dict.get('section_6_question_profile', {})
+    section_7_distinctive_responses = report_dict.get('section_7_distinctive_responses', '')
+    section_8_perception_gap = report_dict.get('section_8_perception_gap', '')
+    section_10_trajectory = report_dict.get('section_10_trajectory', '')
+    deep_dive = report_dict.get('deep_dive', {})
+    
+    # Build metadata line
+    meta_parts = []
+    if demographics.get('age_group'):
+        meta_parts.append(escape_html(demographics['age_group']))
+    if demographics.get('country'):
+        meta_parts.append(escape_html(demographics['country']))
+    from datetime import datetime
+    meta_parts.append(datetime.now().strftime('%B %d, %Y'))
+    meta_text = ' • '.join(meta_parts)
+    
+    # Build complete HTML
+    html = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your AI Identity Report — Human Clarity Institute</title>
+    <style>
+        :root {
+            --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            --font-size-body: 10.5px;
+            --color-primary: #0066cc;
+            --color-text: #1a1a1a;
+            --color-text-secondary: #666;
+            --color-bg-light: #fafafa;
+            --color-border: #e0e0e0;
+            --spacing-lg: 12pt;
+            --spacing-md: 8pt;
+            --spacing-sm: 6pt;
         }
         
-        logger.info("[REPORT] ✅ Premium report generation complete (9 API calls: 6 core + 3 deep dive)")
-        return report
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { font-size: 16px; }
+        body {
+            font-family: var(--font-family-body);
+            font-size: var(--font-size-body);
+            color: var(--color-text);
+            background: #fff;
+            line-height: 1.3;
+        }
+        
+        .report {
+            max-width: 8in;
+            margin: 0 auto;
+            padding: 0.5in 0.75in;
+            background: #fff;
+        }
+        
+        h1, h2, h3, h4 { font-weight: 600; margin: 0 0 var(--spacing-md) 0; }
+        h1 { font-size: 16px; }
+        h2 { font-size: 13px; color: var(--color-primary); }
+        h3 { font-size: 12px; }
+        p { margin: 0 0 var(--spacing-sm) 0; line-height: 1.3; }
+        
+        .report-section { margin-bottom: 20pt; }
+        .section-subtitle { font-size: var(--font-size-body); color: var(--color-text-secondary); }
+        
+        .dimension-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16pt;
+            margin-bottom: 20pt;
+        }
+        
+        .dimension-card {
+            border: 0.5pt solid var(--color-border);
+            padding: 16pt;
+            border-radius: 6px;
+        }
+        
+        .dimension-label { font-size: 9px; text-transform: uppercase; color: #999; margin-bottom: 3pt; }
+        .dimension-name { font-size: 12px; font-weight: 600; margin-bottom: 8pt; }
+        .score-number { font-size: 18px; font-weight: 700; color: var(--color-primary); }
+        .percentile-bar { width: 100%; height: 12px; background: #f5f5f5; margin-bottom: 8pt; border-radius: 2px; }
+        .percentile-fill { height: 100%; background: var(--color-primary); width: 0; }
+        
+        .narrative { font-size: var(--font-size-body); line-height: 1.3; margin-bottom: var(--spacing-lg); }
+        .narrative-paragraph { margin-bottom: var(--spacing-sm); }
+        
+        .divider { border: none; border-top: 0.5pt solid var(--color-border); margin: var(--spacing-lg) 0; }
+        
+        .question-dimension {
+            margin-bottom: 24pt;
+            border-top: 0.5pt solid var(--color-border);
+            padding-top: 12pt;
+        }
+        
+        .question-dimension h3 {
+            font-size: 11px;
+            color: var(--color-primary);
+            margin-bottom: 12pt;
+            text-transform: uppercase;
+        }
+        
+        .question-card {
+            margin-bottom: 16pt;
+            padding: 12pt;
+            border: 0.5pt solid var(--color-border);
+            border-radius: 4px;
+            background: #fafafa;
+        }
+        
+        .question-header {
+            display: flex;
+            gap: 12pt;
+            margin-bottom: 8pt;
+            font-size: 9px;
+        }
+        
+        .question-number {
+            font-weight: 600;
+            color: var(--color-primary);
+        }
+        
+        .question-key {
+            color: #999;
+            font-style: italic;
+        }
+        
+        .question-answer {
+            display: flex;
+            gap: 6pt;
+            align-items: baseline;
+            margin-bottom: 10pt;
+            font-size: 10px;
+        }
+        
+        .answer-label {
+            color: #666;
+        }
+        
+        .answer-value {
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--color-primary);
+        }
+        
+        .answer-scale {
+            color: #999;
+            font-size: 9px;
+        }
+        
+        .histogram-container {
+            margin-bottom: 10pt;
+        }
+        
+        .histogram {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 40px;
+            padding: 4pt 0;
+            border-bottom: 0.5pt solid var(--color-border);
+        }
+        
+        .histogram-bar {
+            flex: 1;
+            min-height: 2px;
+            border-radius: 1px;
+        }
+        
+        .histogram-scale {
+            display: flex;
+            justify-content: space-between;
+            font-size: 8px;
+            color: #999;
+            padding: 2pt 0;
+        }
+        
+        .question-comparison {
+            font-size: 9px;
+        }
+        
+        .percentile-line {
+            display: flex;
+            gap: 8pt;
+            margin-bottom: 4pt;
+        }
+        
+        .percentile-line .label {
+            color: #666;
+        }
+        
+        .percentile-line .value {
+            font-weight: 600;
+            color: var(--color-primary);
+        }
+        
+        .percentile-line .position {
+            color: #999;
+        }
+        
+        .plain-english {
+            color: #666;
+            margin-bottom: 4pt;
+            line-height: 1.3;
+        }
+        
+        .age-comparison {
+            color: #999;
+            font-size: 8px;
+        }
+        
+        @media print {
+            body { margin: 0; padding: 0; }
+            .report { max-width: 100%; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="report">
+
+    <div class="report-section">
+        <h1>Your AI Identity Report</h1>
+        <p class="text-secondary">{meta_text}</p>
+        <hr class="divider">
+    </div>
+
+    <div class="report-section">
+        <h2>Most Surprising Finding</h2>
+        <div class="narrative">{format_prose(opening)}</div>
+    </div>
+
+    <div class="report-section">
+        <h2>Your AI Behaviour Pattern</h2>
+        <p class="section-subtitle">How you compare across nine dimensions</p>
+        {build_dimension_cards(section_1_dashboard.get('dimensions', {}))}
+    </div>
+
+    <div class="report-section">
+        <h2>How Typical Is Your AI Behaviour?</h2>
+        <div class="narrative">{escape_html(str(section_3_how_typical))}</div>
+    </div>
+
+    <div class="report-section">
+        <h2>What's Different About Your Pattern</h2>
+        <div class="narrative">{format_prose(section_4_what_different)}</div>
+    </div>
+
+    <div class="report-section">
+        <h2>Your Behaviour Story</h2>
+        <div class="narrative">{format_prose(section_5_behaviour_story)}</div>
+    </div>
+
+    <div class="report-section">
+        <h2>Your Question-Level Profile</h2>
+        {build_question_profile(section_6_question_profile.get('questions', []))}
+    </div>
+
+    <div class="report-section">
+        <h2>Your Most Distinctive Responses</h2>
+        <div class="narrative">{format_prose(section_7_distinctive_responses)}</div>
+    </div>
+
+    <div class="report-section">
+        <h2>Perception Gap Analysis</h2>
+        <div class="narrative">{format_prose(section_8_perception_gap)}</div>
+    </div>
+
+    <div class="report-section">
+        <h2>Your Trajectory & Outlook</h2>
+        <div class="narrative">{format_prose(section_10_trajectory)}</div>
+    </div>
+
+    <div class="report-section">
+        <hr class="divider">
+        <h2>Deep Dive: Deeper Insights Into Your Pattern</h2>
+        <div class="narrative">{format_prose(deep_dive.get('opening', ''))}</div>
+    </div>
+
+    <div class="report-section">
+        <h3>Your Pattern Across Research Lenses</h3>
+        <div class="narrative">{format_prose(deep_dive.get('part_1_research_lenses', ''))}</div>
+    </div>
+
+    <div class="report-section">
+        <h3>What Your Rare Combination Reveals</h3>
+        <div class="narrative">{format_prose(deep_dive.get('part_4_rare_combination', ''))}</div>
+    </div>
+
+    <div class="report-section">
+        <h3>Cross-Dimensional Architecture</h3>
+        <div class="narrative">{format_prose(deep_dive.get('part_5_cross_dimensional', ''))}</div>
+    </div>
+
+    <div class="report-section">
+        <hr class="divider">
+        <p style="font-size: 9px; color: var(--color-text-secondary);">
+            <strong>About This Report</strong><br>
+            This assessment measures nine dimensions of your AI behaviour, benchmarked against 10,500+ participants.
+            Learn more at <a href="https://humanclarityinstitute.com" style="color: var(--color-primary);">humanclarityinstitute.com</a>
+        </p>
+    </div>
+
+</div>
+
+</body>
+</html>'''
     
-    except Exception as e:
-        user_email = demographics.get('email', 'unknown')
-        notify_failure('Report Generation', e, session_id, user_email)
-        raise
+    return html
 
 
 if __name__ == '__main__':
-    print("Report Generator v9.0 loaded successfully")
-    print(f"Model: {MODEL}")
-    print(f"Timeout: {CALL_TIMEOUT_SECONDS}s per call")
-    print(f"Max retries: {MAX_RETRIES_PER_CALL}")
-    print("All signal files imported successfully")
+    # Test with sample data
+    sample_report = {
+        'metadata': {
+            'demographics': {
+                'age_group': '25-34',
+                'country': 'New Zealand'
+            }
+        },
+        'opening': 'This is a test opening paragraph.',
+        'section_1_dashboard': {
+            'dimensions': {
+                'trust': {
+                    'percentile': 72,
+                    'raw_score': 5.2,
+                    'research_insight': 'You show above-average trust in AI systems.'
+                }
+            }
+        }
+    }
+    
+    html = build_report_html(sample_report)
+    print(f"Generated {len(html)} characters of HTML")
