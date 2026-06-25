@@ -434,8 +434,8 @@ def webhook_stripe():
     Stripe webhook handler for payment confirmation.
     
     Stripe sends signed events to this endpoint.
-    On checkout.session.completed, we mark the assessment as paid
-    and trigger report generation.
+    On checkout.session.completed, we mark the assessment as paid,
+    store the Stripe session ID, and trigger report generation automatically.
     """
     try:
         # Get raw request body and signature
@@ -466,10 +466,112 @@ def webhook_stripe():
             stripe_session_id = checkout_data['stripe_session_id']
             customer_email = checkout_data['customer_email']
             
-            # TODO: In future, correlate stripe_session_id back to assessment session_id
-            # For now, we rely on the /premium endpoint to provide the assessment session_id
+            # Fetch Stripe session to get client_reference_id (assessment session_id)
+            stripe_session = fetch_stripe_session(stripe_session_id)
+            if not stripe_session:
+                print(f'Failed to fetch Stripe session {stripe_session_id}')
+                return jsonify({'received': True}), 200  # Still return 200 to ack webhook
             
-            print(f'Webhook: Payment confirmed for Stripe session {stripe_session_id}')
+            session_id = stripe_session.get('client_reference_id')
+            if not session_id:
+                print(f'No client_reference_id in Stripe session {stripe_session_id}')
+                return jsonify({'received': True}), 200
+            
+            print(f'Webhook: Payment confirmed for Stripe session {stripe_session_id}, assessment {session_id}')
+            
+            # STEP 1: Update assessment to mark as paid and store stripe_session_id (SAME ROW)
+            db = get_supabase_client()
+            try:
+                paid_at = datetime.utcnow().isoformat()
+                # Use update_assessment to store stripe_session_id WITHOUT creating a new row
+                db.update_assessment(
+                    session_id=session_id,
+                    paid=True,
+                    paid_at=paid_at,
+                    stripe_session_id=stripe_session_id
+                )
+                print(f'Marked assessment {session_id} as paid with Stripe session {stripe_session_id}')
+            except Exception as e:
+                print(f'Failed to mark assessment as paid: {e}')
+                return jsonify({'received': True}), 200  # Still ack webhook
+            
+            # STEP 2: Auto-trigger premium report generation
+            try:
+                # Get full results from DB
+                assessment = db.get_assessment(session_id)
+                if not assessment:
+                    print(f'Assessment {session_id} not found in DB')
+                    return jsonify({'received': True}), 200
+                
+                full_results = assessment.get('full_results')
+                if not full_results:
+                    print(f'No full_results for assessment {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Generate report
+                api_key = os.environ.get('ANTHROPIC_API_KEY')
+                if not api_key:
+                    print('ANTHROPIC_API_KEY not configured')
+                    return jsonify({'received': True}), 200
+                
+                print(f'Webhook: Generating premium report for session {session_id}')
+                report_dict = generate_premium_report(
+                    results=full_results,
+                    api_key=api_key,
+                    session_id=session_id
+                )
+                
+                if not report_dict:
+                    print(f'Report generation returned empty for session {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Build HTML
+                report_html_str = build_report_html(report_dict)
+                if not report_html_str:
+                    print(f'HTML builder failed for session {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Generate and upload PDF
+                pdf_bytes = None
+                pdf_url = None
+                try:
+                    pdf_handler = get_report_pdf()
+                    pdf_bytes, pdf_url = pdf_handler.generate_and_upload(report_html_str, session_id)
+                    print(f'PDF generated and uploaded for session {session_id}: {pdf_url}')
+                except Exception as e:
+                    print(f'PDF generation failed (non-fatal): {e}')
+                    # Continue without PDF
+                
+                # Send email with report
+                try:
+                    report_email = assessment.get('report_email') or customer_email
+                    if report_email:
+                        email = get_email_template()
+                        email.send_report_email(
+                            to=report_email,
+                            session_id=session_id,
+                            pdf_url=pdf_url
+                        )
+                        print(f'Report email sent to {report_email}')
+                except Exception as e:
+                    print(f'Email send failed (non-fatal): {e}')
+                
+                # Update DB with cached report
+                try:
+                    db.update_report(
+                        session_id=session_id,
+                        report_dict=report_dict,
+                        report_html=report_html_str,
+                        report_pdf_url=pdf_url
+                    )
+                    print(f'Report cached in DB for session {session_id}')
+                except Exception as e:
+                    print(f'Failed to cache report: {e}')
+                
+            except Exception as e:
+                print(f'Webhook: Report generation failed: {e}')
+                traceback.print_exc()
+                # Still return 200 to ack webhook (don't want Stripe retrying)
         
         return jsonify({'received': True}), 200
     
