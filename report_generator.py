@@ -846,6 +846,33 @@ def generate_cohort_context(results: Dict) -> Dict:
     }
 
 # ============================================================
+# JSON SERIALIZATION HELPER
+# ============================================================
+
+def make_json_safe(obj):
+    """
+    Recursively convert non-JSON-serializable Python objects to JSON-safe types.
+    Handles datetime, UUID, Decimal, and nested structures.
+    
+    This ensures report_dict can be successfully serialized when saving to database.
+    """
+    from uuid import UUID
+    from decimal import Decimal
+    
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [make_json_safe(item) for item in obj]
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, UUID):
+        return str(obj)
+    elif isinstance(obj, Decimal):
+        return float(obj)
+    else:
+        return obj
+
+# ============================================================
 # MAIN REPORT GENERATOR
 # ============================================================
 
@@ -945,6 +972,9 @@ your relationship with AI.
         }
         
         logger.info("[REPORT] ✅ Premium report generation complete (9 API calls: 6 core + 3 deep dive)")
+        
+        # Ensure all objects are JSON serializable before returning
+        report = make_json_safe(report)
         return report
     
     except Exception as e:
