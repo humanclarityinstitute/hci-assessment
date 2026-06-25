@@ -265,3 +265,43 @@ def get_supabase_client() -> SupabaseClient:
         except Exception as e:
             print(f"Error updating report: {str(e)}")
             return False
+    
+    def update_assessment(self, session_id: str, **kwargs) -> bool:
+        """
+        Update assessment fields (payment status, stripe_session_id, etc).
+        
+        This updates the SAME ROW - does NOT create a new record.
+        Used to mark payments and store payment IDs without duplicating data.
+        
+        Args:
+            session_id: Session identifier
+            **kwargs: Fields to update (paid, stripe_session_id, paid_at, etc)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            url = f'{self.supabase_url}/rest/v1/assessment_responses?session_id=eq.{session_id}'
+            
+            body = json.dumps(kwargs).encode('utf-8')
+            
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={
+                    'Content-Type': 'application/json',
+                    'apikey': self.supabase_key,
+                    'Authorization': f'Bearer {self.supabase_key}',
+                    'Prefer': 'return=minimal',
+                },
+                method='PATCH'
+            )
+            
+            response = urllib.request.urlopen(req, timeout=5)
+            response.read()
+            response.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error updating assessment: {str(e)}")
+            return False
