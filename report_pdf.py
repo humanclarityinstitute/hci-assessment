@@ -50,14 +50,10 @@ class ReportPDF:
         
         try:
             import urllib.request
-            import base64
             
-            # PDFShift API expects base64-encoded HTML
-            html_b64 = base64.b64encode(html_content.encode()).decode()
-            
-            # Build PDFShift request
+            # PDFShift API expects raw HTML (not base64)
             payload = {
-                'source': html_b64,
+                'source': html_content,  # Raw HTML, not base64
                 'filename': f'hci-report-{session_id}.pdf',
                 'format': 'A4',
                 'margins': {
