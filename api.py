@@ -40,7 +40,6 @@ from benchmark_builder import get_benchmark
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
-from email_template import get_email_template
 from report_pdf import get_report_pdf
 
 # Import Layer 3 (Report generation)
