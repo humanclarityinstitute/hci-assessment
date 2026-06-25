@@ -446,3 +446,19 @@ PRESSURE_POINTS = {
 # This data structure is the foundation for every API call
 # It provides the "what we expect" against which individual scores are compared
 # The comparison itself (expectation vs. actual) is what makes the report meaningful
+
+# ============================================================
+# RESEARCH METADATA
+# ============================================================
+
+RESEARCH_NUMBERS = {
+    'total_participants': 10500,
+    'datasets': 21,
+    'countries': 6,
+    'dimensions': 9,
+    'questions': 39,
+    'age_bands': 6
+}
+
+# This metadata is used by report_generator to provide context
+# for the research foundation of the assessment
