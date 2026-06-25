@@ -24,7 +24,7 @@ class SupabaseClient:
         self.supabase_url = supabase_url
         self.supabase_key = supabase_key
     
-    def store_assessment(self, session_id: str, **kwargs) -> bool:
+    def store_assessment(self, session_id: str, **kwargs) -> Dict[str, Any]:
         """
         Store assessment responses to Supabase using the proven working pattern.
         
@@ -72,17 +72,18 @@ class SupabaseClient:
             response.read()  # Consume response
             response.close()
             
-            return True
+            return {'success': True}
             
         except urllib.error.HTTPError as e:
-            print(f"HTTP Error {e.code}: {e.read().decode('utf-8')}")
-            return False
+            error_msg = e.read().decode('utf-8')
+            print(f"HTTP Error {e.code}: {error_msg}")
+            return {'success': False, 'message': f'HTTP {e.code}: {error_msg}'}
         except urllib.error.URLError as e:
             print(f"URL Error: {e.reason}")
-            return False
+            return {'success': False, 'message': f'URL Error: {e.reason}'}
         except Exception as e:
             print(f"Error storing assessment: {str(e)}")
-            return False
+            return {'success': False, 'message': str(e)}
     
     def fetch_assessment(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
