@@ -251,8 +251,6 @@ def score():
             demographics=demographics,
             full_results=scoring_results,
             response_percentiles=response_percentiles,
-            perception_gaps=scoring_results.get('perception_gaps', []),
-            rare_combinations=scoring_results.get('rare_combinations', []),
             report_email=report_email,
             consent=consent,
             consent_timestamp=consent_timestamp
@@ -317,8 +315,6 @@ def get_results():
             'session_id': session_id,
             'full_results': assessment.get('full_results'),
             'response_percentiles': assessment.get('response_percentiles', {}),
-            'perception_gaps': assessment.get('perception_gaps', []),
-            'rare_combinations': assessment.get('rare_combinations', []),
             'demographics': assessment.get('demographics', {}),
             'report_email': assessment.get('report_email'),
             'paid': assessment.get('paid', False)
