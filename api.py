@@ -557,51 +557,7 @@ def webhook_stripe():
                     # Continue without PDF
                 
                 # Send email with report
-                try:
-                    if report_email:
-                        email_handler = get_email_template()
-                        email_html = email_handler.format_report_email(
-                            report_email,
-                            session_id
-                        )
-                        
-                        if email_html:
-                            resend_key = os.environ.get('RESEND_API_KEY')
-                            if resend_key:
-                                try:
-                                    import json
-                                    resend_url = 'https://api.resend.com/emails'
-                                    payload = {
-                                        'from': 'reports@humanclarityinstitute.com',
-                                        'to': report_email,
-                                        'subject': 'Your HCI Assessment Report is Ready',
-                                        'html': email_html
-                                    }
-                                    
-                                    req = urllib.request.Request(
-                                        resend_url,
-                                        data=json.dumps(payload).encode(),
-                                        headers={
-                                            'Authorization': f'Bearer {resend_key}',
-                                            'Content-Type': 'application/json',
-                                            'User-Agent': 'HCI-Reports/1.0'
-                                        },
-                                        method='POST'
-                                    )
-                                    
-                                    response = urllib.request.urlopen(req, timeout=10)
-                                    response_data = json.loads(response.read())
-                                    
-                                    if response_data.get('id'):
-                                        print(f'Report email sent to {report_email}')
-                                    else:
-                                        print(f'Email send failed: {response_data}')
-                                
-                                except Exception as e:
-                                    print(f'Resend API error: {e}')
-                
-                except Exception as e:
-                    print(f'Email send failed (non-fatal): {e}')
+
                 
                 # Update DB with cached report
                 try:
@@ -940,11 +896,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(f'⚠ Stripe initialization failed: {e}')
     
-    try:
-        _ = get_email_template()
-        print('✓ Email template initialized')
-    except Exception as e:
-        print(f'⚠ Email template initialization failed: {e}')
     
     try:
         _ = get_report_pdf()
