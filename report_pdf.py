@@ -1,237 +1,207 @@
 """
-HCI Premium Report Email — v2.1 (lightweight summary + PDF attachment)
+HCI Report -> PDF  (PDFShift edition)
+=====================================
+Turns the SAME canonical report page (hci-report-page.html) into a downloadable
+PDF, with zero second source of truth for the visuals.
 
-Design decision (locked): the email is a SHORT, scannable summary that mirrors
-the free results page voice — positional language + plain-English, no bare
-percentiles, no charts. The full experience lives in two places:
-  1. the interactive web report (CTA button -> report_url), and
-  2. a downloadable PDF of the full report, attached to this email.
+Why PDFShift (and not Playwright/Chromium, WeasyPrint, or wkhtmltopdf):
+the report's charts are HTML/CSS <div>s drawn by the page's own JavaScript
+(renderReport) from the report data. Nothing renders them server-side. Only a
+real browser runs that JS. PDFShift is a hosted headless-Chrome service, so it
+reproduces the live page exactly and stays in sync automatically whenever the
+template changes — without needing Chromium installed in the container (the
+previous Playwright approach failed because Chromium was never installed).
 
-v2.1 rules honoured here:
-  - NO bare "Xth percentile" anywhere (cards or prose). We render only the
-    positional word + plain-English string that the generator produces.
-  - No archetypes, no "tensions" language.
-  - British English. Brand: navy #1B2A4A, brand blue #4054B2, cream #F9F7F2.
+How it stays single-source:
+render_report_html() does NOT hand-maintain a separate print layout. It reads
+the canonical template file, injects the already-generated report object inline
+(base64 -> JSON.parse), swaps the page's network bootstrap (init() -> a direct
+renderReport call), and disables animations so the PDF captures the final state.
+Point template_path at the same hci-report-page.html the site serves.
 
-------------------------------------------------------------------------------
-FIELD MAP — CONFIRM AGAINST report_generator.py BEFORE DEPLOY
-------------------------------------------------------------------------------
-This template reads the v2.1 report object. The exact key names below are the
-ONLY thing tying it to the generator, so they are isolated here on purpose.
-Everything is read with a safe default: a missing key degrades to blank, never
-to a wrong number (that is what produced the old "0th percentile" bug).
+The bootstrap swap is whitespace-tolerant (regex), so ordinary edits to the
+report page's init() block do not silently break PDF generation. If the block
+genuinely cannot be found, render_report_html() raises and the caller treats
+that as "no PDF" — the summary email still sends.
+
+Deploy dependencies (Railway):
+    PDFSHIFT_API_KEY   (required)  your PDFShift API key
+    PDFSHIFT_SANDBOX   (optional)  "true" to render free watermarked test PDFs;
+                                   unset/"false" for real (billed) PDFs.
+No system packages, no Chromium install required.
 """
 
 import base64
 import json
+import os
+import re
 import urllib.request
-from datetime import datetime
+
+PDFSHIFT_ENDPOINT = 'https://api.pdfshift.io/v3/convert/pdf'
+
+# The page's network bootstrap, matched flexibly (any whitespace between tokens).
+# This is the block at the end of the report page IIFE that wires init() to the
+# DOM. We replace it so the PDF renders the injected report directly instead of
+# fetching /premium.
+_INIT_BOOTSTRAP_RE = re.compile(
+    r"if\s*\(\s*document\.readyState\s*===\s*'loading'\s*\)\s*\{\s*"
+    r"document\.addEventListener\s*\(\s*'DOMContentLoaded'\s*,\s*init\s*\)\s*;?\s*"
+    r"\}\s*else\s*\{\s*"
+    r"init\s*\(\s*\)\s*;?\s*"
+    r"\}",
+    re.DOTALL,
+)
+
+# Replacement bootstrap — stays INSIDE the IIFE, so renderReport is in scope.
+# Also snaps every animated bar/marker to its final position immediately.
+_PRINT_BOOTSTRAP = """function __hciPrintInit(){
+  try{
+    var e=document.getElementById('hci-error'); if(e){e.style.display='none';}
+    renderReport(window.__HCI_REPORT__);
+    document.querySelectorAll('[data-fill]').forEach(function(el){el.style.width=el.dataset.fill+'%';});
+    document.querySelectorAll('[data-pos]').forEach(function(el){el.style.left=el.dataset.pos+'%';});
+  }catch(err){console.error('print render failed',err);}
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',__hciPrintInit);
+}else{
+  __hciPrintInit();
+}"""
+
+_PRINT_STYLE = (
+    '<style id="hci-print-overrides">'
+    '*{transition:none !important;animation:none !important}'
+    '#hci-generating,#hci-error,.hci-print-bar{display:none !important}'
+    '#hci-report{display:block !important}'
+    '</style>'
+)
+
+DEFAULT_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'hci-report-page.html')
 
 
-# Nine dimensions, v2.1 report order.
-DIM_ORDER = [
-    'reliance', 'trust', 'verification', 'decision_delegation',
-    'human_agency', 'disclosure', 'emotional_regulation',
-    'thought_partnership', 'social_transparency',
-]
-
-
-def _first_paragraph(text):
-    """Lightweight: show only the opening paragraph of a longer section."""
-    if not text:
-        return ''
-    return text.split('\n\n')[0].replace('\n', ' ').strip()
-
-
-def _dim_summary_row(dim):
+def render_report_html(report, template_path=DEFAULT_TEMPLATE_PATH, demographics=None):
     """
-    One compact dimension row: label + subtitle, positional word, plain-English.
-    No percentile number, no chart, no full narrative — those live in the
-    PDF / web report.
-
-    Reads report_generator's dimension_profiles fields:
-      label, subtitle, position (the Section-3 positional word), plain_english.
-    We render the positional word + plain-English string only — never a bare
-    percentile (v2.1).
+    Transform the canonical report template into a self-contained print HTML
+    with the report data baked in. Raises if the template doesn't contain the
+    expected anchors (so a silently-broken PDF can never go out — the caller
+    treats a raise as "no PDF" and still sends the summary email).
     """
-    label = dim.get('label', '')
-    subtitle = dim.get('subtitle', '')
-    position = (dim.get('position') or '').strip()
-    if position:
-        position = position[0].upper() + position[1:]  # "notably high" -> "Notably high"
-    plain = dim.get('plain_english', '')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html = f.read()
 
-    position_pill = (
-        f'<span style="display:inline-block;background:#EDEBFB;color:#3D2B8C;'
-        f'font-size:11px;font-weight:700;padding:3px 11px;border-radius:20px;'
-        f'letter-spacing:0.02em;">{position}</span>'
-    ) if position else ''
+    # Make sure the header meta has demographics to render.
+    if demographics:
+        report = dict(report)
+        meta = dict(report.get('metadata') or {})
+        if not meta.get('demographics'):
+            meta['demographics'] = demographics
+        report['metadata'] = meta
 
-    return f"""
-    <tr><td style="padding:0 0 12px;">
-      <table width="100%" cellpadding="0" cellspacing="0"
-             style="background:#F8F9FC;border-radius:8px;border-left:3px solid #4054B2;">
-        <tr><td style="padding:16px 18px;">
-          <table width="100%" cellpadding="0" cellspacing="0">
-            <tr>
-              <td style="vertical-align:top;">
-                <p style="margin:0;color:#1B2A4A;font-size:15px;font-weight:700;">{label}</p>
-                <p style="margin:2px 0 0;color:#6B7280;font-size:12px;">{subtitle}</p>
-              </td>
-              <td align="right" style="vertical-align:top;">{position_pill}</td>
-            </tr>
-          </table>
-          <p style="margin:10px 0 0;color:#4054B2;font-size:13px;font-weight:600;line-height:1.5;">{plain}</p>
-        </td></tr>
-      </table>
-    </td></tr>"""
+    # ensure_ascii keeps the payload pure-ASCII so base64 -> atob -> JSON.parse
+    # round-trips any unicode (em dashes, smart quotes) safely.
+    payload = base64.b64encode(
+        json.dumps(report, ensure_ascii=True).encode('utf-8')
+    ).decode('ascii')
+    inject = f'<script>window.__HCI_REPORT__=JSON.parse(atob("{payload}"));</script>'
+
+    # 1) Inject the report payload right after <body> (runs before the IIFE).
+    if '<body>' not in html:
+        raise ValueError('report template missing <body> anchor')
+    html = html.replace('<body>', '<body>\n' + inject, 1)
+
+    # 2) Inject print overrides before </head>.
+    if '</head>' not in html:
+        raise ValueError('report template missing </head> anchor')
+    html = html.replace('</head>', _PRINT_STYLE + '\n</head>', 1)
+
+    # 3) Swap the network bootstrap for the direct-render bootstrap.
+    #    Whitespace-tolerant so ordinary edits to the page don't break this.
+    html, n = _INIT_BOOTSTRAP_RE.subn(_PRINT_BOOTSTRAP, html, count=1)
+    if n == 0:
+        raise ValueError(
+            'report template bootstrap not found — the init() block changed '
+            'beyond what the whitespace-tolerant matcher handles; update '
+            '_INIT_BOOTSTRAP_RE in report_pdf.py to match the template.'
+        )
+
+    return html
 
 
-def generate_report_email(report, demographics, report_url='https://humanclarityinstitute.com', pdf_url=None):
-    """Generate the lightweight HTML summary email (PDF carries the full report).
-
-    pdf_url: optional durable link to the stored PDF, shown as a fallback so a
-    stripped attachment or a lost inbox never loses the report.
+def generate_report_pdf(report_html, wait_ms=1200, css=None):
     """
+    Render self-contained report HTML to PDF bytes via PDFShift (hosted headless
+    Chrome). Runs the page's JavaScript so renderReport draws the charts.
 
-    age_group = demographics.get('age_group', '')
-    country = demographics.get('country', '')
-    frequency = demographics.get('ai_tool_use_frequency', '')
-    date_str = datetime.utcnow().strftime('%d %B %Y')
+    Env:
+      PDFSHIFT_API_KEY  (required) — raises if missing.
+      PDFSHIFT_SANDBOX  (optional) — "true"/"1"/"yes" renders a free, watermarked
+                        test PDF; anything else renders a real (billed) PDF.
 
-    # Most surprising finding -> short opener. In report_generator this is the
-    # 'opening' field (generate_opening). 'overview' is the separate AI-Identity
-    # overview, used only as a fallback.
-    surprising = _first_paragraph(
-        report.get('opening')
-        or report.get('overview')
-        or ''
-    )
-
-    # Methodology stays the fixed verbatim "10,000+" text from the generator.
-    methodology = report.get('methodology_note') or report.get('methodology') or ''
-
-    # Build the nine compact dimension rows in v2.1 order.
-    # Extract dimension data from dashboard section (report structure v9.0)
-    dashboard = report.get('section_1_dashboard', {}) or {}
-    profiles = dashboard.get('dimensions', {}) or {}
-    dim_rows = ''.join(
-        _dim_summary_row(profiles[k]) for k in DIM_ORDER if profiles.get(k)
-    )
-
-    # Durable PDF download link (fallback if the attachment is stripped/lost).
-    pdf_link_html = (
-        f'<p style="margin:14px 0 0;color:#6B7280;font-size:12px;">'
-        f'Prefer a direct download? <a href="{pdf_url}" style="color:#4054B2;font-weight:600;">'
-        f'Download your report PDF</a></p>'
-    ) if pdf_url else ''
-
-    return f"""<!DOCTYPE html>
-<html lang="en-GB">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your AI Identity Report — Human Clarity Institute</title>
-</head>
-<body style="margin:0;padding:0;background:#F4F6FB;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#F4F6FB;padding:32px 16px;">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-
-  <!-- Header -->
-  <tr><td style="background:#1B2A4A;border-radius:12px 12px 0 0;padding:34px 40px;">
-    <p style="margin:0 0 10px;color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Human Clarity Institute · AI Identity &amp; Behaviour Assessment</p>
-    <h1 style="margin:0 0 12px;color:#ffffff;font-size:27px;font-weight:800;letter-spacing:-0.5px;line-height:1.15;">Your AI Identity Report</h1>
-    <p style="margin:0;color:rgba(255,255,255,0.45);font-size:13px;">{age_group} &nbsp;·&nbsp; {country} &nbsp;·&nbsp; {frequency} AI user &nbsp;·&nbsp; {date_str}</p>
-  </td></tr>
-
-  <!-- Most surprising finding (short) -->
-  <tr><td style="background:#F9F7F2;border:1px solid #D9CEBD;border-top:none;padding:26px 40px;">
-    <p style="margin:0 0 8px;color:#6B7280;font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Your most surprising finding</p>
-    <p style="margin:0;color:#1B2A4A;font-size:15px;line-height:1.7;font-weight:500;">{surprising}</p>
-  </td></tr>
-
-  <!-- CTA: full report (PDF + web) -->
-  <tr><td style="background:#ffffff;padding:26px 40px 8px;text-align:center;">
-    <p style="margin:0 0 16px;color:#1A1A1A;font-size:14px;line-height:1.6;">Your full report — every dimension, the cross-dimensional patterns, your perception gap and the complete 39-question appendix — is <strong>attached as a PDF</strong> and available to read online.</p>
-    <a href="{report_url}" style="display:inline-block;background:#4054B2;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 30px;border-radius:8px;">View your full report online →</a>
-    {pdf_link_html}
-  </td></tr>
-
-  <!-- Nine dimension summary -->
-  <tr><td style="background:#ffffff;padding:18px 40px 6px;">
-    <p style="margin:0 0 14px;color:#6B7280;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">Your nine dimensions at a glance</p>
-    <table width="100%" cellpadding="0" cellspacing="0">{dim_rows}</table>
-  </td></tr>
-
-  <!-- Methodology (fixed verbatim, 10,000+) -->
-  <tr><td style="background:#ffffff;border-radius:0 0 12px 12px;padding:18px 40px 24px;border-top:1px solid #E2E6EF;">
-    <p style="margin:14px 0 8px;color:#9CA3AF;font-size:11px;line-height:1.7;">{methodology}</p>
-    <p style="margin:0;color:#9CA3AF;font-size:11px;">Benchmark data and methodology: <a href="https://github.com/humanclarityinstitute" style="color:#4054B2;">github.com/humanclarityinstitute</a></p>
-  </td></tr>
-
-  <!-- Footer -->
-  <tr><td style="padding:24px 0;text-align:center;">
-    <p style="margin:0;color:#9CA3AF;font-size:12px;">Human Clarity Institute &nbsp;·&nbsp; <a href="https://humanclarityinstitute.com" style="color:#4054B2;text-decoration:none;">humanclarityinstitute.com</a></p>
-    <p style="margin:8px 0 0;color:#9CA3AF;font-size:11px;">This report was generated specifically for you. It is not intended for redistribution.</p>
-  </td></tr>
-
-</table>
-</td></tr>
-</table>
-</body>
-</html>"""
-
-
-def send_report_email(to_email, report, demographics, resend_api_key,
-                      report_url='https://humanclarityinstitute.com',
-                      pdf_bytes=None,
-                      pdf_url=None,
-                      pdf_filename='HCI-AI-Identity-Report.pdf'):
+    wait_ms: how long PDFShift waits after load for renderReport to finish
+             drawing before printing (the charts are JS-drawn).
     """
-    Send the summary email via Resend, with the full report attached as PDF.
+    api_key = os.environ.get('PDFSHIFT_API_KEY')
+    if not api_key:
+        raise ValueError('PDFSHIFT_API_KEY not set — cannot render PDF')
 
-    pdf_bytes: attach the PDF if provided.
-    pdf_url:   durable link to the stored PDF, shown in-body as a fallback so a
-               stripped attachment or a lost inbox never loses the report.
-    If both are None the email still sends (summary + web link) — so a PDF
-    hiccup never blocks delivery.
-    """
-    html_content = generate_report_email(report, demographics, report_url, pdf_url=pdf_url)
+    sandbox = os.environ.get('PDFSHIFT_SANDBOX', '').strip().lower() in ('1', 'true', 'yes')
 
-    body = {
-        'from': 'reports@updates.humanclarityinstitute.com',
-        'to': [to_email],
-        'reply_to': 'info@humanclarityinstitute.com',
-        'subject': 'Your AI Identity & Behaviour Report — Human Clarity Institute',
-        'html': html_content,
+    payload = {
+        'source': report_html,        # raw HTML (Option B — self-contained)
+        'landscape': False,
+        'use_print': False,           # use screen styles, not @media print
+        'format': 'A4',
+        'margin': {'top': '14mm', 'bottom': '14mm', 'left': '12mm', 'right': '12mm'},
+        # The report charts are drawn by the page's own JS after load, so give
+        # the browser time to finish before capturing.
+        'delay': wait_ms,
+        'sandbox': sandbox,
     }
+    if css:
+        payload['css'] = css
 
-    if pdf_bytes:
-        body['attachments'] = [{
-            'filename': pdf_filename,
-            'content': base64.b64encode(pdf_bytes).decode('utf-8'),
-        }]
+    body = json.dumps(payload).encode('utf-8')
 
+    # PDFShift auth: X-API-Key header (per the dashboard's request example).
     req = urllib.request.Request(
-        'https://api.resend.com/emails',
-        data=json.dumps(body).encode('utf-8'),
+        PDFSHIFT_ENDPOINT,
+        data=body,
         headers={
-            'Authorization': f'Bearer {resend_api_key}',
             'Content-Type': 'application/json',
-            # Resend's API sits behind Cloudflare, which blocks the default
-            # Python-urllib User-Agent with a 403 (Cloudflare error 1010).
-            # Sending a normal User-Agent lets the request through.
+            'X-API-Key': api_key,
             'User-Agent': 'HCI-Reports/1.0',
         },
         method='POST',
     )
 
+    # Generous timeout: hosted render of a JS page can take a few seconds.
+    response = urllib.request.urlopen(req, timeout=60)
+    pdf_bytes = response.read()
+    if not pdf_bytes:
+        raise ValueError('PDFShift returned an empty response')
+    return pdf_bytes
+
+
+def build_report_pdf(report, template_path=DEFAULT_TEMPLATE_PATH, demographics=None):
+    """
+    One safe call for the API: render + PDF. Returns PDF bytes, or None on any
+    failure (logged). None simply means the email goes out as summary + web link
+    with no attachment — delivery is never blocked by a PDF problem.
+
+    Signature unchanged from the previous (Playwright) version, so api.py,
+    the Supabase upload, and the email all keep working untouched.
+    """
     try:
-        response = urllib.request.urlopen(req, timeout=15)
-        result = json.loads(response.read())
-        print(f'Email sent successfully: {result.get("id")}')
-        return True
+        html = render_report_html(report, template_path, demographics)
+        return generate_report_pdf(html)
+    except urllib.error.HTTPError as e:
+        # Surface PDFShift's error body — it explains auth/credit/format issues.
+        try:
+            detail = e.read().decode('utf-8', 'replace')[:500]
+        except Exception:
+            detail = ''
+        print(f'PDF build failed (non-fatal): PDFShift HTTP {e.code} {detail}')
+        return None
     except Exception as e:
-        print(f'Email send failed (non-critical): {e}')
-        return False
+        print(f'PDF build failed (non-fatal, sending email without attachment): {e}')
+        return None
