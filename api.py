@@ -375,7 +375,7 @@ def get_results():
             'success': True,
             'session_id': session_id,
             'full_results': assessment.get('full_results'),
-            'response_percentiles': assessment.get('response_percentiles', {}),
+            'response_percentiles': assessment.get('percentiles', {}),
             'demographics': assessment.get('demographics', {}),
             'report_email': assessment.get('report_email'),
             'paid': assessment.get('paid', False)
