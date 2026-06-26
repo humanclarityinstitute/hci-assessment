@@ -708,14 +708,22 @@ def premium():
             if stripe_email:
                 report_email = stripe_email
         
-        # Step 4: Get full_results if not provided
+        # Step 4: Get full assessment if not provided
+        # CRITICAL: Use get_assessment() to get ALL fields including demographics and report_email
         if not full_results:
-            full_results = db.get_full_results(session_id)
-            if not full_results:
+            assessment = db.get_assessment(session_id)
+            if not assessment:
                 return jsonify({
                     'success': False,
                     'error': 'Assessment data not found'
                 }), 404
+            full_results = assessment.get('full_results')
+            # Also get email and demographics from assessment
+            report_email = assessment.get('report_email') or report_email
+            demographics = assessment.get('demographics', {})
+        else:
+            # If full_results was provided, still need demographics
+            demographics = {}
         
         # Step 5: Mark as paid and store stripe_session_id (SAME ROW)
         from datetime import datetime
@@ -778,53 +786,45 @@ def premium():
                 'error': f'Report generation failed: {str(e)}'
             }), 500
         
-        # Step 7: PDF generation (using actual get_report_pdf() class)
+        # Step 7: PDF generation
         pdf_bytes = None
         pdf_url = None
         try:
-            # Generate PDF using build_report_pdf
-            try:
-                pdf_bytes = build_report_pdf(
-                    report=report_dict,
-                    demographics=demographics,
-                    template_path=None
-                )
+            pdf_bytes = build_report_pdf(
+                report=report_dict,
+                demographics=demographics,
+                template_path=None
+            )
+            if pdf_bytes:
                 pdf_url = None
-                if pdf_bytes:
-                    print(f'Report PDF generated: {len(pdf_bytes)} bytes for session {session_id}')
-            except Exception as e:
-                print(f'PDF generation error: {e}')
-                pdf_bytes = None
-                pdf_url = None
+                print(f'Report PDF generated: {len(pdf_bytes)} bytes for session {session_id}')
+            else:
+                print(f'PDF generation returned None for session {session_id}')
         
         except Exception as e:
             print(f'PDF generation error: {e}')
             traceback.print_exc()
             # Non-fatal - report still displays in browser without PDF
         
-        # Step 8: Send email with report link (using actual EmailTemplate class)
+        # Step 8: Send email with report link
         email_sent = False
         try:
             if report_email:
-                # Send email using send_report_email
-                try:
-                    email_result = send_report_email(
-                        to_email=report_email,
-                        report=report_dict,
-                        demographics=demographics,
-                        resend_api_key=os.environ.get('RESEND_API_KEY'),
-                        report_url=f'https://humanclarityinstitute.com/ai-assessment/report/?session_id={session_id}',
-                        pdf_bytes=pdf_bytes if pdf_bytes else None,
-                        pdf_url=pdf_url,
-                        pdf_filename='HCI-AI-Identity-Report.pdf'
-                    )
-                    if email_result and email_result.get('success'):
-                        email_sent = True
-                        print(f'Report email sent to {report_email}')
-                    else:
-                        print(f'Email send failed: {email_result}')
-                except Exception as e:
-                    print(f'Email sending error: {e}')
+                email_result = send_report_email(
+                    to_email=report_email,
+                    report=report_dict,
+                    demographics=demographics,
+                    resend_api_key=os.environ.get('RESEND_API_KEY'),
+                    report_url=f'https://humanclarityinstitute.com/ai-assessment/report/?session_id={session_id}',
+                    pdf_bytes=pdf_bytes if pdf_bytes else None,
+                    pdf_url=pdf_url,
+                    pdf_filename='HCI-AI-Identity-Report.pdf'
+                )
+                if email_result and email_result.get('success'):
+                    email_sent = True
+                    print(f'Report email sent to {report_email}')
+                else:
+                    print(f'Email send failed: {email_result}')
         
         except Exception as e:
             print(f'Email sending error: {e}')
