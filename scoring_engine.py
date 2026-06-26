@@ -15,8 +15,150 @@ Output: Full scoring results (9 dimension percentiles, gaps, rare combos)
 """
 
 import uuid
+import json
 from datetime import datetime
 from benchmark_builder import get_benchmark
+
+
+# ============================================================
+# PERCEPTION GAP ANALYSIS - Map perceived answers to percentiles
+# ============================================================
+
+PERCEPTION_MAP = {
+    'Much less than most people': 25,
+    'Less than most people': 35,
+    'About the same as most people': 50,
+    'More than most people': 65,
+    'Much more than most people': 75,
+}
+
+
+# ============================================================
+# HELPER FUNCTIONS (extracted from old scoring_engine.py)
+# ============================================================
+
+def analyse_perception_gap(perceived, actual_percentile, dimension):
+    """
+    Compare self-estimate to actual percentile.
+    Returns gap analysis with direction and magnitude.
+    """
+    if not perceived or actual_percentile is None:
+        return None
+
+    perceived_estimate = PERCEPTION_MAP.get(perceived)
+    if perceived_estimate is None:
+        return None
+
+    gap = actual_percentile - perceived_estimate
+    
+    return {
+        'question': dimension,
+        'perceived_answer': perceived,
+        'actual_percentile': actual_percentile,
+        'gap_magnitude': gap
+    }
+
+
+def identify_dominant_patterns(dimension_scores):
+    """
+    Identify highest and lowest scoring dimensions from raw scores.
+    Returns top 3 and bottom 3 by percentile.
+    """
+    scored = [
+        (name, data)
+        for name, data in dimension_scores.items()
+        if data and data.get('percentile_overall') is not None
+    ]
+
+    sorted_dims = sorted(
+        scored,
+        key=lambda x: x[1]['percentile_overall'],
+        reverse=True
+    )
+
+    return {
+        'highest': [
+            {
+                'dimension': name,
+                'percentile': data['percentile_overall'],
+                'raw_score': data['raw_score'],
+            }
+            for name, data in sorted_dims[:3]
+        ],
+        'lowest': [
+            {
+                'dimension': name,
+                'percentile': data['percentile_overall'],
+                'raw_score': data['raw_score'],
+            }
+            for name, data in sorted_dims[-3:]
+        ],
+        'full_ranking': [
+            {
+                'dimension': name,
+                'percentile': data['percentile_overall'],
+                'raw_score': data['raw_score'],
+            }
+            for name, data in sorted_dims
+        ],
+    }
+
+
+def generate_headline(dimension_scores):
+    """
+    Generate a personalised headline based on dimension contrasts.
+    """
+    patterns = identify_dominant_patterns(dimension_scores)
+    highest = patterns['highest'][0] if patterns['highest'] else None
+    lowest = patterns['lowest'][0] if patterns['lowest'] else None
+
+    if not highest or not lowest:
+        return 'Your AI Identity Profile is ready'
+
+    # Pre-written headline patterns for common contrasts
+    headlines = {
+        ('trust', 'verification'): 'You trust AI significantly — but rarely check what it tells you',
+        ('disclosure', 'social_transparency'): 'You share deeply with AI but keep that private from others',
+        ('thought_partnership', 'reliance'): 'You think deeply with AI but show signs of growing dependency',
+        ('human_agency', 'decision_delegation'): 'You maintain strong agency while delegating surprisingly few decisions',
+        ('emotional_regulation', 'human_agency'): 'AI plays a significant role in your emotional life',
+    }
+
+    pair = (highest['dimension'], lowest['dimension'])
+    if pair in headlines:
+        return headlines[pair]
+
+    return f"Your profile shows distinctive patterns across dimensions"
+
+
+def build_variable_highlights(dimension_scores, benchmarks, demographics):
+    """
+    Select 3 most interesting variable-level insights.
+    """
+    # Simplified version - returns empty for now
+    # Full version would extract variable-level percentiles
+    return []
+
+
+def select_shown_scores(dimension_scores, demographics):
+    """
+    Select which dimension scores to show (always 9 for free tier).
+    """
+    return list(dimension_scores.keys())
+
+
+def find_best_benchmark(demographics, dimension_scores, benchmarks):
+    """
+    Find the best matching benchmark cohort for comparison.
+    """
+    age_group = demographics.get('age_group')
+    frequency = demographics.get('ai_tool_use_frequency')
+    
+    return {
+        'age_group': age_group,
+        'frequency': frequency,
+        'description': f"People in your age group ({age_group}) who use AI {frequency}"
+    }
 
 
 # Dimension variable mappings (39 variables → 9 dimensions)
@@ -150,18 +292,55 @@ class ScoringEngine:
         )
         
         # Detect rare combinations
-        rare_combinations = self._detect_rare_combinations(
+        rare_combinations_raw = self._detect_rare_combinations(
             dimension_scores, demographics
         )
         
-        return {
+        # Transform rare combinations to expected format with dimension_1/dimension_2 keys
+        rare_combinations = []
+        for combo in rare_combinations_raw:
+            if combo['combo'] and len(combo['combo']) >= 2:
+                rare_combinations.append({
+                    'dimension_1': combo['combo'][0],
+                    'dimension_2': combo['combo'][1],
+                    'percentile_dim1': combo['percentiles'][0],
+                    'percentile_dim2': combo['percentiles'][1],
+                    'description': combo['description'],
+                    'is_distinctive': combo.get('is_distinctive', True),
+                    'rarity_percent': combo.get('frequency_pct', 5)
+                })
+        
+        # Transform perception gaps into analyzed format
+        perception_gaps_analyzed = []
+        for gap in perception_gaps:
+            if gap:
+                perception_gaps_analyzed.append(gap)
+        
+        # Generate patterns and headline
+        patterns = identify_dominant_patterns(dimension_scores)
+        headline = generate_headline(dimension_scores)
+        
+        # Build complete results object in old format
+        results = {
+            'demographics': demographics,
+            'dimension_scores': dimension_scores,  # ← Changed from 'dimensions' for api.py compatibility
+            'patterns': patterns,
+            'headline': headline,
+            'perception_gaps': perception_gaps_analyzed,
+            'variable_highlights': build_variable_highlights(dimension_scores, {}, demographics),
+            'shown_scores': select_shown_scores(dimension_scores, demographics),
+            'best_benchmark': find_best_benchmark(demographics, dimension_scores, {}),
+            'summary': {
+                'dimensions_scored': len([d for d in dimension_scores.values() if d]),
+                'highest_dimension': patterns['highest'][0]['dimension'] if patterns['highest'] else None,
+                'lowest_dimension': patterns['lowest'][0]['dimension'] if patterns['lowest'] else None,
+            },
+            'rare_combinations': rare_combinations,
             'session_id': session_id,
             'timestamp': datetime.utcnow().isoformat(),
-            'demographics': demographics,
-            'dimension_scores': dimension_scores,
-            'perception_gaps': perception_gaps,
-            'rare_combinations': rare_combinations
         }
+        
+        return results
     
     def _calculate_dimension_scores(self, responses, demographics):
         """
