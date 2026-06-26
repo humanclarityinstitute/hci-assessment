@@ -837,7 +837,8 @@ def generate_question_profile(results: Dict) -> Dict:
             'question_id': q_key,
             'response': response_value,
             'percentile': percentile,
-            'percentile_text': plain_english_percentile(percentile)
+            'percentile_text': plain_english_percentile(percentile),
+            'distribution': p_data.get('distribution', []) if isinstance(p_data, dict) else []
         })
     
     return profile
