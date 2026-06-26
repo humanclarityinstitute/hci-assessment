@@ -46,13 +46,13 @@ from report_pdf import get_report_pdf
 from report_generator import generate_premium_report
 from hci_report_page_builder import build_report_html
 
+# Create Flask app
 # Report storage configuration
 REPORT_BASE_URL = os.environ.get(
     'REPORT_BASE_URL',
     'https://humanclarityinstitute.com/ai-assessment/report/'
 )
 
-# Create Flask app
 app = Flask(__name__)
 CORS(app)
 
@@ -712,6 +712,12 @@ def premium():
             stripe_email = customer_details.get('email') or stripe_session.get('customer_email')
             if stripe_email:
                 report_email = stripe_email
+                # Update assessment row with correct Stripe email (overrides burner email from /score)
+                db.update_assessment(
+                    session_id=session_id,
+                    report_email=stripe_email
+                )
+                print(f'Updated assessment report_email to: {stripe_email}')
         
         # Step 4: Get full_results if not provided
         if not full_results:
