@@ -676,14 +676,28 @@ def premium():
                 )
                 print(f'Updated assessment report_email to: {stripe_email}')
         
-        # Step 4: Get full_results if not provided
+       # Step 4: Get complete assessment (all fields needed for report)
         if not full_results:
-            full_results = db.get_full_results(session_id)
-            if not full_results:
+            assessment = db.get_assessment(session_id)
+            if not assessment:
                 return jsonify({
                     'success': False,
                     'error': 'Assessment data not found'
                 }), 404
+            full_results = assessment.get('full_results')
+            if not full_results:
+                return jsonify({
+                    'success': False,
+                    'error': 'Assessment scoring data not found'
+                }), 404
+        else:
+            # If full_results was provided in request, still get full assessment for other fields
+            assessment = db.get_assessment(session_id)
+        
+        # Extract all needed fields from assessment
+        demographics = assessment.get('demographics', {})
+        responses = assessment.get('responses', {})
+        percentiles = assessment.get('percentiles', {})
         
         # Step 5: Mark as paid and store stripe_session_id (SAME ROW)
         from datetime import datetime
@@ -707,9 +721,18 @@ def premium():
             
             print(f'Generating premium report for session {session_id}')
             
+            # Build complete results structure with all data report generator needs
+            results_for_report = {
+                'full_results': full_results,
+                'demographics': demographics,
+                'responses': responses,
+                'response_percentiles': percentiles,
+                'session_id': session_id
+            }
+            
             # Generate report dict (9 API calls + 4 data sections)
             report_dict = generate_premium_report(
-                results=full_results,
+                results=results_for_report,
                 api_key=api_key,
                 session_id=session_id
             )
