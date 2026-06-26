@@ -121,7 +121,7 @@ def health():
 # HELPER: Generate response percentiles (Requirement 2)
 # ============================================================
 
-def generate_response_percentiles(responses, demographics, scoring_results):
+def generate_percentiles(responses, demographics, scoring_results):
     """
     Generate percentiles for each individual question response.
     
@@ -201,7 +201,7 @@ def generate_response_percentiles(responses, demographics, scoring_results):
             'soc_q4': 'There\'s a gap between how much AI I actually use and what others think',
         }
         
-        response_percentiles = {}
+        percentiles = {}
         age_group = demographics.get('age_group', 'unknown')
         
         # Process each question
@@ -227,7 +227,7 @@ def generate_response_percentiles(responses, demographics, scoring_results):
                 benchmark_data = benchmark.get(q_key, {})
                 distribution = benchmark_data.get('values', []) if isinstance(benchmark_data, dict) else []
                 
-                response_percentiles[q_key] = {
+                percentiles[q_key] = {
                     'response': user_response,
                     'percentile_overall': pct_overall,
                     'percentile_age_group': pct_age_group,
@@ -239,7 +239,7 @@ def generate_response_percentiles(responses, demographics, scoring_results):
                     'distribution': distribution
                 }
         
-        return response_percentiles
+        return percentiles
     
     except Exception as e:
         print(f'Error generating response percentiles: {e}')
@@ -299,7 +299,7 @@ def score():
         scoring_results = score_assessment(responses, demographics, session_id=session_id)
         
         # Generate response percentiles (Requirement 2: variable-level answers vs full + age group)
-        response_percentiles = generate_response_percentiles(responses, demographics, scoring_results)
+        percentiles = generate_percentiles(responses, demographics, scoring_results)
         
         # Store in Supabase - include ALL data so results page has complete access
         db = get_supabase_client()
@@ -311,7 +311,7 @@ def score():
             dimension_scores=scoring_results.get('dimension_scores', {}),
             perception_gaps=scoring_results.get('perception_gaps', []),
             patterns=scoring_results.get('rare_combinations', []),
-            percentiles=response_percentiles,
+            percentiles=percentiles,
             report_email=report_email,
             consent=consent,
             consent_timestamp=consent_timestamp
@@ -325,7 +325,7 @@ def score():
             'success': True,
             'session_id': session_id,
             'dimension_scores': scoring_results.get('dimension_scores', {}),
-            'response_percentiles': response_percentiles,          # ← NEW (Requirement 2)
+            'percentiles': percentiles,          # ← Question-level percentiles
             'perception_gaps': scoring_results.get('perception_gaps', []),
             'rare_combinations': scoring_results.get('rare_combinations', []),
             'full_results': scoring_results
@@ -375,7 +375,7 @@ def get_results():
             'success': True,
             'session_id': session_id,
             'full_results': assessment.get('full_results'),
-            'response_percentiles': assessment.get('percentiles', {}),
+            'percentiles': assessment.get('percentiles', {}),
             'demographics': assessment.get('demographics', {}),
             'report_email': assessment.get('report_email'),
             'paid': assessment.get('paid', False)
@@ -732,7 +732,7 @@ def premium():
                 'full_results': full_results,
                 'demographics': demographics,
                 'responses': responses,
-                'response_percentiles': percentiles,
+                'percentiles': percentiles,
                 'session_id': session_id
             }
             
