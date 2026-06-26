@@ -39,16 +39,15 @@ class SupabaseClient:
             Dict with 'success' key (True/False) and optional 'message' key
         """
         try:
-            from report_generator import make_json_safe
             url = f'{self.supabase_url}/rest/v1/assessment_responses'
             
             # Prepare the request body - bundle all kwargs with session_id
-            safe_kwargs = make_json_safe(kwargs)
             body_dict = {
                 'session_id': session_id,
-                **safe_kwargs  # Unpack all keyword arguments passed in
+                **kwargs  # Unpack all keyword arguments passed in
             }
-            body = json.dumps(body_dict).encode('utf-8')
+            safe_body_dict = make_json_safe(body_dict)
+            body = json.dumps(safe_body_dict).encode('utf-8')
             
             # Build the URL with on_conflict parameter
             url = f'{url}?on_conflict=session_id'
@@ -231,7 +230,6 @@ class SupabaseClient:
             True if successful, False otherwise
         """
         try:
-            from report_generator import make_json_safe
             url = f'{self.supabase_url}/rest/v1/assessment_responses?session_id=eq.{session_id}'
             
             safe_kwargs = make_json_safe(kwargs)
@@ -277,7 +275,6 @@ class SupabaseClient:
             True if successful, False otherwise
         """
         try:
-            from report_generator import make_json_safe
             url = f'{self.supabase_url}/rest/v1/assessment_responses?session_id=eq.{session_id}'
             
             safe_kwargs = make_json_safe(kwargs)
