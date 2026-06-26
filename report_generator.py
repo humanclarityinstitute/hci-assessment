@@ -828,17 +828,26 @@ def generate_question_profile(results: Dict) -> Dict:
         'questions': []
     }
     
-    for q_key in sorted(response_percentiles.keys()):
+    for idx, q_key in enumerate(sorted(response_percentiles.keys())):
         p_data = response_percentiles[q_key]
         percentile = p_data.get('percentile_overall', 50) if isinstance(p_data, dict) else p_data
         response_value = responses.get(q_key, 4)
         
+        # Extract all fields from response_percentiles (which now has everything thanks to FIX 1)
+        dimension = p_data.get('dimension', 'unknown') if isinstance(p_data, dict) else 'unknown'
+        question_text = p_data.get('question_text', q_key) if isinstance(p_data, dict) else q_key
+        age_percentile = p_data.get('percentile_age_group', 50) if isinstance(p_data, dict) else 50
+        distribution = p_data.get('distribution', []) if isinstance(p_data, dict) else []
+        
         profile['questions'].append({
-            'question_id': q_key,
-            'response': response_value,
-            'percentile': percentile,
-            'percentile_text': plain_english_percentile(percentile),
-            'distribution': p_data.get('distribution', []) if isinstance(p_data, dict) else []
+            'dimension': dimension,
+            'number': idx + 1,
+            'variable': question_text,
+            'respondent_answer': response_value,
+            'respondent_percentile': percentile,
+            'age_group': results.get('demographics', {}).get('age_group', '25-34'),
+            'age_percentile': age_percentile,
+            'distribution': distribution
         })
     
     return profile
