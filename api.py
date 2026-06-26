@@ -40,8 +40,8 @@ from benchmark_builder import get_benchmark
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
-from email_template import get_email_template
-from report_pdf import get_report_pdf
+from email_template import send_report_email
+from report_pdf import build_report_pdf
 
 # Import Layer 3 (Report generation)
 from report_generator import generate_premium_report
@@ -680,10 +680,10 @@ def premium():
             print(f'Report cache hit for session {session_id}')
             return jsonify({
                 'success': True,
+                'report': cached_report,
                 'message': 'Report retrieved from cache',
                 'cached': True
             }), 200
-        
         # Step 3: Verify payment (STRICT GATE)
         # If Stripe session was provided, verify payment was actually made
         if stripe_session_id:
@@ -781,13 +781,15 @@ def premium():
         pdf_bytes = None
         pdf_url = None
         try:
-            pdf_handler = get_report_pdf()
-            # The actual method on ReportPDF class
-            result = pdf_handler.generate_and_upload(report_html_str, session_id)
-            if result:
-                pdf_bytes, pdf_url = result
-                print(f'Report PDF uploaded: {pdf_url}')
-            else:
+            # Call build_report_pdf directly
+            try:
+                pdf_bytes = build_report_pdf(report_dict, demographics={'email': report_email})
+                if pdf_bytes:
+                    pdf_url = None  # PDF generation non-fatal
+                    print(f'Report PDF generated for session {session_id}')
+            except Exception as e:
+                print(f'PDF generation error: {e}')
+                # Non-fatal - report still displays in browser without PDF
                 print(f'PDF generation returned None for session {session_id}')
         
         except Exception as e:
@@ -866,9 +868,9 @@ def premium():
         
         return jsonify({
             'success': True,
+            'report': report_dict,
             'message': 'Report generated and cached'
         }), 200
-    
     except Exception as e:
         print(f'Premium endpoint error: {e}')
         traceback.print_exc()
