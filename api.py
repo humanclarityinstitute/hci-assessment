@@ -40,19 +40,14 @@ from benchmark_builder import get_benchmark
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
-from report_pdf import get_report_pdf
+from email_template import send_report_email
+from report_pdf import build_report_pdf
 
 # Import Layer 3 (Report generation)
 from report_generator import generate_premium_report
 from hci_report_page_builder import build_report_html
 
 # Create Flask app
-# Report storage configuration
-REPORT_BASE_URL = os.environ.get(
-    'REPORT_BASE_URL',
-    'https://humanclarityinstitute.com/ai-assessment/report/'
-)
-
 app = Flask(__name__)
 CORS(app)
 
@@ -557,7 +552,51 @@ def webhook_stripe():
                     # Continue without PDF
                 
                 # Send email with report
-
+                try:
+                    if report_email:
+                        email_handler = get_email_template()
+                        email_html = email_handler.format_report_email(
+                            report_email,
+                            session_id
+                        )
+                        
+                        if email_html:
+                            resend_key = os.environ.get('RESEND_API_KEY')
+                            if resend_key:
+                                try:
+                                    import json
+                                    resend_url = 'https://api.resend.com/emails'
+                                    payload = {
+                                        'from': 'reports@humanclarityinstitute.com',
+                                        'to': report_email,
+                                        'subject': 'Your HCI Assessment Report is Ready',
+                                        'html': email_html
+                                    }
+                                    
+                                    req = urllib.request.Request(
+                                        resend_url,
+                                        data=json.dumps(payload).encode(),
+                                        headers={
+                                            'Authorization': f'Bearer {resend_key}',
+                                            'Content-Type': 'application/json',
+                                            'User-Agent': 'HCI-Reports/1.0'
+                                        },
+                                        method='POST'
+                                    )
+                                    
+                                    response = urllib.request.urlopen(req, timeout=10)
+                                    response_data = json.loads(response.read())
+                                    
+                                    if response_data.get('id'):
+                                        print(f'Report email sent to {report_email}')
+                                    else:
+                                        print(f'Email send failed: {response_data}')
+                                
+                                except Exception as e:
+                                    print(f'Resend API error: {e}')
+                
+                except Exception as e:
+                    print(f'Email send failed (non-fatal): {e}')
                 
                 # Update DB with cached report
                 try:
@@ -642,7 +681,7 @@ def premium():
             print(f'Report cache hit for session {session_id}')
             return jsonify({
                 'success': True,
-                'report': cached_report,
+                'message': 'Report retrieved from cache',
                 'cached': True
             }), 200
         
@@ -668,12 +707,6 @@ def premium():
             stripe_email = customer_details.get('email') or stripe_session.get('customer_email')
             if stripe_email:
                 report_email = stripe_email
-                # Update assessment row with correct Stripe email (overrides burner email from /score)
-                db.update_assessment(
-                    session_id=session_id,
-                    report_email=stripe_email
-                )
-                print(f'Updated assessment report_email to: {stripe_email}')
         
         # Step 4: Get full_results if not provided
         if not full_results:
@@ -763,29 +796,58 @@ def premium():
             traceback.print_exc()
             # Non-fatal - report still displays in browser without PDF
         
-        # Step 8: Send email with report link (delegate to email_template)
+        # Step 8: Send email with report link (using actual EmailTemplate class)
         email_sent = False
         try:
             if report_email:
-                from email_template import send_report_email as send_email
-                resend_key = os.environ.get('RESEND_API_KEY')
-                if resend_key:
-                    # Delegate to email_template.send_report_email() which has the correct sender
-                    success = send_email(
-                        to_email=report_email,
-                        report=report_dict,
-                        demographics=full_results.get('demographics', {}),
-                        resend_api_key=resend_key,
-                        report_url=f'{REPORT_BASE_URL}?session_id={session_id}',
-                        pdf_bytes=pdf_bytes,
-                        pdf_url=pdf_url,
-                        pdf_filename='HCI-AI-Identity-Report.pdf'
-                    )
-                    if success:
-                        email_sent = True
-                        print(f'Report email sent to {report_email}')
-                else:
-                    print('RESEND_API_KEY not configured')
+                email_handler = get_email_template()
+                # The actual method on EmailTemplate class
+                email_html = email_handler.format_report_email(
+                    report_email,
+                    session_id
+                )
+                
+                if email_html:
+                    # Send via Resend
+                    resend_key = os.environ.get('RESEND_API_KEY')
+                    if resend_key:
+                        # Use Resend API to send
+                        try:
+                            import urllib.request
+                            import json
+                            
+                            resend_url = 'https://api.resend.com/emails'
+                            payload = {
+                                'from': 'reports@humanclarityinstitute.com',
+                                'to': report_email,
+                                'subject': 'Your HCI Assessment Report is Ready',
+                                'html': email_html
+                            }
+                            
+                            req = urllib.request.Request(
+                                resend_url,
+                                data=json.dumps(payload).encode(),
+                                headers={
+                                    'Authorization': f'Bearer {resend_key}',
+                                    'Content-Type': 'application/json',
+                                    'User-Agent': 'HCI-Reports/1.0'
+                                },
+                                method='POST'
+                            )
+                            
+                            response = urllib.request.urlopen(req, timeout=10)
+                            response_data = json.loads(response.read())
+                            
+                            if response_data.get('id'):
+                                email_sent = True
+                                print(f'Report email sent to {report_email}')
+                            else:
+                                print(f'Email send failed: {response_data}')
+                        
+                        except Exception as e:
+                            print(f'Resend API error: {e}')
+                    else:
+                        print('RESEND_API_KEY not configured')
         
         except Exception as e:
             print(f'Email sending error: {e}')
@@ -896,6 +958,11 @@ if __name__ == '__main__':
     except Exception as e:
         print(f'⚠ Stripe initialization failed: {e}')
     
+    try:
+        _ = get_email_template()
+        print('✓ Email template initialized')
+    except Exception as e:
+        print(f'⚠ Email template initialization failed: {e}')
     
     try:
         _ = get_report_pdf()
