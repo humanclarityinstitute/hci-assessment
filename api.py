@@ -40,8 +40,8 @@ from benchmark_builder import get_benchmark
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
-from email_template import send_report_email
-from report_pdf import build_report_pdf
+from email_template import get_email_template
+from report_pdf import get_report_pdf
 
 # Import Layer 3 (Report generation)
 from report_generator import generate_premium_report
@@ -469,7 +469,6 @@ def webhook_stripe():
             
             stripe_session_id = checkout_data['stripe_session_id']
             customer_email = checkout_data['customer_email']
-            report_email = customer_email  # Email report to the Stripe customer's address
             
             # Fetch Stripe session to get client_reference_id (assessment session_id)
             stripe_session = fetch_stripe_session(stripe_session_id)
@@ -867,7 +866,7 @@ def premium():
         
         return jsonify({
             'success': True,
-            'report': report_dict
+            'message': 'Report generated and cached'
         }), 200
     
     except Exception as e:
