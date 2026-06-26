@@ -763,27 +763,28 @@ def premium():
             traceback.print_exc()
             # Non-fatal - report still displays in browser without PDF
         
-        # Step 8: Send email with report link (delegate to email_template)
+        # Step 8: Send email with report link
         email_sent = False
         try:
             if report_email:
-                from email_template import send_report_email as send_email
+                # Call send_report_email directly with all required parameters
                 resend_key = os.environ.get('RESEND_API_KEY')
                 if resend_key:
-                    # Delegate to email_template.send_report_email() which has the correct sender
-                    success = send_email(
+                    email_result = send_report_email(
                         to_email=report_email,
                         report=report_dict,
-                        demographics=full_results.get('demographics', {}),
+                        demographics=demographics,
                         resend_api_key=resend_key,
-                        report_url=f'{REPORT_BASE_URL}?session_id={session_id}',
+                        report_url=f'https://humanclarityinstitute.com/ai-assessment/report/?session_id={session_id}',
                         pdf_bytes=pdf_bytes,
-                        pdf_url=pdf_url,
+                        pdf_url=None,
                         pdf_filename='HCI-AI-Identity-Report.pdf'
                     )
-                    if success:
+                    if email_result:
                         email_sent = True
                         print(f'Report email sent to {report_email}')
+                    else:
+                        print(f'Email send failed')
                 else:
                     print('RESEND_API_KEY not configured')
         
