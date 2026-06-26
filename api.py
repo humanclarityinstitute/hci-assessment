@@ -746,18 +746,17 @@ def premium():
                 'error': f'Report generation failed: {str(e)}'
             }), 500
         
-        # Step 7: PDF generation (using actual get_report_pdf() class)
+        # Step 7: PDF generation
         pdf_bytes = None
-        pdf_url = None
         try:
-            pdf_handler = get_report_pdf()
-            # The actual method on ReportPDF class
-            result = pdf_handler.generate_and_upload(report_html_str, session_id)
-            if result:
-                pdf_bytes, pdf_url = result
-                print(f'Report PDF uploaded: {pdf_url}')
+            pdf_bytes = build_report_pdf(report_dict)
+            if pdf_bytes:
+                print(f'Report PDF generated successfully for session {session_id}')
             else:
-                print(f'PDF generation returned None for session {session_id}')
+                print(f'PDF generation returned None - email will send without attachment')
+        except Exception as e:
+            print(f'PDF generation error (non-fatal): {e}')
+            traceback.print_exc()
         
         except Exception as e:
             print(f'PDF generation error: {e}')
