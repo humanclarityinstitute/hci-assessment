@@ -510,6 +510,10 @@ class ScoringEngine:
                 combos.append({
                     'combo': [dim1, dim2],
                     'percentiles': [p1, p2],
+                    'dimension_1': dim1,
+                    'dimension_2': dim2,
+                    'percentile_dim1': p1,
+                    'percentile_dim2': p2,
                     'description': combo_description,
                     'is_distinctive': True
                 })
