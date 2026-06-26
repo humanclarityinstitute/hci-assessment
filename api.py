@@ -40,10 +40,9 @@ from benchmark_builder import get_benchmark
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
-
+# from report_pdf import get_report_pdf (removed - use build_report_pdf instead)
 
 # Import Layer 3 (Report generation)
-from report_pdf import build_report_pdf
 from report_generator import generate_premium_report
 from hci_report_page_builder import build_report_html
 
@@ -546,10 +545,10 @@ def webhook_stripe():
                 pdf_bytes = None
                 pdf_url = None
                 try:
-                    # Removed: get_report_pdf()
-                    pdf_bytes = build_report_pdf(report_dict, demographics=full_results.get("demographics", {}))
-                    if result:
-                        pdf_bytes, pdf_url = result
+                    # PDF generation using build_report_pdf
+                    pdf_bytes = build_report_pdf(report_dict, demographics=full_results.get('demographics', {}))
+                    if pdf_bytes:
+                        # Unpacking removed - pdf_bytes is already set above (build_report_pdf returns bytes directly, not tuple)
                         print(f'PDF generated and uploaded for session {session_id}')
                     else:
                         print(f'PDF generation returned None for session {session_id}')
@@ -750,12 +749,12 @@ def premium():
         pdf_bytes = None
         pdf_url = None
         try:
-            # Removed: get_report_pdf()
+            # PDF generation using build_report_pdf
             # The actual method on ReportPDF class
-            pdf_bytes = build_report_pdf(report_dict, demographics=full_results.get("demographics", {}))
-            if result:
-                pdf_bytes, pdf_url = result
-                print(f'Report PDF uploaded: {pdf_url}')
+            pdf_bytes = build_report_pdf(report_dict, demographics=full_results.get('demographics', {}))
+            if pdf_bytes:
+                # Unpacking removed - pdf_bytes is already set above (build_report_pdf returns bytes directly, not tuple)
+                print(f'Report PDF generated: {len(pdf_bytes)} bytes')
             else:
                 print(f'PDF generation returned None for session {session_id}')
         
