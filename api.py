@@ -45,6 +45,7 @@ from report_pdf import build_report_pdf
 # Import Layer 3 (Report generation)
 from report_generator import generate_premium_report
 from hci_report_page_builder import build_report_html
+from email_template import send_report_email
 
 # Create Flask app
 # Report storage configuration
