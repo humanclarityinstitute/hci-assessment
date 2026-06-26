@@ -41,7 +41,9 @@ from benchmark_builder import get_benchmark
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
 
+
 # Import Layer 3 (Report generation)
+from report_pdf import build_report_pdf
 from report_generator import generate_premium_report
 from hci_report_page_builder import build_report_html
 
@@ -544,7 +546,8 @@ def webhook_stripe():
                 pdf_bytes = None
                 pdf_url = None
                 try:
-                    result = pdf_handler.generate_and_upload(report_html_str, session_id)
+                    # Removed: get_report_pdf()
+                    pdf_bytes = build_report_pdf(report_dict, demographics=full_results.get("demographics", {}))
                     if result:
                         pdf_bytes, pdf_url = result
                         print(f'PDF generated and uploaded for session {session_id}')
@@ -747,8 +750,9 @@ def premium():
         pdf_bytes = None
         pdf_url = None
         try:
+            # Removed: get_report_pdf()
             # The actual method on ReportPDF class
-            result = pdf_handler.generate_and_upload(report_html_str, session_id)
+            pdf_bytes = build_report_pdf(report_dict, demographics=full_results.get("demographics", {}))
             if result:
                 pdf_bytes, pdf_url = result
                 print(f'Report PDF uploaded: {pdf_url}')
@@ -895,6 +899,7 @@ if __name__ == '__main__':
     
     
     try:
+        _ = get_report_pdf()
         print('✓ PDF handler initialized')
     except Exception as e:
         print(f'⚠ PDF handler initialization failed: {e}')
