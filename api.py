@@ -775,20 +775,19 @@ def premium():
                 'error': f'Report generation failed: {str(e)}'
             }), 500
         
-        # Step 7: PDF generation
+        # Step 7: PDF generation and upload to storage
         pdf_bytes = None
+        pdf_url = None
         try:
-            pdf_bytes = build_report_pdf(report_dict)
-            if pdf_bytes:
-                print(f'Report PDF generated successfully for session {session_id}')
+            pdf_handler = get_report_pdf()
+            result = pdf_handler.generate_and_upload(report_html_str, session_id)
+            if result:
+                pdf_bytes, pdf_url = result
+                print(f'PDF generated and uploaded to storage for session {session_id}')
             else:
                 print(f'PDF generation returned None - email will send without attachment')
         except Exception as e:
             print(f'PDF generation error (non-fatal): {e}')
-            traceback.print_exc()
-        
-        except Exception as e:
-            print(f'PDF generation error: {e}')
             traceback.print_exc()
             # Non-fatal - report still displays in browser without PDF
         
@@ -806,7 +805,7 @@ def premium():
                         resend_api_key=resend_key,
                         report_url=f'https://humanclarityinstitute.com/ai-assessment/report/?session_id={session_id}',
                         pdf_bytes=pdf_bytes,
-                        pdf_url=None,
+                        pdf_url=pdf_url,
                         pdf_filename='HCI-AI-Identity-Report.pdf'
                     )
                     if email_result:
