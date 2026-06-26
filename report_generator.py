@@ -516,9 +516,18 @@ def generate_perception_gap(results: Dict, client, session_id: str) -> str:
     if not gaps:
         return "No significant perception gaps detected in this profile."
     
+    # Map question keys to readable names
+    question_to_name = {
+        'perceived_usage': 'Usage',
+        'perceived_reliance': 'Reliance',
+        'perceived_dependence': 'Dependence'
+    }
+    
     gap_text = "\n".join([
-        f"- {g['dimension']}: Estimated {g['self_estimate_percentile']}th, "
-        f"actually {g['actual_percentile']}th ({g['magnitude']} point gap)"
+        f"- {question_to_name.get(g['question'], g['question'].replace('_', ' ').title())}: "
+        f"Estimated {g['perceived_answer']}, "
+        f"actually {g['actual_percentile']}th percentile "
+        f"({g['gap_magnitude']:.1f} point gap)"
         for g in gaps[:3]
     ])
     
