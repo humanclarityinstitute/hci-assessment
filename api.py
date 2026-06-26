@@ -531,9 +531,23 @@ def webhook_stripe():
                     print('ANTHROPIC_API_KEY not configured')
                     return jsonify({'received': True}), 200
                 
+                # Build complete results structure with ALL needed fields
+                # Must match structure expected by generate_premium_report()
+                demographics = assessment.get('demographics', {})
+                responses = assessment.get('responses', {})
+                percentiles = assessment.get('percentiles', {})
+                
+                results_for_report = {
+                    'full_results': full_results,
+                    'demographics': demographics,
+                    'responses': responses,
+                    'percentiles': percentiles,
+                    'session_id': session_id
+                }
+                
                 print(f'Webhook: Generating premium report for session {session_id}')
                 report_dict = generate_premium_report(
-                    results=full_results,
+                    results=results_for_report,
                     api_key=api_key,
                     session_id=session_id
                 )
@@ -548,20 +562,17 @@ def webhook_stripe():
                     print(f'HTML builder failed for session {session_id}')
                     return jsonify({'received': True}), 200
                 
-                # Generate and upload PDF
+                # Generate PDF
                 pdf_bytes = None
-                pdf_url = None
                 try:
-                    pdf_handler = get_report_pdf()
-                    result = pdf_handler.generate_and_upload(report_html_str, session_id)
-                    if result:
-                        pdf_bytes, pdf_url = result
-                        print(f'PDF generated and uploaded for session {session_id}')
+                    pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+                    if pdf_bytes:
+                        print(f'Report PDF generated successfully for session {session_id}')
                     else:
-                        print(f'PDF generation returned None for session {session_id}')
+                        print(f'PDF generation returned None - email will send without attachment')
                 except Exception as e:
                     print(f'PDF generation failed (non-fatal): {e}')
-                    # Continue without PDF
+                    traceback.print_exc()
                 
                 # Send email with report
 
@@ -570,8 +581,7 @@ def webhook_stripe():
                 try:
                     db.update_report(
                         session_id=session_id,
-                        premium_report=report_dict,
-                        report_pdf_url=pdf_url
+                        premium_report=report_dict
                     )
                     print(f'Report cached in DB for session {session_id}')
                 except Exception as e:
