@@ -808,7 +808,6 @@ def premium():
                         resend_api_key=resend_key,
                         report_url=f'https://humanclarityinstitute.com/ai-assessment/report/?session_id={session_id}',
                         pdf_bytes=pdf_bytes,
-                        pdf_url=pdf_url,
                         pdf_filename='HCI-AI-Identity-Report.pdf'
                     )
                     if email_result:
@@ -827,8 +826,7 @@ def premium():
         try:
             db.update_report(
                 session_id,
-                premium_report=report_dict,    # Full report data as JSON
-                report_pdf_url=pdf_url         # URL to PDF in Storage (if available)
+                premium_report=report_dict     # Full report data as JSON
             )
             print(f'Report cached for session {session_id}')
         
