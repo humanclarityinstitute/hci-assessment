@@ -238,7 +238,7 @@ def plain_english_percentile(p: Optional[int]) -> str:
         return f"lower than {100-p} out of every 100 people"
 
 
-def get_most_distinctive_variable(responses: Dict, response_percentiles: Dict) -> tuple:
+def get_most_distinctive_variable(responses: Dict, percentiles: Dict) -> tuple:
     """
     Find the question with the largest deviation from 50th percentile.
     Returns: (question_key, percentile, raw_score)
@@ -246,7 +246,7 @@ def get_most_distinctive_variable(responses: Dict, response_percentiles: Dict) -
     max_divergence = 0
     most_distinctive = None
     
-    for q_key, percentile in response_percentiles.items():
+    for q_key, percentile in percentiles.items():
         if isinstance(percentile, dict):
             p = percentile.get('percentile_overall', 50)
         else:
@@ -284,7 +284,7 @@ def generate_opening(results: Dict, client, session_id: str) -> str:
     demographics = results.get('demographics', {})
     perception_gaps = get_perception_gaps(results)
     rare_combos = get_rare_combinations(results)
-    response_percentiles = results.get('response_percentiles', {})
+    percentiles = results.get('percentiles', {})
     
     # Get signal context for most distinctive dimension
     top_dim_name = max(
@@ -459,11 +459,11 @@ def generate_distinctive_responses(results: Dict, client, session_id: str) -> st
     
     logger.info("[4/9] Distinctive Responses")
     
-    response_percentiles = results.get('response_percentiles', {})
+    percentiles = results.get('percentiles', {})
     
     # Find most distinctive responses (furthest from 50th percentile)
     distinctive = []
-    for q_key, p_data in response_percentiles.items():
+    for q_key, p_data in percentiles.items():
         if isinstance(p_data, dict):
             percentile = p_data.get('percentile_overall', 50)
         else:
@@ -792,12 +792,12 @@ def generate_how_typical(results: Dict) -> Dict:
     
     logger.info("[How Typical] Analyzing distinctive variables")
     
-    response_percentiles = results.get('response_percentiles', {})
+    percentiles = results.get('percentiles', {})
     
     distinctive = []
     typical = []
     
-    for q_key, p_data in response_percentiles.items():
+    for q_key, p_data in percentiles.items():
         percentile = p_data.get('percentile_overall', 50) if isinstance(p_data, dict) else p_data
         
         if abs(percentile - 50) > 25:
@@ -819,21 +819,21 @@ def generate_question_profile(results: Dict) -> Dict:
     
     logger.info("[Question Profile] Compiling all 39 questions")
     
-    response_percentiles = results.get('response_percentiles', {})
+    percentiles = results.get('percentiles', {})
     responses = results.get('responses', {})
     
     profile = {
         'title': 'Question Profile',
-        'total_questions': len(response_percentiles),
+        'total_questions': len(percentiles),
         'questions': []
     }
     
-    for idx, q_key in enumerate(sorted(response_percentiles.keys())):
-        p_data = response_percentiles[q_key]
+    for idx, q_key in enumerate(sorted(percentiles.keys())):
+        p_data = percentiles[q_key]
         percentile = p_data.get('percentile_overall', 50) if isinstance(p_data, dict) else p_data
         response_value = responses.get(q_key, 4)
         
-        # Extract all fields from response_percentiles (which now has everything thanks to FIX 1)
+        # Extract all fields from percentiles (which now has everything thanks to FIX 1)
         dimension = p_data.get('dimension', 'unknown') if isinstance(p_data, dict) else 'unknown'
         question_text = p_data.get('question_text', q_key) if isinstance(p_data, dict) else q_key
         age_percentile = p_data.get('percentile_age_group', 50) if isinstance(p_data, dict) else 50
