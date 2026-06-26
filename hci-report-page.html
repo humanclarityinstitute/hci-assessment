@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your AI Identity Report — Human Clarity Institute</title>
+  <style>
+    /* ASTRA WORDPRESS THEME OVERRIDES */
+    .entry-content, .entry-content > div, .ast-container,
+    .site-content .ast-container, .ast-article-single,
+    .ast-article-single > .entry-content, .page-content, .entry-header {
+      max-width: 100% !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
+
+    :root {
+      --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-size-body: 10.5px;
+      --color-primary: #0066cc;
+      --color-text: #1a1a1a;
+      --color-text-secondary: #666;
+      --color-bg-light: #fafafa;
+      --color-border: #e0e0e0;
+      --spacing-lg: 12pt;
+      --spacing-md: 8pt;
+      --spacing-sm: 6pt;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { font-size: 16px; }
+    body {
+      font-family: var(--font-family-body);
+      font-size: var(--font-size-body);
+      color: var(--color-text);
+      background: #fff;
+    }
+
+    .report {
+      max-width: 8in;
+      margin: 0 auto;
+      padding: 0.5in 0.75in;
+      background: #fff;
+    }
+
+    h1, h2, h3, h4 { font-weight: 600; margin: 0 0 var(--spacing-md) 0; }
+    h1 { font-size: 16px; }
+    h2 { font-size: 13px; color: var(--color-primary); }
+    h3 { font-size: 12px; }
+    p { margin: 0 0 var(--spacing-sm) 0; line-height: 1.3; }
+
+    .report-section { margin-bottom: 20pt; }
+    .section-subtitle { font-size: var(--font-size-body); color: var(--color-text-secondary); }
+
+    .dimension-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16pt;
+      margin-bottom: 20pt;
+    }
+
+    .dimension-card {
+      border: 0.5pt solid var(--color-border);
+      padding: 16pt;
+      border-radius: 6px;
+    }
+
+    .dimension-label { font-size: 9px; text-transform: uppercase; color: #999; margin-bottom: 3pt; }
+    .dimension-name { font-size: 12px; font-weight: 600; margin-bottom: 8pt; }
+    .score-number { font-size: 18px; font-weight: 700; color: var(--color-primary); }
+    .percentile-bar { width: 100%; height: 12px; background: #f5f5f5; margin-bottom: 8pt; border-radius: 2px; }
+    .percentile-fill { height: 100%; background: var(--color-primary); width: 0; }
+
+    .narrative { font-size: var(--font-size-body); line-height: 1.3; margin-bottom: var(--spacing-lg); }
+    .narrative-paragraph { margin-bottom: var(--spacing-sm); }
+
+    .divider { border: none; border-top: 0.5pt solid var(--color-border); margin: var(--spacing-lg) 0; }
+
+    #hci-loading, #hci-error {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 40px 20px;
+      background: var(--color-bg-light);
+      text-align: center;
+    }
+
+    #hci-loading h2, #hci-error h2 { font-size: 22px; margin-bottom: 10px; }
+    #hci-loading p, #hci-error p { font-size: 14px; color: var(--color-text-secondary); max-width: 420px; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #hci-spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #e0e0e0;
+      border-top: 4px solid var(--color-primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    /* SECTION 6: QUESTION-LEVEL PROFILE STYLES */
+    .question-dimension {
+      margin-bottom: 24pt;
+      border-top: 0.5pt solid var(--color-border);
+      padding-top: 12pt;
+    }
+
+    .question-dimension h3 {
+      font-size: 11px;
+      color: var(--color-primary);
+      margin-bottom: 12pt;
+      text-transform: uppercase;
+    }
+
+    .question-card {
+      margin-bottom: 16pt;
+      padding: 12pt;
+      border: 0.5pt solid var(--color-border);
+      border-radius: 4px;
+      background: #fafafa;
+    }
+
+    .question-header {
+      display: flex;
+      gap: 12pt;
+      margin-bottom: 8pt;
+      font-size: 9px;
+    }
+
+    .question-number {
+      font-weight: 600;
+      color: var(--color-primary);
+    }
+
+    .question-key {
+      color: #999;
+      font-style: italic;
+    }
+
+    .question-answer {
+      display: flex;
+      gap: 6pt;
+      align-items: baseline;
+      margin-bottom: 10pt;
+      font-size: 10px;
+    }
+
+    .answer-label {
+      color: #666;
+    }
+
+    .answer-value {
+      font-weight: 700;
+      font-size: 12px;
+      color: var(--color-primary);
+    }
+
+    .answer-scale {
+      color: #999;
+      font-size: 9px;
+    }
+
+    .histogram-container {
+      margin-bottom: 10pt;
+    }
+
+    .histogram {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 40px;
+      padding: 4pt 0;
+      border-bottom: 0.5pt solid var(--color-border);
+    }
+
+    .histogram-bar {
+      flex: 1;
+      min-height: 2px;
+      border-radius: 1px;
+      background: #ddd;
+    }
+
+    .histogram-scale {
+      display: flex;
+      justify-content: space-between;
+      font-size: 8px;
+      color: #999;
+      padding: 2pt 0;
+    }
+
+    .question-comparison {
+      font-size: 9px;
+    }
+
+    .percentile-line {
+      display: flex;
+      gap: 8pt;
+      margin-bottom: 4pt;
+    }
+
+    .percentile-line .label {
+      color: #666;
+    }
+
+    .percentile-line .value {
+      font-weight: 600;
+      color: var(--color-primary);
+    }
+
+    .percentile-line .position {
+      color: #999;
+    }
+
+    .plain-english {
+      color: #666;
+      margin-bottom: 4pt;
+      line-height: 1.3;
+    }
+
+    .age-comparison {
+      color: #999;
+      font-size: 8px;
+    }
+
+    .distinctive-item {
+      margin-bottom: 12pt;
+      padding: 12pt;
+      border: 0.5pt solid var(--color-border);
+      border-radius: 4px;
+      background: #fafafa;
+    }
+
+    .distinctive-item strong {
+      color: var(--color-primary);
+      display: block;
+      margin-bottom: 4pt;
+    }
+
+    .what-to-protect {
+      border-left: 2pt solid var(--color-primary);
+      padding-left: 12pt;
+      margin-bottom: 12pt;
+    }
+
+    .what-to-protect strong {
+      color: var(--color-primary);
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOADING STATE -->
+<div id="hci-loading">
+  <div id="hci-spinner"></div>
+  <h2>Generating your AI Identity Report</h2>
+  <p>Your report is being written specifically for your profile. This takes about 1–2 minutes.</p>
+  <p style="margin-top: 24px; font-weight: 500;"><strong>Please keep this window open.</strong> Your report will appear here when ready.</p>
+</div>
+
+<!-- ERROR STATE -->
+<div id="hci-error" style="display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 40px 20px; background: var(--color-bg-light); text-align: center;">
+  <h2 style="font-size: 20px; font-weight: 700; color: var(--color-text); margin-bottom: 16px;">We're generating your report right now</h2>
+  <div style="font-size: 14px; color: var(--color-text-secondary); max-width: 520px; line-height: 1.6; text-align: left; margin-bottom: 24px;">
+    <p style="margin-bottom: 14px;">We encountered a brief delay while generating your premium report, but our team is on it right now and working to get it to you within minutes. In rare cases where technical issues persist, you'll have your report no later than 48 hours.</p>
+    
+    <p style="margin-bottom: 12px; font-weight: 600; color: var(--color-text);">In the meantime:</p>
+    <ul style="list-style: disc; margin-bottom: 14px; padding-left: 20px; text-align: left;">
+      <li style="margin-bottom: 8px;">Check your email (including spam folder) — your report should arrive very soon</li>
+      <li style="margin-bottom: 8px;">Your assessment data is completely secure</li>
+      <li>You'll also receive two free retake tokens to benchmark your progress in the future</li>
+    </ul>
+    
+    <p>If your report doesn't arrive within 48 hours, or if you have any questions, email <a href="mailto:support@humanclarityinstitute.com" style="color: var(--color-primary); text-decoration: none; font-weight: 500;">support@humanclarityinstitute.com</a> — we'll either deliver your report or provide a full refund. No exceptions.</p>
+  </div>
+  <a href="/ai-assessment/results" style="display: inline-block; padding: 12px 24px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px; font-weight: 500; color: var(--color-primary); text-decoration: none;">Back to your results</a>
+</div>
+
+<!-- REPORT CONTENT -->
+<div class="report" id="hci-report" style="display: none;">
+
+  <!-- HEADER -->
+  <div class="report-section">
+    <h1>Your AI Identity Report</h1>
+    <p class="section-subtitle" id="hci-report-meta"></p>
+    <hr class="divider">
+  </div>
+
+  <!-- SECTION 0: OPENING / MOST SURPRISING FINDING -->
+  <div class="report-section">
+    <h2>Most Surprising Finding</h2>
+    <div class="narrative" id="hci-opening"></div>
+  </div>
+
+  <!-- SECTION 1: DASHBOARD (9 dimensions) -->
+  <div class="report-section">
+    <h2>Your AI Behaviour Pattern</h2>
+    <p class="section-subtitle">How you compare across nine dimensions</p>
+    <div class="dimension-grid" id="hci-dimension-grid"></div>
+  </div>
+
+  <!-- SECTION 3: HOW TYPICAL -->
+  <div class="report-section">
+    <h2>How Typical Is Your Pattern?</h2>
+    <div id="hci-how-typical"></div>
+  </div>
+
+  <!-- SECTION 4: WHAT'S DIFFERENT (Rare Combinations) -->
+  <div class="report-section">
+    <h2>What's Different About Your Pattern</h2>
+    <div class="narrative" id="hci-what-different"></div>
+  </div>
+
+  <!-- SECTION 5: BEHAVIOUR STORY -->
+  <div class="report-section">
+    <h2>Your Behaviour Story</h2>
+    <div class="narrative" id="hci-behaviour-story"></div>
+  </div>
+
+  <!-- SECTION 6: QUESTION-LEVEL PROFILE -->
+  <div class="report-section">
+    <h2>Your Question-Level Profile</h2>
+    <p class="section-subtitle">How your individual responses compare</p>
+    <div id="hci-question-profile"></div>
+  </div>
+
+  <!-- SECTION 7: DISTINCTIVE RESPONSES -->
+  <div class="report-section">
+    <h2>Your Most Distinctive Responses</h2>
+    <div class="narrative" id="hci-distinctive-responses"></div>
+  </div>
+
+  <!-- SECTION 8: PERCEPTION GAP -->
+  <div class="report-section">
+    <h2>Perception Gap Analysis</h2>
+    <div class="narrative" id="hci-perception-gap"></div>
+  </div>
+
+  <!-- SECTION 9: WHAT TO PROTECT -->
+  <div class="report-section">
+    <h2>What to Protect</h2>
+    <div id="hci-what-to-protect"></div>
+  </div>
+
+  <!-- SECTION 10: TRAJECTORY & OUTLOOK -->
+  <div class="report-section">
+    <h2>Your Trajectory & Outlook</h2>
+    <div class="narrative" id="hci-trajectory"></div>
+  </div>
+
+  <!-- DEEP DIVE SECTION -->
+  <div class="report-section">
+    <hr class="divider">
+    <h2>Deep Dive: Deeper Insights Into Your Pattern</h2>
+    <div class="narrative" id="hci-deep-dive-opening"></div>
+  </div>
+
+  <!-- DEEP DIVE 1: Research Lenses -->
+  <div class="report-section">
+    <h3>Your Pattern Across Research Lenses</h3>
+    <div class="narrative" id="hci-deep-dive-part-1"></div>
+  </div>
+
+  <!-- DEEP DIVE 3: Cohort Context -->
+  <div class="report-section">
+    <h3>Your Cohort in Context</h3>
+    <div id="hci-deep-dive-part-3"></div>
+  </div>
+
+  <!-- DEEP DIVE 4: Rare Combination -->
+  <div class="report-section">
+    <h3>What Your Rare Combination Reveals</h3>
+    <div class="narrative" id="hci-deep-dive-part-4"></div>
+  </div>
+
+  <!-- DEEP DIVE 5: Cross-Dimensional Architecture -->
+  <div class="report-section">
+    <h3>Cross-Dimensional Architecture</h3>
+    <div class="narrative" id="hci-deep-dive-part-5"></div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="report-section">
+    <hr class="divider">
+    <p style="font-size: 9px; color: var(--color-text-secondary);">
+      <strong>About This Report</strong><br>
+      This assessment measures nine dimensions of your AI behaviour, benchmarked against 10,500+ participants across 21 datasets.
+      Learn more at <a href="https://humanclarityinstitute.com" style="color: var(--color-primary);">humanclarityinstitute.com</a>
+    </p>
+  </div>
+
+</div>
+
+<script>
+(function() {
+'use strict';
+
+const API = 'https://web-production-381d3.up.railway.app';
+
+function showLoading() {
+  document.getElementById('hci-loading').style.display = 'flex';
+  document.getElementById('hci-error').style.display = 'none';
+  document.getElementById('hci-report').style.display = 'none';
+}
+
+function showError() {
+  document.getElementById('hci-loading').style.display = 'none';
+  document.getElementById('hci-error').style.display = 'flex';
+  document.getElementById('hci-report').style.display = 'none';
+}
+
+function showReport() {
+  document.getElementById('hci-loading').style.display = 'none';
+  document.getElementById('hci-error').style.display = 'none';
+  document.getElementById('hci-report').style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function plainEnglish(p) {
+  if (!p && p !== 0) return '';
+  p = parseInt(p);
+  if (p >= 50) return `Higher than ${100 - p} out of 100 people`;
+  return `Lower than ${p} out of 100 people`;
+}
+
+function positionalLabel(p) {
+  if (!p && p !== 0) return 'near the population centre';
+  p = parseInt(p);
+  if (p >= 96) return 'exceptionally high';
+  if (p >= 86) return 'notably high';
+  if (p >= 71) return 'above the population centre';
+  if (p >= 41) return 'near the population centre';
+  if (p >= 26) return 'below the population centre';
+  if (p >= 11) return 'notably low';
+  return 'exceptionally low';
+}
+
+function formatProse(text) {
+  if (!text) return '';
+  return text
+    .split(/\n\n+/)
+    .map(p => `<p class="narrative-paragraph">${p.trim()}</p>`)
+    .join('');
+}
+
+function buildDimensionCard(dimName, dimData) {
+  const pct = parseInt(dimData.percentile) || 50;
+  const plain = plainEnglish(pct);
+  const pos = positionalLabel(pct);
+  
+  return `
+    <div class="dimension-card">
+      <div class="dimension-label">${dimName.toUpperCase()}</div>
+      <div class="dimension-name">${dimData.label || dimName}</div>
+      <div style="margin-bottom: 8pt; font-size: 10.5px; line-height: 1.3; color: #666;">${dimData.definition || ''}</div>
+      <div style="margin-bottom: 8pt;"><span class="score-number">${pct}</span><span style="margin-left: 6pt; font-size: 10.5px; color: #666;">percentile</span></div>
+      <div class="percentile-bar"><div class="percentile-fill" data-fill="${pct}"></div></div>
+      <div style="border-top: 0.5pt solid var(--color-border); padding-top: 8pt; font-size: 10.5px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3pt;"><span style="color: #666;">Your position</span><span style="font-weight: 500; color: var(--color-primary);">${pos}</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: #666;">Plain English</span><span style="font-weight: 500; color: var(--color-primary);">${plain}</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderReport(report) {
+  if (!report) {
+    console.error('No report data');
+    showError();
+    return;
+  }
+
+  console.log('Rendering report');
+
+  // Metadata
+  const meta = report.metadata?.demographics || {};
+  const date = new Date().toLocaleDateString('en-NZ', { year: 'numeric', month: 'long', day: 'numeric' });
+  let metaText = [];
+  if (meta.age_group) metaText.push(meta.age_group);
+  if (meta.country) metaText.push(meta.country);
+  metaText.push(date);
+  document.getElementById('hci-report-meta').innerHTML = metaText.join(' • ');
+
+  // Opening
+  if (report.opening) {
+    document.getElementById('hci-opening').innerHTML = formatProse(report.opening);
+  }
+
+  // Section 1: Dashboard
+  if (report.section_1_dashboard?.dimensions) {
+    const grid = document.getElementById('hci-dimension-grid');
+    grid.innerHTML = Object.entries(report.section_1_dashboard.dimensions)
+      .map(([dimName, dimData]) => buildDimensionCard(dimName, dimData))
+      .join('');
+    
+    setTimeout(() => {
+      document.querySelectorAll('[data-fill]').forEach(el => {
+        el.style.width = el.dataset.fill + '%';
+      });
+    }, 300);
+  }
+
+  // Section 3: How Typical
+  if (report.section_3_how_typical) {
+    let html = '';
+    if (report.section_3_how_typical.distinctive && Object.keys(report.section_3_how_typical.distinctive).length) {
+      html += '<h3>Your Distinctive Dimensions</h3><div style="margin: 12pt 0;">';
+      Object.entries(report.section_3_how_typical.distinctive).forEach(([k, v]) => {
+        html += `<div class="distinctive-item"><strong>${k}</strong>${v.position}</div>`;
+      });
+      html += '</div>';
+    }
+    document.getElementById('hci-how-typical').innerHTML = html;
+  }
+
+  // Section 4: What Different
+  if (report.section_4_what_different) {
+    document.getElementById('hci-what-different').innerHTML = formatProse(report.section_4_what_different);
+  }
+
+  // Section 5: Behaviour Story
+  if (report.section_5_behaviour_story) {
+    document.getElementById('hci-behaviour-story').innerHTML = formatProse(report.section_5_behaviour_story);
+  }
+
+  // Section 6: Question-Level Profile
+  if (report.section_6_question_profile && report.section_6_question_profile.questions) {
+    let html = '';
+    
+    let currentDim = '';
+    report.section_6_question_profile.questions.forEach(q => {
+      // Add dimension header if changed
+      if (q.dimension !== currentDim) {
+        if (currentDim !== '') html += '</div>';
+        currentDim = q.dimension;
+        html += `<div class="question-dimension"><h3>${q.dimension_label}</h3>`;
+      }
+      
+      // Calculate histogram bar heights
+      const maxDist = Math.max(...q.distribution);
+      const bars = q.distribution.map((pct, i) => {
+        const height = maxDist > 0 ? (pct / maxDist * 100) : 0;
+        return `<div class="histogram-bar" style="height: ${height}%; background: #ccc;" title="${pct}%"></div>`;
+      }).join('');
+      
+      // Build question card
+      html += `
+        <div class="question-card">
+          <div class="question-header">
+            <span class="question-number">Q${q.number}</span>
+            <span class="question-key">${q.variable}</span>
+          </div>
+          
+          <div class="question-answer">
+            <span class="answer-label">Your answer:</span>
+            <span class="answer-value">${q.respondent_answer}</span>
+            <span class="answer-scale">/7</span>
+          </div>
+          
+          <div class="histogram-container">
+            <div class="histogram">${bars}</div>
+            <div class="histogram-scale">
+              <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span>
+            </div>
+          </div>
+          
+          <div class="question-comparison">
+            <div class="percentile-line">
+              <span class="label">Your percentile:</span>
+              <span class="value">${q.respondent_percentile}th</span>
+              <span class="position">(${q.respondent_position})</span>
+            </div>
+            <div class="plain-english">${q.respondent_plain_english}</div>
+            <div class="age-comparison">
+              vs ${q.age_group}: ${q.age_percentile}th percentile
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    
+    if (currentDim !== '') html += '</div>';
+    document.getElementById('hci-question-profile').innerHTML = html;
+  }
+
+  // Section 7: Distinctive Responses
+  if (report.section_7_distinctive_responses) {
+    document.getElementById('hci-distinctive-responses').innerHTML = formatProse(report.section_7_distinctive_responses);
+  }
+
+  // Section 8: Perception Gap
+  if (report.section_8_perception_gap) {
+    document.getElementById('hci-perception-gap').innerHTML = formatProse(report.section_8_perception_gap);
+  }
+
+  // Section 9: What to Protect
+  if (report.section_9_what_to_protect) {
+    let html = '';
+    if (report.section_9_what_to_protect.dimensions) {
+      Object.entries(report.section_9_what_to_protect.dimensions).forEach(([dim, text]) => {
+        html += `<div class="what-to-protect"><strong>${dim}</strong><p style="margin-top: 4pt;">${text}</p></div>`;
+      });
+    }
+    document.getElementById('hci-what-to-protect').innerHTML = html;
+  }
+
+  // Section 10: Trajectory
+  if (report.section_10_trajectory) {
+    document.getElementById('hci-trajectory').innerHTML = formatProse(report.section_10_trajectory);
+  }
+
+  // Deep Dive sections
+  if (report.deep_dive) {
+    if (report.deep_dive.opening) {
+      document.getElementById('hci-deep-dive-opening').innerHTML = formatProse(report.deep_dive.opening);
+    }
+    if (report.deep_dive.part_1_research_lenses) {
+      document.getElementById('hci-deep-dive-part-1').innerHTML = formatProse(report.deep_dive.part_1_research_lenses);
+    }
+    if (report.deep_dive.part_3_cohort_context) {
+      let html = '<p>' + (report.deep_dive.part_3_cohort_context.research_signal || '') + '</p>';
+      if (report.deep_dive.part_3_cohort_context.distinctive_in_cohort) {
+        html += '<h4 style="margin-top: 12pt; margin-bottom: 8pt;">Distinctive Within Your Age Group</h4><div>';
+        Object.entries(report.deep_dive.part_3_cohort_context.distinctive_in_cohort).forEach(([dim, data]) => {
+          const dir = data.direction === 'higher' ? '↑' : '↓';
+          html += `<div class="distinctive-item"><strong>${dim}</strong> ${dir} ${data.percentile}%ile (vs ${data.cohort_mean}%ile for your age group)</div>`;
+        });
+        html += '</div>';
+      }
+      document.getElementById('hci-deep-dive-part-3').innerHTML = html;
+    }
+    if (report.deep_dive.part_4_rare_combination) {
+      document.getElementById('hci-deep-dive-part-4').innerHTML = formatProse(report.deep_dive.part_4_rare_combination);
+    }
+    if (report.deep_dive.part_5_cross_dimensional) {
+      document.getElementById('hci-deep-dive-part-5').innerHTML = formatProse(report.deep_dive.part_5_cross_dimensional);
+    }
+  }
+
+  showReport();
+}
+
+async function fetchReport(sessionId, stripeSessionId) {
+  try {
+    console.log(`Calling /premium: session_id=${sessionId}, stripe_session_id=${stripeSessionId}`);
+    
+    const fullResults = JSON.parse(sessionStorage.getItem('hci_full_results') || '{}');
+    const reportEmail = sessionStorage.getItem('hci_report_email') || '';
+    
+    const res = await fetch(`${API}/premium`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        session_id: sessionId,
+        stripe_session_id: stripeSessionId,
+        full_results: fullResults,
+        report_email: reportEmail,
+      })
+    });
+
+    console.log(`/premium status: ${res.status}`);
+
+    if (!res.ok) {
+      console.error(`/premium failed: ${res.status}`);
+      showError();
+      return;
+    }
+
+    const data = await res.json();
+    console.log('/premium success:', data.success);
+
+    if (data.success && data.report) {
+      renderReport(data.report);
+    } else {
+      console.error(`/premium: success=${data.success}, report=${!!data.report}`);
+      showError();
+    }
+  } catch (err) {
+    console.error('/premium error:', err);
+    showError();
+  }
+}
+
+function init() {
+  showLoading();
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session_id');
+  const stripeSessionId = urlParams.get('stripe_session_id');
+
+  console.log(`Init: session_id=${sessionId}, stripe_session_id=${stripeSessionId}`);
+
+  if (stripeSessionId) {
+    // stripe_session_id is required; session_id is optional (backend will recover it from Stripe)
+    const timeoutId = setTimeout(() => {
+      if (document.getElementById('hci-loading').style.display === 'flex') {
+        console.error('Timeout after 120s');
+        showError();
+      }
+    }, 120000);
+
+    fetchReport(sessionId, stripeSessionId).finally(() => clearTimeout(timeoutId));
+  } else {
+    console.error('Missing stripe_session_id');
+    showError();
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+})();
+</script>
+
+</body>
+</html>
