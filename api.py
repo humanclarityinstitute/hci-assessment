@@ -40,7 +40,7 @@ from benchmark_builder import get_benchmark
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
-from report_pdf import build_report_pdf
+from report_pdf import get_report_pdf
 
 # Import Layer 3 (Report generation)
 from report_generator import generate_premium_report
@@ -545,10 +545,10 @@ def webhook_stripe():
                 pdf_bytes = None
                 pdf_url = None
                 try:
-                    # PDF generation using build_report_pdf
-                    pdf_bytes = build_report_pdf(report_dict, demographics=full_results.get('demographics', {}))
-                    if pdf_bytes:
-                        # Unpacking removed - pdf_bytes is already set above (build_report_pdf returns bytes directly, not tuple)
+                    pdf_handler = get_report_pdf()
+                    result = pdf_handler.generate_and_upload(report_html_str, session_id)
+                    if result:
+                        pdf_bytes, pdf_url = result
                         print(f'PDF generated and uploaded for session {session_id}')
                     else:
                         print(f'PDF generation returned None for session {session_id}')
@@ -642,7 +642,7 @@ def premium():
             print(f'Report cache hit for session {session_id}')
             return jsonify({
                 'success': True,
-                'message': 'Report retrieved from cache',
+                'report': cached_report,
                 'cached': True
             }), 200
         
@@ -749,12 +749,12 @@ def premium():
         pdf_bytes = None
         pdf_url = None
         try:
-            # PDF generation using build_report_pdf
+            pdf_handler = get_report_pdf()
             # The actual method on ReportPDF class
-            pdf_bytes = build_report_pdf(report_dict, demographics=full_results.get('demographics', {}))
-            if pdf_bytes:
-                # Unpacking removed - pdf_bytes is already set above (build_report_pdf returns bytes directly, not tuple)
-                print(f'Report PDF generated: {len(pdf_bytes)} bytes')
+            result = pdf_handler.generate_and_upload(report_html_str, session_id)
+            if result:
+                pdf_bytes, pdf_url = result
+                print(f'Report PDF uploaded: {pdf_url}')
             else:
                 print(f'PDF generation returned None for session {session_id}')
         
@@ -805,7 +805,7 @@ def premium():
         
         return jsonify({
             'success': True,
-            'message': 'Report generated and cached'
+            'report': report_dict
         }), 200
     
     except Exception as e:
@@ -897,14 +897,11 @@ if __name__ == '__main__':
         print(f'⚠ Stripe initialization failed: {e}')
     
     
-    # PDF handler note: Will fail at runtime if template missing, but that's non-fatal
     try:
-        # Verify we can import the PDF function
-        from report_pdf import build_report_pdf
-        print('✓ PDF function imported successfully')
-        print('  (Note: PDF generation requires hci-report-page.html in repo)')
-    except ImportError as e:
-        print(f'⚠ PDF handler import failed: {e}')
+        _ = get_report_pdf()
+        print('✓ PDF handler initialized')
+    except Exception as e:
+        print(f'⚠ PDF handler initialization failed: {e}')
     
     print('\nStarting HCI Assessment API...')
     app.run(host='0.0.0.0', port=5000, debug=False)
