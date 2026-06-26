@@ -223,6 +223,10 @@ def generate_response_percentiles(responses, demographics, scoring_results):
                 # Determine if rare or distinctive
                 is_rare = pct_overall >= 86 or pct_overall <= 14
                 
+                # Get distribution from benchmark (population's answer distribution for this question)
+                benchmark_data = benchmark.get(q_key, {})
+                distribution = benchmark_data.get('values', []) if isinstance(benchmark_data, dict) else []
+                
                 response_percentiles[q_key] = {
                     'response': user_response,
                     'percentile_overall': pct_overall,
@@ -231,7 +235,8 @@ def generate_response_percentiles(responses, demographics, scoring_results):
                     'dimension': dim_name,
                     'n_overall': n_overall,
                     'n_age_group': n_age_group,
-                    'is_rare': is_rare
+                    'is_rare': is_rare,
+                    'distribution': distribution
                 }
         
         return response_percentiles
