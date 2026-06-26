@@ -785,15 +785,12 @@ def premium():
                 'error': f'Report generation failed: {str(e)}'
             }), 500
         
-        # Step 7: PDF generation and upload to storage
+        # Step 7: PDF generation
         pdf_bytes = None
-        pdf_url = None
         try:
-            pdf_handler = get_report_pdf()
-            result = pdf_handler.generate_and_upload(report_html_str, session_id)
-            if result:
-                pdf_bytes, pdf_url = result
-                print(f'PDF generated and uploaded to storage for session {session_id}')
+            pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+            if pdf_bytes:
+                print(f'Report PDF generated successfully for session {session_id}')
             else:
                 print(f'PDF generation returned None - email will send without attachment')
         except Exception as e:
@@ -937,10 +934,10 @@ if __name__ == '__main__':
     
     
     try:
-        _ = get_report_pdf()
-        print('✓ PDF handler initialized')
+        _ # PDF generation uses build_report_pdf - no separate initialization needed
+        print('✓ PDF handler configured')
     except Exception as e:
-        print(f'⚠ PDF handler initialization failed: {e}')
+        print(f'⚠ PDF handler configuration failed: {e}')
     
     print('\nStarting HCI Assessment API...')
     app.run(host='0.0.0.0', port=5000, debug=False)
