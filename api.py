@@ -40,7 +40,6 @@ from benchmark_builder import get_benchmark
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
-from report_pdf import build_report_pdf
 
 # Import Layer 3 (Report generation)
 from report_generator import generate_premium_report
@@ -545,7 +544,6 @@ def webhook_stripe():
                 pdf_bytes = None
                 pdf_url = None
                 try:
-                    pdf_handler = get_report_pdf()
                     result = pdf_handler.generate_and_upload(report_html_str, session_id)
                     if result:
                         pdf_bytes, pdf_url = result
@@ -749,7 +747,6 @@ def premium():
         pdf_bytes = None
         pdf_url = None
         try:
-            pdf_handler = get_report_pdf()
             # The actual method on ReportPDF class
             result = pdf_handler.generate_and_upload(report_html_str, session_id)
             if result:
@@ -897,7 +894,10 @@ if __name__ == '__main__':
         print(f'⚠ Stripe initialization failed: {e}')
     
     
-    # PDF handler check removed
+    try:
+        print('✓ PDF handler initialized')
+    except Exception as e:
+        print(f'⚠ PDF handler initialization failed: {e}')
     
     print('\nStarting HCI Assessment API...')
     app.run(host='0.0.0.0', port=5000, debug=False)
