@@ -40,7 +40,7 @@ from benchmark_builder import get_benchmark
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
-# from report_pdf import get_report_pdf (removed - use build_report_pdf instead)
+from report_pdf import build_report_pdf
 
 # Import Layer 3 (Report generation)
 from report_generator import generate_premium_report
@@ -897,11 +897,14 @@ if __name__ == '__main__':
         print(f'⚠ Stripe initialization failed: {e}')
     
     
+    # PDF handler note: Will fail at runtime if template missing, but that's non-fatal
     try:
-        _ = get_report_pdf()
-        print('✓ PDF handler initialized')
-    except Exception as e:
-        print(f'⚠ PDF handler initialization failed: {e}')
+        # Verify we can import the PDF function
+        from report_pdf import build_report_pdf
+        print('✓ PDF function imported successfully')
+        print('  (Note: PDF generation requires hci-report-page.html in repo)')
+    except ImportError as e:
+        print(f'⚠ PDF handler import failed: {e}')
     
     print('\nStarting HCI Assessment API...')
     app.run(host='0.0.0.0', port=5000, debug=False)
