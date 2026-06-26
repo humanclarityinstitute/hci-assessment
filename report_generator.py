@@ -305,7 +305,7 @@ def generate_opening(results: Dict, client, session_id: str) -> str:
     signal_text = format_signal_context_for_api_prompt(signal_context, 'Opening')
     
     # Find largest perception gap
-    largest_gap = max(perception_gaps, key=lambda x: abs(x.get('magnitude', 0))) if perception_gaps else None
+    largest_gap = max(perception_gaps, key=lambda x: abs(x.get('gap_magnitude', 0))) if perception_gaps else None
     
     # Get rare combo context
     combo_text = ""
@@ -314,6 +314,13 @@ def generate_opening(results: Dict, client, session_id: str) -> str:
         combo_key = f"{combo.get('dimension_1')}_{combo.get('dimension_2')}"
         if combo_key in SIGNALS.get('combinations', {}):
             combo_text = SIGNALS['combinations'][combo_key].get('what_it_reveals', '')
+    
+    # Map perception question keys to dimension names
+    perception_to_dimension_name = {
+        'perceived_usage': 'Reliance (Usage)',
+        'perceived_reliance': 'Reliance',
+        'perceived_dependence': 'Reliance (Dependence)'
+    }
     
     prompt = f"""
 This person's profile has three striking features:
@@ -325,8 +332,9 @@ RESEARCH SIGNALS:
 {signal_text}
 
 {f'''DATA POINT 2 — PERCEPTION GAP:
-{largest_gap['dimension']}: They estimated {largest_gap['self_estimate_percentile']}th percentile,
-actually score {largest_gap['actual_percentile']}th percentile. Gap: {largest_gap['magnitude']} points.
+{perception_to_dimension_name.get(largest_gap['question'], largest_gap['question'].replace('_', ' ').title())}: 
+They estimated {largest_gap['perceived_answer']}, but actually score {largest_gap['actual_percentile']}th percentile. 
+Gap: {largest_gap['gap_magnitude']:.1f} points.
 ''' if largest_gap else ''}
 
 {f'''DATA POINT 3 — RARE COMBINATION:
