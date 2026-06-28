@@ -2,6 +2,8 @@
 ## Source: HCI_benchmark_findings.md (extracted & structured)
 ## Purpose: Serve as reference layer for API calls
 
+from question_metadata import QUESTION_MAP
+
 FREQUENCY_GRADIENTS = {
     # Frequency ranges: Never, Rarely, Sometimes, Often, Everyday
     # Data from HCI benchmark analysis
@@ -129,7 +131,7 @@ AGE_COHORT_PATTERNS = {
         'description': 'Peak-Career Integrators',
         'reliance_mean': 2.55,
         'emotional_engagement_mean': 3.29,  # PEAK for emotional use
-        'proceed_without_checking': 4.40,  # Highest: skip verification most
+        'ver_q3': 4.40,  # Highest: skip verification most
         'identity_conflict': 3.95,  # High: questions about authorship
         'disclosure_untold_things': 3.34,  # Tell AI things not told others
         'distinctive': [
@@ -205,7 +207,7 @@ AGE_COHORT_PATTERNS = {
     '65+': {
         'description': 'Digitally Wary Older Adults',
         'verification_external_sources': 'HIGHEST',
-        'proceed_without_checking': 2.74,  # Lowest: verify most consistently
+        'ver_q3': 2.74,  # Lowest: verify most consistently
         'social_transparency': 5.82,  # HIGHEST: most open about use
         'concealment': 1.36,  # LOWEST: least likely to hide use
         'agency': 2.95,  # Note: small n=21, use cautiously
