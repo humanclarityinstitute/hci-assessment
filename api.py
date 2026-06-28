@@ -289,6 +289,7 @@ def generate_percentiles(responses, demographics, scoring_results):
                     'n_overall': n_overall,
                     'n_age_group': n_age_group,
                     'is_rare': is_rare,
+                    'distribution': benchmark.data['dimensions'][dim_name]['overall']['values'],
                 }
         
         return percentiles
