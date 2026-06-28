@@ -10,6 +10,7 @@ to formatted HTML using locked design tokens from hci-report-design.css.
 
 import json
 from typing import Dict, Any, Optional
+from question_metadata import QUESTION_MAP, get_question_text, get_dimension, DIMENSIONS
 
 
 def escape_html(text: str) -> str:
