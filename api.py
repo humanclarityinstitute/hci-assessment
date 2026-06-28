@@ -289,7 +289,7 @@ def generate_percentiles(responses, demographics, scoring_results):
                     'n_overall': n_overall,
                     'n_age_group': n_age_group,
                     'is_rare': is_rare,
-                    'distribution': benchmark.data['dimensions'][dim_name]['overall']['values'],
+                    'distribution': [sum(1 for v in benchmark.data['dimensions'][dim_name]['overall']['values'] if int(v) == i) for i in range(1, 8)],
                 }
         
         return percentiles
