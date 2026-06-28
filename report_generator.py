@@ -18,6 +18,7 @@ import time
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+from question_metadata import QUESTION_MAP, get_question_text
 
 # ============================================================
 # MANDATORY IMPORTS — FAIL HARD IF MISSING
@@ -835,7 +836,8 @@ def generate_question_profile(results: Dict) -> Dict:
         
         # Extract all fields from percentiles (which now has everything thanks to FIX 1)
         dimension = p_data.get('dimension', 'unknown') if isinstance(p_data, dict) else 'unknown'
-        question_text = p_data.get('question_text', q_key) if isinstance(p_data, dict) else q_key
+        # Use question_metadata as source of truth for question text
+        question_text = get_question_text(q_key) if q_key in QUESTION_MAP else q_key
         age_percentile = p_data.get('percentile_age_group', 50) if isinstance(p_data, dict) else 50
         distribution = p_data.get('distribution', []) if isinstance(p_data, dict) else []
         
