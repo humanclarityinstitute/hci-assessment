@@ -57,6 +57,9 @@ REPORT_BASE_URL = os.environ.get(
 app = Flask(__name__)
 CORS(app)
 
+# PDF storage bucket (create as PUBLIC bucket in Supabase)
+REPORT_PDF_BUCKET = os.environ.get('REPORT_PDF_BUCKET', 'reports')
+
 # Configuration
 BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json')
 # ============================================================
@@ -98,6 +101,59 @@ def fetch_stripe_session(stripe_session_id):
     except Exception as e:
         print(f'Failed to fetch Stripe session {stripe_session_id}: {e}')
         return None
+
+
+def upload_report_pdf(session_id, pdf_bytes):
+    """
+    Upload the generated report PDF to Supabase Storage and return its public URL.
+    
+    Overwrites any existing PDF for this session (x-upsert) so a regenerated
+    report replaces the old file.
+    
+    Args:
+        session_id: Session identifier (used as filename)
+        pdf_bytes: PDF binary data from build_report_pdf()
+    
+    Returns:
+        Public URL string, or None on any failure (non-fatal)
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+        if not supabase_url or not supabase_key or not pdf_bytes or not session_id:
+            return None
+
+        path = f'{urllib.parse.quote(session_id)}.pdf'
+        upload_url = f'{supabase_url}/storage/v1/object/{REPORT_PDF_BUCKET}/{path}'
+
+        req = urllib.request.Request(
+            upload_url,
+            data=pdf_bytes,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Content-Type': 'application/pdf',
+                'x-upsert': 'true',
+            },
+            method='POST',
+        )
+        urllib.request.urlopen(req, timeout=20)
+
+        public_url = (
+            f'{supabase_url}/storage/v1/object/public/'
+            f'{REPORT_PDF_BUCKET}/{path}'
+        )
+        print(f'Report PDF uploaded for session {session_id}')
+        return public_url
+
+    except Exception as e:
+        print(f'PDF upload failed (non-fatal): {e}')
+        return None
+
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 
 
@@ -822,13 +878,23 @@ def premium():
             print(f'Email sending error: {e}')
             traceback.print_exc()
         
-        # Step 9: Cache report in Supabase
+        # Step 9: Upload PDF to Supabase Storage and cache report
+        pdf_url = None
+        try:
+            if pdf_bytes:
+                pdf_url = upload_report_pdf(session_id, pdf_bytes)
+                print(f'PDF stored with URL: {pdf_url}' if pdf_url else 'PDF upload failed')
+        except Exception as e:
+            print(f'PDF storage step failed (non-fatal): {e}')
+
+        # Step 10: Cache report and PDF URL in Supabase
         try:
             db.update_report(
                 session_id,
-                premium_report=report_dict     # Full report data as JSON
+                premium_report=report_dict,     # Full report data as JSON
+                report_pdf_url=pdf_url          # Public PDF URL (may be None if upload failed)
             )
-            print(f'Report cached for session {session_id}')
+            print(f'Report and PDF URL cached for session {session_id}')
         
         except Exception as e:
             print(f'Report caching error: {e}')
