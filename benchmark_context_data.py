@@ -133,7 +133,7 @@ AGE_COHORT_PATTERNS = {
         'emotional_engagement_mean': 3.29,  # PEAK for emotional use
         'ver_q3': 4.40,  # Highest: skip verification most
         'identity_conflict': 3.95,  # High: questions about authorship
-        'disclosure_untold_things': 3.34,  # Tell AI things not told others
+        'disc_q3': 3.34,  # Tell AI things not told others
         'distinctive': [
             'Highest inner conflict about AI influence',
             'Highest disclosure to AI',
