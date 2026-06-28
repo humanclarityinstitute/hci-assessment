@@ -1,1020 +1,1005 @@
 """
-HCI AI Identity & Behaviour Assessment — Report Generator v9.0
+api.py
+HCI Assessment Platform — Flask API
 
-Generates premium reports with 9 focused API calls:
-- 6 core calls (Opening, Rare Combos, Behaviour, Distinctive, Perception Gap, Trajectory)
-- 3 deep dive calls (Research Lenses, Rare Combo Deep, Cross-Dimensional)
+Main application file that orchestrates:
+- Assessment scoring (Layer 1)
+- Database operations (supabase_client)
+- Payment processing (stripe_config)
+- Email delivery (email_template)
+- PDF generation (report_pdf)
+- Report generation (report_generator)
 
-Plus 4 data-only sections (Dashboard, How Typical, Question Profile, Cohort Context)
-
-All calls wrapped with resilience (90s timeout + single retry).
-NO PARTIAL REPORTS — if any call fails, entire report fails.
-PDF generated and stored in Supabase Storage.
-Failure alerts sent to info@humanclarityinstitute.com
+Endpoints:
+- GET /health — Health check
+- POST /score — Score assessment
+- GET /results — Retrieve stored results
+- POST /create-checkout — Stripe checkout
+- POST /webhook/stripe — Payment webhook
+- POST /premium — Generate premium report
+- GET /report — Retrieve premium report
 """
 
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import os
+import sys
 import json
-import time
-import logging
+import traceback
+import urllib.request
+import urllib.parse
 from datetime import datetime
-from typing import Dict, List, Optional, Any
-from question_metadata import QUESTION_MAP, get_question_text
 
+# Add current directory to path
+sys.path.insert(0, os.path.dirname(__file__))
+
+# Import Layer 1 (Scoring)
+from scoring_engine import score_assessment
+from benchmark_builder import get_benchmark
+
+# Import Layer 2 (API integrations)
+from supabase_client import get_supabase_client
+from stripe_config import get_stripe_config
+from report_pdf import build_report_pdf
+
+# Import Layer 3 (Report generation)
+from report_generator import generate_premium_report
+from hci_report_page_builder import build_report_html
+from email_template import send_report_email
+
+# Create Flask app
+# Report storage configuration
+REPORT_BASE_URL = os.environ.get(
+    'REPORT_BASE_URL',
+    'https://humanclarityinstitute.com/ai-assessment/report/'
+)
+
+app = Flask(__name__)
+CORS(app)
+
+# PDF storage bucket (create as PUBLIC bucket in Supabase)
+REPORT_PDF_BUCKET = os.environ.get('REPORT_PDF_BUCKET', 'reports')
+
+# Configuration
+BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json')
 # ============================================================
-# MANDATORY IMPORTS — FAIL HARD IF MISSING
-# ============================================================
-
-try:
-    import anthropic
-    from anthropic import APITimeoutError
-except ImportError as e:
-    raise ImportError("anthropic package required. pip install anthropic") from e
-
-try:
-    from signal_selection import (
-        prepare_complete_signal_context,
-        format_signal_context_for_api_prompt
-    )
-except ImportError as e:
-    raise ImportError("signal_selection.py required. Check repo.") from e
-
-try:
-    from benchmark_context_data import (
-        FREQUENCY_GRADIENTS,
-        AGE_COHORT_PATTERNS,
-        DISTINCTIVE_FLAGS,
-        KEY_FINDINGS_FOR_REPORTS,
-        PRESSURE_POINTS,
-        RESEARCH_NUMBERS
-    )
-except ImportError as e:
-    raise ImportError("benchmark_context_data.py required. Check repo.") from e
-
-try:
-    from hci_signals_library import SIGNALS
-except ImportError as e:
-    raise ImportError("hci_signals_library.py required. Check repo.") from e
-
-try:
-    from human_reference_layer import (
-        HBE_FRAMEWORK,
-        VALUES_SIGNALS,
-        get_values_reframe,
-        apply_research_insight
-    )
-except ImportError as e:
-    raise ImportError("human_reference_layer.py required. Check repo.") from e
-
-# ============================================================
-# CONFIGURATION
+# HELPER: Fetch Stripe Session
 # ============================================================
 
-CALL_TIMEOUT_SECONDS = 90
-MAX_RETRIES_PER_CALL = 1
-ALERT_EMAIL = "info@humanclarityinstitute.com"
-MODEL = "claude-sonnet-4-6"
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# ============================================================
-# SYSTEM PROMPT (LOCKED)
-# ============================================================
-
-GLOBAL_SYSTEM_PROMPT = """
-You are writing sections of a personalised research report for the
-Human Clarity Institute's AI Identity & Behaviour Assessment.
-
-Your role is to generate genuine insight that leaves people feeling
-more self-aware and curious about themselves — never judged,
-deficient, or concerned about their behaviour.
-
-INSTITUTIONAL VOICE:
-- Warm but precise. Intellectually rigorous. Never sterile.
-- Write as a thoughtful researcher who has studied this specific
-  person's data — not as a template being filled in.
-- Personal but grounded in data. Future-positive. Never alarming.
-
-FRAMING RULES:
-- Every score reveals something genuinely interesting.
-  There are no good or bad scores — only different patterns.
-- Never suggest someone has a problem or should change.
-- Difference from the population is always interesting, never deficit.
-- All scores are patterns at this point in time — not fixed traits.
-
-TONE RULES:
-- Speak directly to the person as "you"
-- Write in second person throughout
-- Every section ends with curiosity, not concern
-- Never list problems — explore patterns
-
-PERCENTILE LANGUAGE:
-- State position as plain English: "higher than 97 out of every 100 people"
-- Pair it with the positional phrase ("notably high", "near the population centre")
-- Do NOT use a bare "Xth percentile" number anywhere in the prose
-- Always lead with the human meaning, never the number
-
-LANGUAGE TO NEVER USE:
-- concerning, worrying, problematic, at risk
-- you should, you need to, you must
-- loss of agency, cognitive decline, addiction, dependency
-- alarming, dangerous, red flag
-
-LANGUAGE TO USE:
-- interesting, revealing, distinctive, worth exploring
-- your pattern, your positioning, your profile
-- people with similar profiles tend to...
-- what appears worth protecting
-- raises an interesting question
-"""
-
-# ============================================================
-# RESILIENCE & FAILURE HANDLING
-# ============================================================
-
-def notify_failure(call_name: str, error: Exception, session_id: str, user_email: str):
+def fetch_stripe_session(stripe_session_id):
     """
-    Alert admins when API call fails.
-    In production: sends email to info@humanclarityinstitute.com
+    Fetch Stripe checkout session details.
+    
+    Used to:
+    - Verify payment status (payment_status == 'paid')
+    - Recover client_reference_id (assessment session_id)
+    - Get customer email
+    
+    Args:
+        stripe_session_id (str): Stripe checkout session ID
+    
+    Returns:
+        dict: Session data, or None if not found/error
     """
-    timestamp = datetime.utcnow().isoformat()
-    error_type = type(error).__name__
-    error_msg = str(error)[:200]
-    
-    alert = f"""
-REPORT GENERATION FAILURE ALERT
-
-Session ID: {session_id}
-User Email: {user_email}
-Failed Call: {call_name}
-Error Type: {error_type}
-Error Message: {error_msg}
-Timestamp: {timestamp}
-
-ADMIN ACTION REQUIRED:
-Go to: https://web-production-381d3.up.railway.app/recover-report
-Paste session ID above and click "Rebuild Report"
-
-The system will regenerate all 9 API calls and send a new report to the user.
-    """
-    
-    logger.error(alert)
-    # TODO: In production, send email to ALERT_EMAIL
-    # For now, log it
-    print(alert)
-
-
-def call_claude_with_resilience(
-    client,
-    model: str,
-    max_tokens: int,
-    system: str,
-    messages: List[Dict],
-    call_name: str,
-    session_id: str = None
-) -> str:
-    """
-    Call Claude with 90s timeout + single retry on timeout.
-    NO PARTIAL REPORTS — if this fails, the whole report fails.
-    """
-    
-    for attempt in range(MAX_RETRIES_PER_CALL + 1):
-        start_time = time.time()
-        
-        try:
-            message = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=messages,
-                timeout=float(CALL_TIMEOUT_SECONDS),
-            )
-            
-            duration = time.time() - start_time
-            
-            if duration > 30:
-                logger.info(
-                    f"[SLOW] {call_name} completed in {duration:.1f}s "
-                    f"(session: {session_id})"
-                )
-            
-            return message.content[0].text.strip()
-        
-        except APITimeoutError as e:
-            duration = time.time() - start_time
-            logger.warning(
-                f"[TIMEOUT] {call_name} timed out after {duration:.1f}s "
-                f"(attempt {attempt + 1}/{MAX_RETRIES_PER_CALL + 1})"
-            )
-            
-            if attempt < MAX_RETRIES_PER_CALL:
-                time.sleep(1)
-                continue
-            else:
-                logger.error(
-                    f"[FATAL] {call_name} failed on final attempt. "
-                    f"NO PARTIAL REPORTS — entire report generation aborted."
-                )
-                raise
-        
-        except Exception as e:
-            logger.error(
-                f"[ERROR] {call_name} failed: {type(e).__name__}: {str(e)[:100]}"
-            )
-            raise
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
-
-def plain_english_percentile(p: Optional[int]) -> str:
-    """Convert percentile to plain English."""
-    if not p:
-        return "at the population centre"
-    if p >= 75:
-        return f"higher than {p} out of every 100 people"
-    elif p >= 50:
-        return f"higher than {p} out of every 100 people"
-    else:
-        return f"lower than {100-p} out of every 100 people"
-
-
-def get_most_distinctive_variable(responses: Dict, percentiles: Dict) -> tuple:
-    """
-    Find the question with the largest deviation from 50th percentile.
-    Returns: (question_key, percentile, raw_score)
-    """
-    max_divergence = 0
-    most_distinctive = None
-    
-    for q_key, percentile in percentiles.items():
-        if isinstance(percentile, dict):
-            p = percentile.get('percentile_overall', 50)
-        else:
-            p = percentile
-        
-        divergence = abs(p - 50)
-        if divergence > max_divergence:
-            max_divergence = divergence
-            most_distinctive = (q_key, p)
-    
-    return most_distinctive if most_distinctive else ('unknown', 50)
-
-
-def get_perception_gaps(results: Dict) -> List[Dict]:
-    """Extract perception gaps from results."""
-    gaps = results.get('full_results', {}).get('perception_gaps', [])
-    return gaps if isinstance(gaps, list) else []
-
-
-def get_rare_combinations(results: Dict) -> List[Dict]:
-    """Extract rare combinations from results."""
-    combos = results.get('full_results', {}).get('rare_combinations', [])
-    return combos if isinstance(combos, list) else []
-
-# ============================================================
-# API CALL GENERATORS — 9 TOTAL
-# ============================================================
-
-def generate_opening(results: Dict, client, session_id: str) -> str:
-    """API CALL #1: Opening — Top 3 Findings"""
-    
-    logger.info("[1/9] Opening — Top 3 Findings")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    perception_gaps = get_perception_gaps(results)
-    rare_combos = get_rare_combinations(results)
-    percentiles = results.get('percentiles', {})
-    
-    # Get signal context for most distinctive dimension
-    top_dim_name = max(
-        dimensions.keys(),
-        key=lambda x: abs(dimensions[x].get('percentile_overall', 50) - 50)
-    ) if dimensions else 'trust'
-    
-    top_dim_percentile = dimensions.get(top_dim_name, {}).get('percentile_overall', 50)
-    
-    signal_context = prepare_complete_signal_context(
-        dimension=top_dim_name,
-        actual_score=dimensions.get(top_dim_name, {}).get('raw_score', 3.5),
-        frequency=demographics.get('ai_tool_use_frequency', 'sometimes'),
-        age_group=demographics.get('age_group', '25-34'),
-        actual_percentile=top_dim_percentile
-    )
-    
-    signal_text = format_signal_context_for_api_prompt(signal_context, 'Opening')
-    
-    # Find largest perception gap
-    largest_gap = max(perception_gaps, key=lambda x: abs(x.get('gap_magnitude', 0))) if perception_gaps else None
-    
-    # Get rare combo context
-    combo_text = ""
-    if rare_combos:
-        combo = rare_combos[0]
-        combo_key = f"{combo.get('dimension_1')}_{combo.get('dimension_2')}"
-        if combo_key in SIGNALS.get('combinations', {}):
-            combo_text = SIGNALS['combinations'][combo_key].get('what_it_reveals', '')
-    
-    # Map perception question keys to dimension names
-    perception_to_dimension_name = {
-        'perceived_usage': 'Reliance (Usage)',
-        'perceived_reliance': 'Reliance',
-        'perceived_dependence': 'Reliance (Dependence)'
-    }
-    
-    prompt = f"""
-This person's profile has three striking features:
-
-DATA POINT 1 — MOST DISTINCTIVE DIMENSION:
-{top_dim_name.replace('_', ' ').title()}: {plain_english_percentile(top_dim_percentile)}
-
-RESEARCH SIGNALS:
-{signal_text}
-
-{f'''DATA POINT 2 — PERCEPTION GAP:
-{perception_to_dimension_name.get(largest_gap['question'], largest_gap['question'].replace('_', ' ').title())}: 
-They estimated {largest_gap['perceived_answer']}, but actually score {largest_gap['actual_percentile']}th percentile. 
-Gap: {largest_gap['gap_magnitude']:.1f} points.
-''' if largest_gap else ''}
-
-{f'''DATA POINT 3 — RARE COMBINATION:
-{combo_text}
-''' if combo_text else ''}
-
-Write three paragraphs (50-75 words each) that:
-1. Open with what's striking about their most distinctive dimension
-2. Observe their perception gap (if exists)
-3. Highlight their rare combination (if exists)
-
-Frame as findings, not questions. Use plain language. Speak directly as "you".
-Tone: "Here's what stands out about you."
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Opening — Top 3 Findings',
-        session_id=session_id
-    )
-
-
-def generate_rare_combinations(results: Dict, client, session_id: str) -> str:
-    """API CALL #2: Rare Combinations Analysis"""
-    
-    logger.info("[2/9] Rare Combinations")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    rare_combos = get_rare_combinations(results)
-    demographics = results.get('demographics', {})
-    
-    if not rare_combos:
-        return "No rare combinations detected in this profile."
-    
-    combo = rare_combos[0]
-    dim1 = combo.get('dimension_1', 'unknown')
-    dim2 = combo.get('dimension_2', 'unknown')
-    
-    combo_key = f"{dim1}_{dim2}"
-    combo_signal = SIGNALS.get('combinations', {}).get(combo_key, {})
-    
-    prompt = f"""
-This person has a distinctive combination:
-
-{dim1.title()}: {combo.get('percentile_dim1')}th percentile
-{dim2.title()}: {combo.get('percentile_dim2')}th percentile
-
-This combination appears in approximately {combo.get('rarity_percent', 5)}% of HCI's research.
-
-Research shows this combination is interesting because:
-{combo_signal.get('why_unusual', 'This reveals a distinctive pattern.')}
-
-What it reveals about their relationship with AI:
-{combo_signal.get('what_it_reveals', 'Worth exploring further.')}
-
-Write 150-200 words analyzing what this rare combination suggests about their 
-engagement with AI. Ground in research. Speak directly to them.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=800,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Rare Combinations',
-        session_id=session_id
-    )
-
-
-def generate_behaviour_story(results: Dict, client, session_id: str) -> str:
-    """API CALL #3: Behaviour Story"""
-    
-    logger.info("[3/9] Behaviour Story")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    
-    # Build dimension summary
-    dim_summary = ""
-    for dim_name, dim_data in dimensions.items():
-        percentile = dim_data.get('percentile_overall', 50)
-        dim_summary += f"- {dim_name.title()}: {percentile}th percentile\n"
-    
-    prompt = f"""
-Here is this person's complete profile across all 9 dimensions:
-
-{dim_summary}
-
-Demographics:
-- Age group: {demographics.get('age_group', 'unknown')}
-- AI usage frequency: {demographics.get('ai_tool_use_frequency', 'unknown')}
-
-Write a 300-400 word narrative that tells the "story" of how this person engages
-with AI. Not a list of scores — a connected narrative.
-
-What pattern emerges when you look at all 9 dimensions together?
-How do these dimensions relate and support each other?
-What's distinctive about their overall approach to AI?
-
-Tone: You're a researcher who has studied this person's data. Tell the story
-of their relationship with AI in a way that makes them feel understood.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Behaviour Story',
-        session_id=session_id
-    )
-
-
-def generate_distinctive_responses(results: Dict, client, session_id: str) -> str:
-    """API CALL #4: Distinctive Responses"""
-    
-    logger.info("[4/9] Distinctive Responses")
-    
-    percentiles = results.get('percentiles', {})
-    
-    # Find most distinctive responses (furthest from 50th percentile)
-    distinctive = []
-    for q_key, p_data in percentiles.items():
-        if isinstance(p_data, dict):
-            percentile = p_data.get('percentile_overall', 50)
-        else:
-            percentile = p_data
-        
-        divergence = abs(percentile - 50)
-        if divergence > 20:
-            distinctive.append((q_key, percentile, divergence))
-    
-    distinctive.sort(key=lambda x: x[2], reverse=True)
-    top_distinctive = distinctive[:3]
-    
-    distinctive_text = "\n".join([
-        f"- {q_key}: {p}th percentile"
-        for q_key, p, _ in top_distinctive
-    ])
-    
-    prompt = f"""
-This person has these distinctive question-level responses:
-
-{distinctive_text}
-
-Analyze what these distinctive responses reveal:
-1. What pattern emerges across these responses?
-2. Do they cluster around a theme or dimension?
-3. What do they suggest about this person's approach to AI?
-
-Write 200-250 words that illuminate what these specific responses reveal
-about their pattern. Ground in the data. Make it personal.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=800,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Distinctive Responses',
-        session_id=session_id
-    )
-
-
-def generate_perception_gap(results: Dict, client, session_id: str) -> str:
-    """API CALL #5: Perception Gap"""
-    
-    logger.info("[5/9] Perception Gap")
-    
-    gaps = get_perception_gaps(results)
-    
-    if not gaps:
-        return "No significant perception gaps detected in this profile."
-    
-    # Map question keys to readable names
-    question_to_name = {
-        'perceived_usage': 'Usage',
-        'perceived_reliance': 'Reliance',
-        'perceived_dependence': 'Dependence'
-    }
-    
-    gap_text = "\n".join([
-        f"- {question_to_name.get(g['question'], g['question'].replace('_', ' ').title())}: "
-        f"Estimated {g['perceived_answer']}, "
-        f"actually {g['actual_percentile']}th percentile "
-        f"({g['gap_magnitude']:.1f} point gap)"
-        for g in gaps[:3]
-    ])
-    
-    prompt = f"""
-This person has perception gaps between how they estimate their positioning
-and where they actually score:
-
-{gap_text}
-
-Analyze what these gaps reveal:
-1. What's the largest and most interesting gap?
-2. What do overestimates suggest? Underestimates?
-3. What does this self-awareness pattern indicate?
-
-Write 200-250 words that synthesize what these perception gaps reveal.
-Frame as observation, not judgment.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=800,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Perception Gap',
-        session_id=session_id
-    )
-
-
-def generate_trajectory(results: Dict, client, session_id: str) -> str:
-    """API CALL #6: Trajectory & Outlook"""
-    
-    logger.info("[6/9] Trajectory & Outlook")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    
-    # Get highest and lowest
-    sorted_dims = sorted(
-        dimensions.items(),
-        key=lambda x: x[1].get('percentile_overall', 50)
-    )
-    
-    lowest = sorted_dims[0][0] if sorted_dims else 'unknown'
-    highest = sorted_dims[-1][0] if sorted_dims else 'unknown'
-    
-    prompt = f"""
-This person's current profile shows:
-- Highest dimension: {highest.title()} 
-- Lowest dimension: {lowest.title()}
-- Age group: {demographics.get('age_group', 'unknown')}
-- Usage frequency: {demographics.get('ai_tool_use_frequency', 'unknown')}
-
-Based on their current positioning and research on how AI engagement patterns
-evolve, what trajectory might this person be on?
-
-1. What does research show about people with this profile pattern?
-2. Where might they find growth or challenge?
-3. What appears worth protecting as their use evolves?
-4. What would intentional engagement look like for them?
-
-Write 250-300 words exploring their likely trajectory. 
-Tone: Forward-positive, curious about possibilities.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Trajectory & Outlook',
-        session_id=session_id
-    )
-
-
-def generate_deep_dive_1(results: Dict, client, session_id: str) -> str:
-    """API CALL #7: Deep Dive Part 1 — Research Lenses"""
-    
-    logger.info("[7/9] Deep Dive Part 1 — Research Lenses")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    
-    # Build dimension overview
-    dim_overview = "\n".join([
-        f"- {k.title()}: {v.get('percentile_overall', 50)}th percentile"
-        for k, v in dimensions.items()
-    ])
-    
-    prompt = f"""
-This person's complete profile:
-
-{dim_overview}
-
-Age group: {demographics.get('age_group', 'unknown')}
-Usage frequency: {demographics.get('ai_tool_use_frequency', 'unknown')}
-
-Examine this profile through multiple research lenses:
-
-LENS 1: INTENTIONALITY
-How intentional vs passive does their profile suggest?
-
-LENS 2: AGENCY & BOUNDARY-SETTING  
-How well do they maintain human agency?
-
-LENS 3: TRUST & VERIFICATION
-How does their trust align with their verification behavior?
-
-LENS 4: RELATIONAL ENGAGEMENT
-How relational vs instrumental is their engagement?
-
-LENS 5: COHERENCE
-How coherent is their overall pattern?
-
-Write 400-500 words applying these lenses to their specific profile.
-Make it deep and specific — not generic. Show how research explains their pattern.
-
-Tone: Research-grounded, analytical, illuminating.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1200,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Deep Dive Part 1 — Research Lenses',
-        session_id=session_id
-    )
-
-
-def generate_deep_dive_4(results: Dict, client, session_id: str) -> str:
-    """API CALL #8: Deep Dive Part 4 — Rare Combination Deep"""
-    
-    logger.info("[8/9] Deep Dive Part 4 — Rare Combination Deep")
-    
-    rare_combos = get_rare_combinations(results)
-    
-    if not rare_combos:
-        return "No rare combinations for deep dive."
-    
-    combo = rare_combos[0]
-    
-    prompt = f"""
-This person has a rare combination:
-
-{combo.get('dimension_1', 'X').title()}: {combo.get('percentile_dim1', 50)}th percentile
-{combo.get('dimension_2', 'Y').title()}: {combo.get('percentile_dim2', 50)}th percentile
-
-This combination appears in approximately {combo.get('rarity_percent', 5)}% of the research.
-
-Draw from HCI's 21-dataset research to explore:
-
-1. What do people with this combination typically look like?
-2. How does this combination relate to usage patterns?
-3. What other dimensions typically co-occur with this combo?
-4. What does research show about stability of this combo?
-5. What does this combo reveal about their relationship with AI?
-
-Write 350-400 words providing deep, research-grounded context about this
-specific combination. Not generic — show what research reveals.
-
-Tone: Research-grounded, illuminating, specific to their data.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1200,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Deep Dive Part 4 — Rare Combination Deep',
-        session_id=session_id
-    )
-
-
-def generate_deep_dive_5(results: Dict, client, session_id: str) -> str:
-    """API CALL #9: Deep Dive Part 5 — Cross-Dimensional Story"""
-    
-    logger.info("[9/9] Deep Dive Part 5 — Cross-Dimensional Story")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    
-    dim_overview = "\n".join([
-        f"- {k.title()}: {v.get('percentile_overall', 50)}th percentile"
-        for k, v in dimensions.items()
-    ])
-    
-    prompt = f"""
-This person's complete 9-dimension profile:
-
-{dim_overview}
-
-Analyze the cross-dimensional architecture:
-
-1. How do high dimensions enable or reinforce each other?
-2. How do low dimensions suggest intentional boundaries?
-3. What's the "architecture" — how dimensions relate?
-4. Are high dimensions coherent or in tension?
-5. Do low dimensions represent passive absence or active boundary-setting?
-
-What does research show about people with THIS specific dimensional architecture?
-
-Write 350-400 words analyzing how dimensions work together and what that
-reveals about their relationship with AI.
-
-Tone: Analytical, research-grounded. Explore the architecture not just 
-individual dimensions.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1200,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Deep Dive Part 5 — Cross-Dimensional Story',
-        session_id=session_id
-    )
-
-# ============================================================
-# DATA-ONLY SECTIONS (NO API CALLS)
-# ============================================================
-
-def generate_dashboard(results: Dict) -> Dict:
-    """DATA-ONLY: Dashboard of all 9 dimensions"""
-    
-    logger.info("[Dashboard] Compiling 9 dimensions")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    
-    dashboard = {
-        'title': 'Benchmark Dashboard',
-        'dimensions': {}
-    }
-    
-    for dim_name, dim_data in dimensions.items():
-        percentile = dim_data.get('percentile_overall', 50)
-        
-        # Get research signal for this dimension
-        signal = SIGNALS.get('dimensions', {}).get(dim_name, {})
-        if percentile >= 60:
-            insight = signal.get('high', 'At the high end of this dimension')
-        elif percentile <= 40:
-            insight = signal.get('low', 'At the low end of this dimension')
-        else:
-            insight = signal.get('typical', 'In the middle range')
-        
-        dashboard['dimensions'][dim_name] = {
-            'percentile': percentile,
-            'percentile_text': plain_english_percentile(percentile),
-            'raw_score': dim_data.get('raw_score', 3.5),
-            'research_insight': insight
-        }
-    
-    return dashboard
-
-
-def generate_how_typical(results: Dict) -> Dict:
-    """DATA-ONLY: How typical vs distinctive"""
-    
-    logger.info("[How Typical] Analyzing distinctive variables")
-    
-    percentiles = results.get('percentiles', {})
-    
-    distinctive = []
-    typical = []
-    
-    for q_key, p_data in percentiles.items():
-        percentile = p_data.get('percentile_overall', 50) if isinstance(p_data, dict) else p_data
-        
-        if abs(percentile - 50) > 25:
-            distinctive.append((q_key, percentile))
-        elif abs(percentile - 50) < 10:
-            typical.append((q_key, percentile))
-    
-    return {
-        'title': 'Distinctive vs Typical',
-        'distinctive_count': len(distinctive),
-        'typical_count': len(typical),
-        'distinctive_questions': distinctive[:5],
-        'typical_questions': typical[:5]
-    }
-
-
-def generate_question_profile(results: Dict) -> Dict:
-    """DATA-ONLY: All 39 questions with their percentiles"""
-    
-    logger.info("[Question Profile] Compiling all 39 questions")
-    
-    percentiles = results.get('percentiles', {})
-    responses = results.get('responses', {})
-    
-    profile = {
-        'title': 'Question Profile',
-        'total_questions': len(percentiles),
-        'questions': []
-    }
-    
-    for idx, q_key in enumerate(sorted(percentiles.keys())):
-        p_data = percentiles[q_key]
-        percentile = p_data.get('percentile_overall', 50) if isinstance(p_data, dict) else p_data
-        response_value = responses.get(q_key, 4)
-        
-        # Extract all fields from percentiles (which now has everything thanks to FIX 1)
-        dimension = p_data.get('dimension', 'unknown') if isinstance(p_data, dict) else 'unknown'
-        # Use question_metadata as source of truth for question text
-        question_text = get_question_text(q_key) if q_key in QUESTION_MAP else q_key
-        age_percentile = p_data.get('percentile_age_group', 50) if isinstance(p_data, dict) else 50
-        distribution = p_data.get('distribution', []) if isinstance(p_data, dict) else []
-        
-        profile['questions'].append({
-            'dimension': dimension,
-            'number': idx + 1,
-            'variable': question_text,
-            'respondent_answer': response_value,
-            'respondent_percentile': percentile,
-            'age_group': results.get('demographics', {}).get('age_group', '25-34'),
-            'age_percentile': age_percentile,
-            'distribution': distribution
-        })
-    
-    return profile
-
-
-def generate_cohort_context(results: Dict) -> Dict:
-    """DATA-ONLY: Age group / cohort context"""
-    
-    logger.info("[Cohort Context] Analyzing cohort patterns")
-    
-    demographics = results.get('demographics', {})
-    age_group = demographics.get('age_group', '25-34')
-    
-    cohort_signal = SIGNALS.get('cohorts', {}).get(age_group, {})
-    
-    return {
-        'title': 'Your Cohort in Research',
-        'age_group': age_group,
-        'cohort_description': cohort_signal.get('description', 'Unknown cohort'),
-        'what_distinctive': cohort_signal.get('what_high', []),
-        'pressure_points': cohort_signal.get('what_pressured', []),
-        'research_signal': cohort_signal.get('signal', 'Research context available')
-    }
-
-# ============================================================
-# JSON SERIALIZATION HELPER
-# ============================================================
-
-def make_json_safe(obj):
-    """
-    Recursively convert non-JSON-serializable Python objects to JSON-safe types.
-    Handles datetime, UUID, Decimal, and nested structures.
-    
-    This ensures report_dict can be successfully serialized when saving to database.
-    """
-    from uuid import UUID
-    from decimal import Decimal
-    
-    if isinstance(obj, dict):
-        return {k: make_json_safe(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return [make_json_safe(item) for item in obj]
-    elif isinstance(obj, datetime):
-        return obj.isoformat()
-    elif isinstance(obj, UUID):
-        return str(obj)
-    elif isinstance(obj, Decimal):
-        return float(obj)
-    else:
-        return obj
-
-# ============================================================
-# MAIN REPORT GENERATOR
-# ============================================================
-
-def generate_premium_report(
-    results: Dict,
-    api_key: str = None,
-    session_id: str = None
-) -> Dict:
-    """
-    Generate complete premium report using 9 focused API calls.
-    
-    ALL 9 CALLS REQUIRED — NO SKIPPING
-    NO PARTIAL REPORTS — FAIL COMPLETELY OR SUCCEED COMPLETELY
-    """
-    
-    client = anthropic.Anthropic(api_key=api_key)
-    
-    session_id = session_id or results.get('session_id', 'unknown')
-    demographics = results.get('demographics', {})
-    
-    logger.info(f"[REPORT] Starting premium report generation — Session {session_id}")
-    logger.info(f"[REPORT] Starting 9 API calls (6 core + 3 deep dive)...")
+    if not stripe_session_id:
+        return None
     
     try:
-        # ── API CALL #1: Opening ──────────────────────────────────────────────
-        opening = generate_opening(results, client, session_id)
+        import urllib.request
+        stripe_config = get_stripe_config()
         
-        # ── DASHBOARD (no API) ────────────────────────────────────────────────
-        dashboard = generate_dashboard(results)
+        url = f'https://api.stripe.com/v1/checkout/sessions/{stripe_session_id}'
+        req = urllib.request.Request(
+            url,
+            headers={'Authorization': f'Bearer {stripe_config.secret_key}'},
+        )
         
-        # ── HOW TYPICAL (no API) ──────────────────────────────────────────────
-        how_typical = generate_how_typical(results)
-        
-        # ── API CALL #2: Rare Combinations ────────────────────────────────────
-        rare_combos = generate_rare_combinations(results, client, session_id)
-        
-        # ── API CALL #3: Behaviour Story ──────────────────────────────────────
-        behaviour_story = generate_behaviour_story(results, client, session_id)
-        
-        # ── QUESTION PROFILE (no API) ─────────────────────────────────────────
-        question_profile = generate_question_profile(results)
-        
-        # ── API CALL #4: Distinctive Responses ────────────────────────────────
-        distinctive_responses = generate_distinctive_responses(results, client, session_id)
-        
-        # ── API CALL #5: Perception Gap ───────────────────────────────────────
-        perception_gap = generate_perception_gap(results, client, session_id)
-        
-        # ── API CALL #6: Trajectory & Outlook ─────────────────────────────────
-        trajectory = generate_trajectory(results, client, session_id)
-        
-        # ── DEEP DIVE OPENING ─────────────────────────────────────────────────
-        deep_dive_opening = """
-Your pattern is complete on its own. This deep dive goes deeper, examining your profile 
-through multiple research lenses and showing what your specific combination reveals about 
-your relationship with AI.
-        """.strip()
-        
-        # ── API CALL #7: Deep Dive Part 1 ────────────────────────────────────
-        deep_dive_part_1 = generate_deep_dive_1(results, client, session_id)
-        
-        # ── COHORT CONTEXT (no API) ───────────────────────────────────────────
-        cohort_context = generate_cohort_context(results)
-        
-        # ── API CALL #8: Deep Dive Part 4 ────────────────────────────────────
-        deep_dive_part_4 = generate_deep_dive_4(results, client, session_id)
-        
-        # ── API CALL #9: Deep Dive Part 5 ────────────────────────────────────
-        deep_dive_part_5 = generate_deep_dive_5(results, client, session_id)
-        
-        # ── Assemble Report ───────────────────────────────────────────────────
-        logger.info("[REPORT] Assembling final report...")
-        
-        report = {
-            'metadata': {
-                'session_id': session_id,
-                'demographics': demographics,
-                'generated_at': datetime.utcnow().isoformat(),
-                'version': '9.0',
-            },
-            'opening': opening,
-            'section_1_dashboard': dashboard,
-            'section_3_how_typical': how_typical,
-            'section_4_what_different': rare_combos,
-            'section_5_behaviour_story': behaviour_story,
-            'section_6_question_profile': question_profile,
-            'section_7_distinctive_responses': distinctive_responses,
-            'section_8_perception_gap': perception_gap,
-            'section_10_trajectory': trajectory,
-            'deep_dive': {
-                'opening': deep_dive_opening,
-                'part_1_research_lenses': deep_dive_part_1,
-                'part_3_cohort_context': cohort_context,
-                'part_4_rare_combination': deep_dive_part_4,
-                'part_5_cross_dimensional': deep_dive_part_5,
-            }
-        }
-        
-        logger.info("[REPORT] ✅ Premium report generation complete (9 API calls: 6 core + 3 deep dive)")
-        
-        # Ensure all objects are JSON serializable before returning
-        report = make_json_safe(report)
-        return report
+        response = urllib.request.urlopen(req, timeout=15)
+        session_data = json.loads(response.read())
+        return session_data
     
     except Exception as e:
-        user_email = demographics.get('email', 'unknown')
-        notify_failure('Report Generation', e, session_id, user_email)
-        raise
+        print(f'Failed to fetch Stripe session {stripe_session_id}: {e}')
+        return None
 
+
+def upload_report_pdf(session_id, pdf_bytes):
+    """
+    Upload the generated report PDF to Supabase Storage and return its public URL.
+    
+    Overwrites any existing PDF for this session (x-upsert) so a regenerated
+    report replaces the old file.
+    
+    Args:
+        session_id: Session identifier (used as filename)
+        pdf_bytes: PDF binary data from build_report_pdf()
+    
+    Returns:
+        Public URL string, or None on any failure (non-fatal)
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+        if not supabase_url or not supabase_key or not pdf_bytes or not session_id:
+            return None
+
+        path = f'{urllib.parse.quote(session_id)}.pdf'
+        upload_url = f'{supabase_url}/storage/v1/object/{REPORT_PDF_BUCKET}/{path}'
+
+        req = urllib.request.Request(
+            upload_url,
+            data=pdf_bytes,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Content-Type': 'application/pdf',
+                'x-upsert': 'true',
+            },
+            method='POST',
+        )
+        urllib.request.urlopen(req, timeout=20)
+
+        public_url = (
+            f'{supabase_url}/storage/v1/object/public/'
+            f'{REPORT_PDF_BUCKET}/{path}'
+        )
+        print(f'Report PDF uploaded for session {session_id}')
+        return public_url
+
+    except Exception as e:
+        print(f'PDF upload failed (non-fatal): {e}')
+        return None
+
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
+
+
+
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint."""
+    benchmark_exists = os.path.exists(BENCHMARK_PATH)
+    return jsonify({
+        'status': 'ok',
+        'benchmark_loaded': benchmark_exists,
+        'timestamp': datetime.utcnow().isoformat(),
+    }), 200
+
+
+# ============================================================
+# HELPER: Generate response percentiles (Requirement 2)
+# ============================================================
+
+def generate_percentiles(responses, demographics, scoring_results):
+    """
+    Generate percentiles for each individual question response.
+    
+    For each of the 39 questions, calculate:
+    - User's response (1-7)
+    - Percentile vs all participants
+    - Percentile vs age group
+    - Question text
+    - Dimension
+    - Sample sizes
+    
+    Args:
+        responses (dict): User's 39 question responses
+        demographics (dict): Age group, gender, country, frequency
+        scoring_results (dict): Output from scoring_engine (has dimension_scores)
+    
+    Returns:
+        dict: {question_key: {response, percentile_overall, percentile_age_group, ...}}
+    """
+    try:
+        # Load benchmark to calculate percentiles
+        benchmark = get_benchmark()
+        
+        # Map questions to dimensions
+        dimension_variables = {
+            'trust': ['trust_q1', 'trust_q2', 'trust_q3', 'trust_q4'],
+            'disclosure': ['disc_q1', 'disc_q2', 'disc_q3', 'disc_q4'],
+            'reliance': ['rel_q1', 'rel_q2', 'rel_q3', 'rel_q4', 'rel_q5'],
+            'decision_delegation': ['del_q1', 'del_q2', 'del_q3', 'del_q4', 'del_q5'],
+            'verification': ['ver_q1', 'ver_q2', 'ver_q3', 'ver_q4'],
+            'human_agency': ['agency_q1', 'agency_q2', 'agency_q3', 'agency_q4', 'agency_q5'],
+            'emotional_regulation': ['emot_q1', 'emot_q2', 'emot_q3', 'emot_q4'],
+            'thought_partnership': ['thought_q1', 'thought_q2', 'thought_q3', 'thought_q4'],
+            'social_transparency': ['soc_q1', 'soc_q2', 'soc_q3', 'soc_q4']
+        }
+        
+        # Question text mapping (basic — can be enhanced)
+        question_text_map = {
+            'trust_q1': 'I feel confident trusting information from AI',
+            'trust_q2': 'I would rely on AI output without additional verification',
+            'trust_q3': 'I worry that AI might present false information to me',
+            'trust_q4': 'I trust AI to give me accurate information',
+            'disc_q1': 'I share personal thoughts and feelings with AI',
+            'disc_q2': 'I tell AI things I haven\'t told other people',
+            'disc_q3': 'I am more open with AI than I am with people',
+            'disc_q4': 'I use AI as a space to think through personal concerns',
+            'rel_q1': 'I feel restless when I don\'t have access to AI',
+            'rel_q2': 'I struggle to work without access to my AI tools',
+            'rel_q3': 'I feel confident relying on AI outputs',
+            'rel_q4': 'I would have difficulty doing my work without AI assistance',
+            'rel_q5': 'I rely on AI regularly in my daily work',
+            'del_q1': 'I rely on AI to make decisions for me',
+            'del_q2': 'I tend to follow AI recommendations even if I\'m unsure',
+            'del_q3': 'I worry my skills are declining from delegating to AI',
+            'del_q4': 'I regularly hand over tasks to AI',
+            'del_q5': 'I accept AI suggestions without much modification',
+            'ver_q1': 'I double-check information that AI provides',
+            'ver_q2': 'I skip verification because the effort isn\'t worth it',
+            'ver_q3': 'I use external sources to verify AI outputs',
+            'ver_q4': 'I proceed without checking AI information',
+            'agency_q1': 'I feel self-directed when using AI',
+            'agency_q2': 'I feel in control of my decisions when AI is involved',
+            'agency_q3': 'I trust my own judgement over AI suggestions',
+            'agency_q4': 'AI nudges influence me without my realizing it',
+            'agency_q5': 'I feel ownership over decisions I make with AI help',
+            'emot_q1': 'AI provides me emotional support',
+            'emot_q2': 'I use AI as an alternative to human emotional support',
+            'emot_q3': 'AI helps me process difficult emotions',
+            'emot_q4': 'I use AI to cope with stress or anxiety',
+            'thought_q1': 'AI helps me think more deeply',
+            'thought_q2': 'AI validates my existing beliefs rather than challenging them',
+            'thought_q3': 'I use AI as a thinking partner to develop ideas',
+            'thought_q4': 'AI helps me challenge my assumptions',
+            'soc_q1': 'I am transparent with others about my use of AI',
+            'soc_q2': 'I conceal how much I use AI from others',
+            'soc_q3': 'I am comfortable telling people about my AI use',
+            'soc_q4': 'There\'s a gap between how much AI I actually use and what others think',
+        }
+        
+        percentiles = {}
+        age_group = demographics.get('age_group', 'unknown')
+        
+        # Process each question
+        for dim_name, questions in dimension_variables.items():
+            for q_key in questions:
+                if q_key not in responses:
+                    continue
+                
+                user_response = responses[q_key]
+                
+                # Get percentiles from benchmark
+                pct_overall = benchmark.get_percentile(q_key, user_response, segment=None)
+                pct_age_group = benchmark.get_percentile(q_key, user_response, segment=('age_group', age_group))
+                
+                # Get sample sizes
+                n_overall = benchmark.get_sample_size(q_key, segment=None)
+                n_age_group = benchmark.get_sample_size(q_key, segment=('age_group', age_group))
+                
+                # Determine if rare or distinctive
+                is_rare = pct_overall >= 86 or pct_overall <= 14
+                
+                                
+                percentiles[q_key] = {
+                    'response': user_response,
+                    'percentile_overall': pct_overall,
+                    'percentile_age_group': pct_age_group,
+                    'question_text': question_text_map.get(q_key, f'Question {q_key}'),
+                    'dimension': dim_name,
+                    'n_overall': n_overall,
+                    'n_age_group': n_age_group,
+                    'is_rare': is_rare,
+                    'distribution': [sum(1 for v in benchmark.data['dimensions'][dim_name]['overall']['values'] if int(v) == i) for i in range(1, 8)],
+                }
+        
+        return percentiles
+    
+    except Exception as e:
+        print(f'Error generating response percentiles: {e}')
+        return {}
+
+
+# ============================================================
+# ASSESSMENT SCORING (POST /score)
+# ============================================================
+
+@app.route('/score', methods=['POST'])
+def score():
+    """
+    Score a completed assessment and store results.
+    
+    Request:
+    {
+        "responses": {39 question responses},
+        "demographics": {age_group, gender, country, ai_tool_use_frequency},
+        "report_email": "user@example.com",
+        "consent": true,
+        "consent_timestamp": "2026-06-25T...",
+        "session_id": "optional-existing-session-id"
+    }
+    
+    Response:
+    {
+        "success": true,
+        "session_id": "...",
+        "dimension_scores": {...},
+        "full_results": {...}
+    }
+    """
+    try:
+        request_data = request.get_json()
+        if not request_data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # Extract data
+        responses = request_data.get('responses', {})
+        demographics = request_data.get('demographics', {})
+        report_email = request_data.get('report_email')
+        consent = request_data.get('consent', False)
+        consent_timestamp = request_data.get('consent_timestamp')
+        session_id = request_data.get('session_id')
+        
+        # Validate required fields
+        if not responses or not demographics:
+            return jsonify({'success': False, 'error': 'Missing responses or demographics'}), 400
+        
+        # Generate session_id if not provided
+        if not session_id:
+            import uuid
+            session_id = str(uuid.uuid4())
+        
+        # Score the assessment (Layer 1)
+        scoring_results = score_assessment(responses, demographics, session_id=session_id)
+        
+        # Generate response percentiles (Requirement 2: variable-level answers vs full + age group)
+        percentiles = generate_percentiles(responses, demographics, scoring_results)
+        
+        # Store in Supabase - include ALL data so results page has complete access
+        db = get_supabase_client()
+        store_result = db.store_assessment(
+            session_id=session_id,
+            responses=responses,
+            demographics=demographics,
+            full_results=scoring_results,
+            dimension_scores=scoring_results.get('dimension_scores', {}),
+            perception_gaps=scoring_results.get('perception_gaps', []),
+            patterns=scoring_results.get('rare_combinations', []),
+            percentiles=percentiles,
+            report_email=report_email,
+            consent=consent,
+            consent_timestamp=consent_timestamp
+        )
+        
+        if not store_result.get('success'):
+            print(f'Failed to store assessment: {store_result.get("message")}')
+        
+        # Return results
+        return jsonify({
+            'success': True,
+            'session_id': session_id,
+            'dimension_scores': scoring_results.get('dimension_scores', {}),
+            'percentiles': percentiles,          # ← Question-level percentiles
+            'perception_gaps': scoring_results.get('perception_gaps', []),
+            'rare_combinations': scoring_results.get('rare_combinations', []),
+            'full_results': scoring_results
+        }), 200
+    
+    except Exception as e:
+        print(f'Score endpoint error: {e}')
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Assessment scoring failed'
+        }), 500
+
+
+# ============================================================
+# RETRIEVE RESULTS (GET /results)
+# ============================================================
+
+@app.route('/results', methods=['GET'])
+def get_results():
+    """
+    Retrieve stored assessment results by session_id.
+    
+    Query params:
+        session_id: Assessment session ID
+    
+    Response:
+    {
+        "success": true,
+        "session_id": "...",
+        "full_results": {...},
+        "report_email": "..."
+    }
+    """
+    try:
+        session_id = request.args.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+        
+        db = get_supabase_client()
+        assessment = db.get_assessment(session_id)
+        
+        if not assessment:
+            return jsonify({'success': False, 'error': 'Session not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'session_id': session_id,
+            'full_results': assessment.get('full_results'),
+            'percentiles': assessment.get('percentiles', {}),
+            'demographics': assessment.get('demographics', {}),
+            'report_email': assessment.get('report_email'),
+            'paid': assessment.get('paid', False)
+        }), 200
+    
+    except Exception as e:
+        print(f'Get results error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not retrieve results'}), 500
+
+
+# ============================================================
+# CREATE STRIPE CHECKOUT (POST /create-checkout)
+# ============================================================
+
+@app.route('/create-checkout', methods=['POST'])
+def create_checkout():
+    """
+    Create a Stripe Checkout Session for premium report.
+    
+    Request:
+    {
+        "session_id": "assessment-session-id",
+        "email": "user@example.com"  (optional)
+    }
+    
+    Response:
+    {
+        "success": true,
+        "session_id": "stripe-session-id",
+        "url": "https://checkout.stripe.com/..."
+    }
+    """
+    try:
+        request_data = request.get_json() or {}
+        session_id = request_data.get('session_id')
+        email = request_data.get('email')
+        
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+        
+        # Create checkout via Stripe
+        stripe = get_stripe_config()
+        result = stripe.create_checkout_session(session_id, email)
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'session_id': result['session_id'],
+                'url': result['url']
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('message', 'Checkout creation failed')
+            }), 400
+    
+    except Exception as e:
+        print(f'Create checkout error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Checkout creation failed'}), 500
+
+
+# ============================================================
+# STRIPE WEBHOOK (POST /webhook/stripe)
+# ============================================================
+
+@app.route('/webhook/stripe', methods=['POST'])
+def webhook_stripe():
+    """
+    Stripe webhook handler for payment confirmation.
+    
+    Stripe sends signed events to this endpoint.
+    On checkout.session.completed, we mark the assessment as paid,
+    store the Stripe session ID, and trigger report generation automatically.
+    """
+    try:
+        # Get raw request body and signature
+        payload = request.get_data(as_text=True)
+        signature = request.headers.get('Stripe-Signature')
+        
+        if not signature:
+            print('Missing Stripe-Signature header')
+            return jsonify({'error': 'Missing signature'}), 400
+        
+        # Verify signature
+        stripe = get_stripe_config()
+        if not stripe.verify_webhook_signature(payload, signature):
+            print('Webhook signature verification failed')
+            return jsonify({'error': 'Invalid signature'}), 403
+        
+        # Parse event
+        event = stripe.parse_webhook_event(payload)
+        if not event:
+            return jsonify({'error': 'Invalid JSON'}), 400
+        
+        # Handle checkout.session.completed
+        if event.get('type') == 'checkout.session.completed':
+            checkout_data = stripe.handle_checkout_completed(event)
+            if not checkout_data:
+                return jsonify({'error': 'Invalid event data'}), 400
+            
+            stripe_session_id = checkout_data['stripe_session_id']
+            customer_email = checkout_data['customer_email']
+            report_email = customer_email  # Email report to the Stripe customer's address
+            
+            # Fetch Stripe session to get client_reference_id (assessment session_id)
+            stripe_session = fetch_stripe_session(stripe_session_id)
+            if not stripe_session:
+                print(f'Failed to fetch Stripe session {stripe_session_id}')
+                return jsonify({'received': True}), 200  # Still return 200 to ack webhook
+            
+            session_id = stripe_session.get('client_reference_id')
+            if not session_id:
+                print(f'No client_reference_id in Stripe session {stripe_session_id}')
+                return jsonify({'received': True}), 200
+            
+            print(f'Webhook: Payment confirmed for Stripe session {stripe_session_id}, assessment {session_id}')
+            
+            # STEP 1: Update assessment to mark as paid and store stripe_session_id (SAME ROW)
+            db = get_supabase_client()
+            try:
+                paid_at = datetime.utcnow().isoformat()
+                # Use update_assessment to store stripe_session_id WITHOUT creating a new row
+                db.update_assessment(
+                    session_id=session_id,
+                    paid=True,
+                    paid_at=paid_at,
+                    stripe_session_id=stripe_session_id,
+                    report_email=customer_email
+                )
+                print(f'Marked assessment {session_id} as paid with Stripe session {stripe_session_id}')
+            except Exception as e:
+                print(f'Failed to mark assessment as paid: {e}')
+                return jsonify({'received': True}), 200  # Still ack webhook
+            
+            # STEP 2: Auto-trigger premium report generation
+            try:
+                # Get full results from DB
+                assessment = db.get_assessment(session_id)
+                if not assessment:
+                    print(f'Assessment {session_id} not found in DB')
+                    return jsonify({'received': True}), 200
+                
+                full_results = assessment.get('full_results')
+                if not full_results:
+                    print(f'No full_results for assessment {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Generate report
+                api_key = os.environ.get('ANTHROPIC_API_KEY')
+                if not api_key:
+                    print('ANTHROPIC_API_KEY not configured')
+                    return jsonify({'received': True}), 200
+                
+                # Build complete results structure with ALL needed fields
+                # Must match structure expected by generate_premium_report()
+                # This includes ALL data types: assessment responses (39), perception questions (3), demographics (4)
+                demographics = assessment.get('demographics', {})  # age_group, gender, country, ai_tool_use_frequency
+                responses = assessment.get('responses', {})        # 39 assessment + 3 perception questions
+                percentiles = assessment.get('percentiles', {})
+                
+                results_for_report = {
+                    'full_results': full_results,
+                    'demographics': demographics,  # ← CRITICAL: Used for cohort context in opening section
+                    'responses': responses,
+                    'percentiles': percentiles,
+                    'session_id': session_id
+                }
+                
+                print(f'Webhook: Generating premium report for session {session_id}')
+                report_dict = generate_premium_report(
+                    results=results_for_report,
+                    api_key=api_key,
+                    session_id=session_id
+                )
+                
+                if not report_dict:
+                    print(f'Report generation returned empty for session {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Build HTML
+                report_html_str = build_report_html(report_dict)
+                if not report_html_str:
+                    print(f'HTML builder failed for session {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Generate PDF
+                pdf_bytes = None
+                try:
+                    pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+                    if pdf_bytes:
+                        print(f'Report PDF generated successfully for session {session_id}')
+                    else:
+                        print(f'PDF generation returned None - email will send without attachment')
+                except Exception as e:
+                    print(f'PDF generation failed (non-fatal): {e}')
+                    traceback.print_exc()
+                
+                # Send email with report
+
+                
+                # Update DB with cached report
+                try:
+                    db.update_report(
+                        session_id=session_id,
+                        premium_report=report_dict
+                    )
+                    print(f'Report cached in DB for session {session_id}')
+                except Exception as e:
+                    print(f'Failed to cache report: {e}')
+                
+            except Exception as e:
+                print(f'Webhook: Report generation failed: {e}')
+                traceback.print_exc()
+                # Still return 200 to ack webhook (don't want Stripe retrying)
+        
+        return jsonify({'received': True}), 200
+    
+    except Exception as e:
+        print(f'Webhook error: {e}')
+        traceback.print_exc()
+        return jsonify({'error': 'Webhook processing failed'}), 500
+
+
+# ============================================================
+# GENERATE PREMIUM REPORT (POST /premium)
+# ============================================================
+
+@app.route('/premium', methods=['POST'])
+def premium():
+    """
+    Generate premium report after payment confirmation.
+    
+    Request:
+    {
+        "session_id": "assessment-session-id",  (optional - can be recovered from Stripe)
+        "stripe_session_id": "stripe_session_id",  (optional - used to verify payment)
+        "full_results": {...}  (optional, retrieved from DB if not provided)
+    }
+    
+    Response:
+    {
+        "success": true,
+        "message": "Report generated and emailed"
+    }
+    
+    This endpoint:
+    1. Checks if report is already cached (prevent duplicate generation)
+    2. Verifies payment via Stripe (if stripe_session_id provided)
+    3. Recovers session_id from Stripe client_reference_id if needed
+    4. Marks assessment as paid
+    5. Calls report_generator (Layer 3) to create HTML report
+    6. Generates PDF and uploads to Supabase Storage
+    7. Sends email with report link
+    8. Caches report in Supabase
+    """
+    try:
+        request_data = request.get_json() or {}
+        session_id = request_data.get('session_id')
+        stripe_session_id = request_data.get('stripe_session_id')
+        full_results = request_data.get('full_results')
+        report_email = request_data.get('report_email')
+        
+        db = get_supabase_client()
+        
+        # Step 1: Recover session_id from Stripe if not provided
+        # This handles the redirect case where session_id might not be in URL
+        stripe_session = None
+        if stripe_session_id:
+            stripe_session = fetch_stripe_session(stripe_session_id)
+            if stripe_session and not session_id:
+                session_id = stripe_session.get('client_reference_id')
+                print(f'Recovered session_id from Stripe: {session_id}')
+        
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided or recoverable'}), 400
+        
+        # Step 2: Check cache first
+        cached_report = db.get_cached_report(session_id)
+        if cached_report:
+            print(f'Report cache hit for session {session_id}')
+            return jsonify({
+                'success': True,
+                'report': cached_report,
+                'cached': True
+            }), 200
+        
+        # Step 3: Verify payment (STRICT GATE)
+        # If Stripe session was provided, verify payment was actually made
+        if stripe_session_id:
+            if not stripe_session:
+                return jsonify({
+                    'success': False,
+                    'error': 'Payment verification failed. Please contact support.'
+                }), 402
+            
+            payment_status = stripe_session.get('payment_status')
+            if payment_status != 'paid':
+                print(f'Payment not confirmed for Stripe session {stripe_session_id}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Payment not confirmed. If you just paid, please refresh this page.'
+                }), 402
+            
+            # Get customer email from Stripe (preferred over form email)
+            customer_details = stripe_session.get('customer_details') or {}
+            stripe_email = customer_details.get('email') or stripe_session.get('customer_email')
+            if stripe_email:
+                report_email = stripe_email
+                # Update assessment row with correct Stripe email (overrides burner email from /score)
+                db.update_assessment(
+                    session_id=session_id,
+                    report_email=stripe_email
+                )
+                print(f'Updated assessment report_email to: {stripe_email}')
+        
+       # Step 4: Get complete assessment (all fields needed for report)
+        if not full_results:
+            assessment = db.get_assessment(session_id)
+            if not assessment:
+                return jsonify({
+                    'success': False,
+                    'error': 'Assessment data not found'
+                }), 404
+            full_results = assessment.get('full_results')
+            if not full_results:
+                return jsonify({
+                    'success': False,
+                    'error': 'Assessment scoring data not found'
+                }), 404
+        else:
+            # If full_results was provided in request, still get full assessment for other fields
+            assessment = db.get_assessment(session_id)
+        
+        # Extract all needed fields from assessment
+        demographics = assessment.get('demographics', {})
+        responses = assessment.get('responses', {})
+        percentiles = assessment.get('percentiles', {})
+        
+        # Step 5: Mark as paid and store stripe_session_id (SAME ROW)
+        from datetime import datetime
+        db.update_assessment(
+            session_id=session_id,
+            paid=True,
+            paid_at=datetime.utcnow().isoformat(),
+            stripe_session_id=stripe_session_id
+        )
+        
+        # Step 6: Generate premium report (Layer 3)
+        # This calls report_generator which makes 9 Claude API calls
+        try:
+            api_key = os.environ.get('ANTHROPIC_API_KEY')
+            if not api_key:
+                print('ANTHROPIC_API_KEY not configured')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report generation not available'
+                }), 503
+            
+            print(f'Generating premium report for session {session_id}')
+            
+            # Build complete results structure with all data report generator needs
+            results_for_report = {
+                'full_results': full_results,
+                'demographics': demographics,
+                'responses': responses,
+                'percentiles': percentiles,
+                'session_id': session_id
+            }
+            
+            # Generate report dict (9 API calls + 4 data sections)
+            report_dict = generate_premium_report(
+                results=results_for_report,
+                api_key=api_key,
+                session_id=session_id
+            )
+            
+            if not report_dict:
+                print(f'Report generator returned empty dict for session {session_id}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report generation failed'
+                }), 500
+            
+            # Convert report_dict to professional HTML for PDF
+            print(f'Building HTML for session {session_id}')
+            report_html_str = build_report_html(report_dict)
+            
+            if not report_html_str:
+                print(f'HTML builder returned empty string for session {session_id}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report rendering failed'
+                }), 500
+        
+        except ImportError as e:
+            print(f'Missing report generator module: {e}')
+            return jsonify({
+                'success': False,
+                'error': 'Report generator not available'
+            }), 500
+        except Exception as e:
+            print(f'Report generation error: {e}')
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'error': f'Report generation failed: {str(e)}'
+            }), 500
+        
+        # Step 7: PDF generation
+        pdf_bytes = None
+        try:
+            pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+            if pdf_bytes:
+                print(f'Report PDF generated successfully for session {session_id}')
+            else:
+                print(f'PDF generation returned None - email will send without attachment')
+        except Exception as e:
+            print(f'PDF generation error (non-fatal): {e}')
+            traceback.print_exc()
+            # Non-fatal - report still displays in browser without PDF
+        
+        # Step 8: Send email with report link
+        email_sent = False
+        try:
+            if report_email:
+                # Call send_report_email directly with all required parameters
+                resend_key = os.environ.get('RESEND_API_KEY')
+                if resend_key:
+                    email_result = send_report_email(
+                        to_email=report_email,
+                        report=report_dict,
+                        demographics=demographics,
+                        resend_api_key=resend_key,
+                        report_url=f'https://humanclarityinstitute.com/ai-assessment/report/?session_id={session_id}',
+                        pdf_bytes=pdf_bytes,
+                        pdf_filename='HCI-AI-Identity-Report.pdf'
+                    )
+                    if email_result:
+                        email_sent = True
+                        print(f'Report email sent to {report_email}')
+                    else:
+                        print(f'Email send failed')
+                else:
+                    print('RESEND_API_KEY not configured')
+        
+        except Exception as e:
+            print(f'Email sending error: {e}')
+            traceback.print_exc()
+        
+        # Step 9: Upload PDF to Supabase Storage and cache report
+        pdf_url = None
+        try:
+            if pdf_bytes:
+                pdf_url = upload_report_pdf(session_id, pdf_bytes)
+                print(f'PDF stored with URL: {pdf_url}' if pdf_url else 'PDF upload failed')
+        except Exception as e:
+            print(f'PDF storage step failed (non-fatal): {e}')
+
+        # Step 10: Cache report and PDF URL in Supabase
+        try:
+            db.update_report(
+                session_id,
+                premium_report=report_dict,     # Full report data as JSON
+                report_pdf_url=pdf_url          # Public PDF URL (may be None if upload failed)
+            )
+            print(f'Report and PDF URL cached for session {session_id}')
+        
+        except Exception as e:
+            print(f'Report caching error: {e}')
+        
+        return jsonify({
+            'success': True,
+            'report': report_dict
+        }), 200
+    
+    except Exception as e:
+        print(f'Premium endpoint error: {e}')
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Report generation failed'
+        }), 500
+
+
+# ============================================================
+# RETRIEVE PREMIUM REPORT (GET /report)
+# ============================================================
+
+@app.route('/report', methods=['GET'])
+def get_report():
+    """
+    Retrieve cached premium report by session_id.
+    
+    Query params:
+        session_id: Assessment session ID
+    
+    Response:
+    {
+        "success": true,
+        "report": {...cached report HTML...}
+    }
+    """
+    try:
+        session_id = request.args.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+        
+        db = get_supabase_client()
+        assessment = db.get_assessment(session_id)
+        
+        if not assessment:
+            return jsonify({'success': False, 'error': 'Session not found'}), 404
+        
+        if not assessment.get('paid'):
+            return jsonify({'success': False, 'error': 'Report not purchased'}), 403
+        
+        report_data = assessment.get('premium_report')
+        if not report_data:
+            return jsonify({'success': False, 'error': 'Report not yet generated'}), 404
+        
+        return jsonify({
+            'success': True,
+            'report': report_data
+        }), 200
+    
+    except Exception as e:
+        print(f'Get report error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not retrieve report'}), 500
+
+
+# ============================================================
+# ERROR HANDLERS
+# ============================================================
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({'error': 'Server error'}), 500
+
+
+# ============================================================
+# STARTUP
+# ============================================================
 
 if __name__ == '__main__':
-    print("Report Generator v9.0 loaded successfully")
-    print(f"Model: {MODEL}")
-    print(f"Timeout: {CALL_TIMEOUT_SECONDS}s per call")
-    print(f"Max retries: {MAX_RETRIES_PER_CALL}")
-    print("All signal files imported successfully")
+    # Verify dependencies on startup
+    try:
+        _ = get_supabase_client()
+        print('✓ Supabase client initialized')
+    except Exception as e:
+        print(f'⚠ Supabase initialization failed: {e}')
+    
+    try:
+        _ = get_stripe_config()
+        print('✓ Stripe config initialized')
+    except Exception as e:
+        print(f'⚠ Stripe initialization failed: {e}')
+    
+    
+    try:
+        _ # PDF generation uses build_report_pdf - no separate initialization needed
+        print('✓ PDF handler configured')
+    except Exception as e:
+        print(f'⚠ PDF handler configuration failed: {e}')
+    
+    print('\nStarting HCI Assessment API...')
+    app.run(host='0.0.0.0', port=5000, debug=False)
