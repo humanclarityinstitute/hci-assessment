@@ -18,6 +18,7 @@ import uuid
 import json
 from datetime import datetime
 from benchmark_builder import get_benchmark
+from question_metadata import REVERSE_SCORED_KEYS
 
 
 # ============================================================
@@ -192,17 +193,10 @@ DIMENSION_VARIABLES = {
     ]
 }
 
-# Variables that require reverse scoring (8 - response)
+# Reverse-scored keys imported from question_metadata
 # These measure the opposite of the construct and must be flipped before aggregation
 # Total: 6 variables reverse-scored (verified against Master_assessment_dataset.xlsx 2026-06-25)
-REVERSE_SCORED_VARIABLES = {
-    'worry_ai_presents_false_info',        # Trust: HIGH worry = LOW trust → REVERSE
-    'verify_skip_due_to_effort',           # Verification: HIGH skipping = LOW verification → REVERSE
-    'proceed_without_checking',            # Verification: HIGH no-check = LOW verification → REVERSE
-    'nudging_influenced_unaware',          # Human Agency: HIGH unaware influence = LOW agency → REVERSE
-    'ai_validation_reinforce_beliefs',     # Thought Partnership: HIGH echo-chamber = LOW partnership → REVERSE
-    'social_transparency_concealment'      # Social Transparency: HIGH hiding = LOW transparency → REVERSE
-}
+# Keys: trust_q3, ver_q2, ver_q3, agency_q4, thought_q4, soc_q2
 
 # Perception questions (self-estimate)
 PERCEPTION_QUESTIONS = {
@@ -366,7 +360,7 @@ class ScoringEngine:
                         
                         # APPLY REVERSE SCORING if this variable is reverse-scored
                         # Flip: 1→7, 2→6, 3→5, 4→4, 5→3, 6→2, 7→1
-                        if key in REVERSE_SCORED_VARIABLES:
+                        if key in REVERSE_SCORED_KEYS:
                             val = 8 - val
                         
                         dimension_responses.append(val)
