@@ -1,565 +1,1005 @@
 """
-hci_report_page_builder.py
+api.py
+HCI Assessment Platform — Flask API
 
-Builds professional HTML report pages from report_dict output.
-Used for both PDF generation (via PDFShift) and browser display.
+Main application file that orchestrates:
+- Assessment scoring (Layer 1)
+- Database operations (supabase_client)
+- Payment processing (stripe_config)
+- Email delivery (email_template)
+- PDF generation (report_pdf)
+- Report generation (report_generator)
 
-Takes the report_dict structure from report_generator.py and converts it
-to formatted HTML using locked design tokens from hci-report-design.css.
+Endpoints:
+- GET /health — Health check
+- POST /score — Score assessment
+- GET /results — Retrieve stored results
+- POST /create-checkout — Stripe checkout
+- POST /webhook/stripe — Payment webhook
+- POST /premium — Generate premium report
+- GET /report — Retrieve premium report
 """
 
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import os
+import sys
 import json
-from typing import Dict, Any, Optional
-from question_metadata import QUESTION_MAP, get_question_text, get_dimension, DIMENSIONS
+import traceback
+import urllib.request
+import urllib.parse
+from datetime import datetime
 
+# Add current directory to path
+sys.path.insert(0, os.path.dirname(__file__))
 
-def escape_html(text: str) -> str:
-    """Escape HTML special characters."""
-    if not text:
-        return ""
-    return (str(text)
-            .replace('&', '&amp;')
-            .replace('<', '&lt;')
-            .replace('>', '&gt;')
-            .replace('"', '&quot;')
-            .replace("'", '&#39;'))
+# Import Layer 1 (Scoring)
+from scoring_engine import score_assessment
+from benchmark_builder import get_benchmark
 
+# Import Layer 2 (API integrations)
+from supabase_client import get_supabase_client
+from stripe_config import get_stripe_config
+from report_pdf import build_report_pdf
 
-def format_prose(text: str) -> str:
-    """Convert prose text to HTML paragraphs."""
-    if not text:
-        return ""
-    
-    paragraphs = text.strip().split('\n\n')
-    html = ""
-    for para in paragraphs:
-        if para.strip():
-            html += f'<p class="narrative-paragraph">{escape_html(para.strip())}</p>'
-    return html
+# Import Layer 3 (Report generation)
+from report_generator import generate_premium_report
+from hci_report_page_builder import build_report_html
+from email_template import send_report_email
 
+# Create Flask app
+# Report storage configuration
+REPORT_BASE_URL = os.environ.get(
+    'REPORT_BASE_URL',
+    'https://humanclarityinstitute.com/ai-assessment/report/'
+)
 
-def plain_english_percentile(p: Optional[int]) -> str:
-    """Convert percentile to plain English."""
-    if p is None or p == '':
-        return "at the population centre"
-    
-    try:
-        p = int(p)
-    except (ValueError, TypeError):
-        return "at the population centre"
-    
-    if p >= 50:
-        return f"Higher than {p} out of every 100 people"
-    else:
-        return f"Lower than {100-p} out of every 100 people"
+app = Flask(__name__)
+CORS(app)
 
+# PDF storage bucket (create as PUBLIC bucket in Supabase)
+REPORT_PDF_BUCKET = os.environ.get('REPORT_PDF_BUCKET', 'reports')
 
-def positional_label(p: Optional[int]) -> str:
-    """Convert percentile to positional label."""
-    if p is None or p == '':
-        return "near the population centre"
-    
-    try:
-        p = int(p)
-    except (ValueError, TypeError):
-        return "near the population centre"
-    
-    if p >= 96:
-        return "exceptionally high"
-    elif p >= 86:
-        return "notably high"
-    elif p >= 71:
-        return "above the population centre"
-    elif p >= 41:
-        return "near the population centre"
-    elif p >= 26:
-        return "below the population centre"
-    elif p >= 11:
-        return "notably low"
-    else:
-        return "exceptionally low"
+# Configuration
+BENCHMARK_PATH = os.path.join(os.path.dirname(__file__), 'benchmark_tables.json')
+# ============================================================
+# HELPER: Fetch Stripe Session
+# ============================================================
 
-
-def build_dimension_cards(dimensions: Dict[str, Any]) -> str:
-    """Build HTML for dimension cards (Section 1: Dashboard)."""
-    if not dimensions:
-        return ""
-    
-    html = '<div class="dimension-grid">\n'
-    
-    for dim_name, dim_data in dimensions.items():
-        if not isinstance(dim_data, dict):
-            continue
-        
-        percentile = dim_data.get('percentile', 50)
-        raw_score = dim_data.get('raw_score', 3.5)
-        plain = plain_english_percentile(percentile)
-        pos = positional_label(percentile)
-        
-        html += f'''
-        <div class="dimension-card">
-            <div class="dimension-label">{escape_html(dim_name.upper())}</div>
-            <div class="dimension-name">{escape_html(dim_name.title())}</div>
-            <div style="margin-bottom: 8pt; font-size: 10.5px; line-height: 1.3; color: #666;">
-                {escape_html(dim_data.get('research_insight', ''))}
-            </div>
-            <div style="margin-bottom: 8pt;">
-                <span class="score-number">{percentile}</span>
-                <span style="margin-left: 6pt; font-size: 10.5px; color: #666;">percentile</span>
-            </div>
-            <div class="percentile-bar">
-                <div class="percentile-fill" style="width: {percentile}%;"></div>
-            </div>
-            <div style="border-top: 0.5pt solid #e0e0e0; padding-top: 8pt; font-size: 10.5px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 3pt;">
-                    <span style="color: #666;">Your position</span>
-                    <span style="font-weight: 500; color: #0066cc;">{escape_html(pos)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="color: #666;">Plain English</span>
-                    <span style="font-weight: 500; color: #0066cc; font-size: 9px;">{escape_html(plain)}</span>
-                </div>
-            </div>
-        </div>
-'''
-    
-    html += '</div>\n'
-    return html
-
-
-def build_question_profile(questions: list) -> str:
-    """Build HTML for question-level profile (Section 6)."""
-    if not questions or not isinstance(questions, list):
-        return ""
-    
-    html = ""
-    current_dim = ""
-    
-    for q in questions:
-        if not isinstance(q, dict):
-            continue
-        
-        # Add dimension header if changed
-        q_dim = q.get('dimension', 'unknown')
-        if q_dim != current_dim:
-            if current_dim != "":
-                html += "</div>\n"
-            current_dim = q_dim
-            html += f'<div class="question-dimension"><h3>{escape_html(q_dim.upper())}</h3>\n'
-        
-        # Build histogram
-        distribution = q.get('distribution', [])
-        bars_html = ""
-        if distribution:
-            max_dist = max(distribution) if distribution else 1
-            for i, pct in enumerate(distribution):
-                if max_dist > 0:
-                    height = (pct / max_dist * 100)
-                else:
-                    height = 0
-                bars_html += f'<div class="histogram-bar" style="height: {height}%; background: #ccc;"></div>'
-        
-        q_num = q.get('number', i+1)
-        q_var = q.get('variable', 'unknown')
-        q_answer = q.get('respondent_answer', '?')
-        q_percentile = q.get('respondent_percentile', 50)
-        q_position = positional_label(q_percentile)
-        q_plain = plain_english_percentile(q_percentile)
-        q_age_group = q.get('age_group', '25-34')
-        q_age_percentile = q.get('age_percentile', 50)
-        
-        html += f'''
-        <div class="question-card">
-            <div class="question-header">
-                <span class="question-number">Q{q_num}</span>
-                <span class="question-key">{escape_html(q_var)}</span>
-            </div>
-            
-            <div class="question-answer">
-                <span class="answer-label">Your answer:</span>
-                <span class="answer-value">{escape_html(str(q_answer))}</span>
-                <span class="answer-scale">/7</span>
-            </div>
-            
-            <div class="histogram-container">
-                <div class="histogram">{bars_html}</div>
-                <div class="histogram-scale">
-                    <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span>
-                </div>
-            </div>
-            
-            <div class="question-comparison">
-                <div class="percentile-line">
-                    <span class="label">Your percentile:</span>
-                    <span class="value">{q_percentile}th</span>
-                    <span class="position">({escape_html(q_position)})</span>
-                </div>
-                <div class="plain-english">{escape_html(q_plain)}</div>
-                <div class="age-comparison">
-                    vs {escape_html(q_age_group)}: {q_age_percentile}th percentile
-                </div>
-            </div>
-        </div>
-'''
-    
-    if current_dim != "":
-        html += "</div>\n"
-    
-    return html
-
-
-def build_report_html(report_dict: Dict[str, Any]) -> str:
+def fetch_stripe_session(stripe_session_id):
     """
-    Build complete HTML report from report_dict.
+    Fetch Stripe checkout session details.
+    
+    Used to:
+    - Verify payment status (payment_status == 'paid')
+    - Recover client_reference_id (assessment session_id)
+    - Get customer email
     
     Args:
-        report_dict: Output from report_generator.generate_premium_report()
+        stripe_session_id (str): Stripe checkout session ID
     
     Returns:
-        str: Complete HTML string ready for PDF or display
+        dict: Session data, or None if not found/error
     """
+    if not stripe_session_id:
+        return None
     
-    if not isinstance(report_dict, dict):
-        return "<p>Error: Invalid report data</p>"
+    try:
+        import urllib.request
+        stripe_config = get_stripe_config()
+        
+        url = f'https://api.stripe.com/v1/checkout/sessions/{stripe_session_id}'
+        req = urllib.request.Request(
+            url,
+            headers={'Authorization': f'Bearer {stripe_config.secret_key}'},
+        )
+        
+        response = urllib.request.urlopen(req, timeout=15)
+        session_data = json.loads(response.read())
+        return session_data
     
-    metadata = report_dict.get('metadata', {})
-    demographics = metadata.get('demographics', {})
+    except Exception as e:
+        print(f'Failed to fetch Stripe session {stripe_session_id}: {e}')
+        return None
+
+
+def upload_report_pdf(session_id, pdf_bytes):
+    """
+    Upload the generated report PDF to Supabase Storage and return its public URL.
     
-    # Extract key sections
-    opening = report_dict.get('opening', '')
-    section_1_dashboard = report_dict.get('section_1_dashboard', {})
-    section_3_how_typical = report_dict.get('section_3_how_typical', {})
-    section_4_what_different = report_dict.get('section_4_what_different', '')
-    section_5_behaviour_story = report_dict.get('section_5_behaviour_story', '')
-    section_6_question_profile = report_dict.get('section_6_question_profile', {})
-    section_7_distinctive_responses = report_dict.get('section_7_distinctive_responses', '')
-    section_8_perception_gap = report_dict.get('section_8_perception_gap', '')
-    section_10_trajectory = report_dict.get('section_10_trajectory', '')
-    deep_dive = report_dict.get('deep_dive', {})
+    Overwrites any existing PDF for this session (x-upsert) so a regenerated
+    report replaces the old file.
     
-    # Build metadata line
-    meta_parts = []
-    if demographics.get('age_group'):
-        meta_parts.append(escape_html(demographics['age_group']))
-    if demographics.get('country'):
-        meta_parts.append(escape_html(demographics['country']))
-    from datetime import datetime
-    meta_parts.append(datetime.now().strftime('%B %d, %Y'))
-    meta_text = ' • '.join(meta_parts)
+    Args:
+        session_id: Session identifier (used as filename)
+        pdf_bytes: PDF binary data from build_report_pdf()
     
-    # Build complete HTML
-    html = '''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your AI Identity Report — Human Clarity Institute</title>
-    <style>
-        :root {
-            --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            --font-size-body: 10.5px;
-            --color-primary: #0066cc;
-            --color-text: #1a1a1a;
-            --color-text-secondary: #666;
-            --color-bg-light: #fafafa;
-            --color-border: #e0e0e0;
-            --spacing-lg: 12pt;
-            --spacing-md: 8pt;
-            --spacing-sm: 6pt;
-        }
-        
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html { font-size: 16px; }
-        body {
-            font-family: var(--font-family-body);
-            font-size: var(--font-size-body);
-            color: var(--color-text);
-            background: #fff;
-            line-height: 1.3;
-        }
-        
-        .report {
-            max-width: 8in;
-            margin: 0 auto;
-            padding: 0.5in 0.75in;
-            background: #fff;
-        }
-        
-        h1, h2, h3, h4 { font-weight: 600; margin: 0 0 var(--spacing-md) 0; }
-        h1 { font-size: 16px; }
-        h2 { font-size: 13px; color: var(--color-primary); }
-        h3 { font-size: 12px; }
-        p { margin: 0 0 var(--spacing-sm) 0; line-height: 1.3; }
-        
-        .report-section { margin-bottom: 20pt; }
-        .section-subtitle { font-size: var(--font-size-body); color: var(--color-text-secondary); }
-        
-        .dimension-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 16pt;
-            margin-bottom: 20pt;
-        }
-        
-        .dimension-card {
-            border: 0.5pt solid var(--color-border);
-            padding: 16pt;
-            border-radius: 6px;
-        }
-        
-        .dimension-label { font-size: 9px; text-transform: uppercase; color: #999; margin-bottom: 3pt; }
-        .dimension-name { font-size: 12px; font-weight: 600; margin-bottom: 8pt; }
-        .score-number { font-size: 18px; font-weight: 700; color: var(--color-primary); }
-        .percentile-bar { width: 100%; height: 12px; background: #f5f5f5; margin-bottom: 8pt; border-radius: 2px; }
-        .percentile-fill { height: 100%; background: var(--color-primary); width: 0; }
-        
-        .narrative { font-size: var(--font-size-body); line-height: 1.3; margin-bottom: var(--spacing-lg); }
-        .narrative-paragraph { margin-bottom: var(--spacing-sm); }
-        
-        .divider { border: none; border-top: 0.5pt solid var(--color-border); margin: var(--spacing-lg) 0; }
-        
-        .question-dimension {
-            margin-bottom: 24pt;
-            border-top: 0.5pt solid var(--color-border);
-            padding-top: 12pt;
-        }
-        
-        .question-dimension h3 {
-            font-size: 11px;
-            color: var(--color-primary);
-            margin-bottom: 12pt;
-            text-transform: uppercase;
-        }
-        
-        .question-card {
-            margin-bottom: 16pt;
-            padding: 12pt;
-            border: 0.5pt solid var(--color-border);
-            border-radius: 4px;
-            background: #fafafa;
-        }
-        
-        .question-header {
-            display: flex;
-            gap: 12pt;
-            margin-bottom: 8pt;
-            font-size: 9px;
-        }
-        
-        .question-number {
-            font-weight: 600;
-            color: var(--color-primary);
-        }
-        
-        .question-key {
-            color: #999;
-            font-style: italic;
-        }
-        
-        .question-answer {
-            display: flex;
-            gap: 6pt;
-            align-items: baseline;
-            margin-bottom: 10pt;
-            font-size: 10px;
-        }
-        
-        .answer-label {
-            color: #666;
-        }
-        
-        .answer-value {
-            font-weight: 700;
-            font-size: 12px;
-            color: var(--color-primary);
-        }
-        
-        .answer-scale {
-            color: #999;
-            font-size: 9px;
-        }
-        
-        .histogram-container {
-            margin-bottom: 10pt;
-        }
-        
-        .histogram {
-            display: flex;
-            align-items: flex-end;
-            gap: 2px;
-            height: 40px;
-            padding: 4pt 0;
-            border-bottom: 0.5pt solid var(--color-border);
-        }
-        
-        .histogram-bar {
-            flex: 1;
-            min-height: 2px;
-            border-radius: 1px;
-        }
-        
-        .histogram-scale {
-            display: flex;
-            justify-content: space-between;
-            font-size: 8px;
-            color: #999;
-            padding: 2pt 0;
-        }
-        
-        .question-comparison {
-            font-size: 9px;
-        }
-        
-        .percentile-line {
-            display: flex;
-            gap: 8pt;
-            margin-bottom: 4pt;
-        }
-        
-        .percentile-line .label {
-            color: #666;
-        }
-        
-        .percentile-line .value {
-            font-weight: 600;
-            color: var(--color-primary);
-        }
-        
-        .percentile-line .position {
-            color: #999;
-        }
-        
-        .plain-english {
-            color: #666;
-            margin-bottom: 4pt;
-            line-height: 1.3;
-        }
-        
-        .age-comparison {
-            color: #999;
-            font-size: 8px;
-        }
-        
-        @media print {
-            body { margin: 0; padding: 0; }
-            .report { max-width: 100%; margin: 0; }
-        }
-    </style>
-</head>
-<body>
+    Returns:
+        Public URL string, or None on any failure (non-fatal)
+    """
+    try:
+        supabase_url = os.environ.get('SUPABASE_URL')
+        supabase_key = os.environ.get('SUPABASE_KEY')
+        if not supabase_url or not supabase_key or not pdf_bytes or not session_id:
+            return None
 
-<div class="report">
+        path = f'{urllib.parse.quote(session_id)}.pdf'
+        upload_url = f'{supabase_url}/storage/v1/object/{REPORT_PDF_BUCKET}/{path}'
 
-    <div class="report-section">
-        <h1>Your AI Identity Report</h1>
-        <p class="text-secondary">{meta_text}</p>
-        <hr class="divider">
-    </div>
+        req = urllib.request.Request(
+            upload_url,
+            data=pdf_bytes,
+            headers={
+                'apikey': supabase_key,
+                'Authorization': f'Bearer {supabase_key}',
+                'Content-Type': 'application/pdf',
+                'x-upsert': 'true',
+            },
+            method='POST',
+        )
+        urllib.request.urlopen(req, timeout=20)
 
-    <div class="report-section">
-        <h2>Most Surprising Finding</h2>
-        <div class="narrative">{format_prose(opening)}</div>
-    </div>
+        public_url = (
+            f'{supabase_url}/storage/v1/object/public/'
+            f'{REPORT_PDF_BUCKET}/{path}'
+        )
+        print(f'Report PDF uploaded for session {session_id}')
+        return public_url
 
-    <div class="report-section">
-        <h2>Your AI Behaviour Pattern</h2>
-        <p class="section-subtitle">How you compare across nine dimensions</p>
-        {build_dimension_cards(section_1_dashboard.get('dimensions', {}))}
-    </div>
+    except Exception as e:
+        print(f'PDF upload failed (non-fatal): {e}')
+        return None
 
-    <div class="report-section">
-        <h2>How Typical Is Your AI Behaviour?</h2>
-        <div class="narrative">{escape_html(str(section_3_how_typical))}</div>
-    </div>
 
-    <div class="report-section">
-        <h2>What's Different About Your Pattern</h2>
-        <div class="narrative">{format_prose(section_4_what_different)}</div>
-    </div>
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
-    <div class="report-section">
-        <h2>Your Behaviour Story</h2>
-        <div class="narrative">{format_prose(section_5_behaviour_story)}</div>
-    </div>
 
-    <div class="report-section">
-        <h2>Your Question-Level Profile</h2>
-        {build_question_profile(section_6_question_profile.get('questions', []))}
-    </div>
 
-    <div class="report-section">
-        <h2>Your Most Distinctive Responses</h2>
-        <div class="narrative">{format_prose(section_7_distinctive_responses)}</div>
-    </div>
 
-    <div class="report-section">
-        <h2>Perception Gap Analysis</h2>
-        <div class="narrative">{format_prose(section_8_perception_gap)}</div>
-    </div>
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
-    <div class="report-section">
-        <h2>Your Trajectory & Outlook</h2>
-        <div class="narrative">{format_prose(section_10_trajectory)}</div>
-    </div>
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint."""
+    benchmark_exists = os.path.exists(BENCHMARK_PATH)
+    return jsonify({
+        'status': 'ok',
+        'benchmark_loaded': benchmark_exists,
+        'timestamp': datetime.utcnow().isoformat(),
+    }), 200
 
-    <div class="report-section">
-        <hr class="divider">
-        <h2>Deep Dive: Deeper Insights Into Your Pattern</h2>
-        <div class="narrative">{format_prose(deep_dive.get('opening', ''))}</div>
-    </div>
 
-    <div class="report-section">
-        <h3>Your Pattern Across Research Lenses</h3>
-        <div class="narrative">{format_prose(deep_dive.get('part_1_research_lenses', ''))}</div>
-    </div>
+# ============================================================
+# HELPER: Generate response percentiles (Requirement 2)
+# ============================================================
 
-    <div class="report-section">
-        <h3>What Your Rare Combination Reveals</h3>
-        <div class="narrative">{format_prose(deep_dive.get('part_4_rare_combination', ''))}</div>
-    </div>
-
-    <div class="report-section">
-        <h3>Cross-Dimensional Architecture</h3>
-        <div class="narrative">{format_prose(deep_dive.get('part_5_cross_dimensional', ''))}</div>
-    </div>
-
-    <div class="report-section">
-        <hr class="divider">
-        <p style="font-size: 9px; color: var(--color-text-secondary);">
-            <strong>About This Report</strong><br>
-            This assessment measures nine dimensions of your AI behaviour, benchmarked against 10,500+ participants.
-            Learn more at <a href="https://humanclarityinstitute.com" style="color: var(--color-primary);">humanclarityinstitute.com</a>
-        </p>
-    </div>
-
-</div>
-
-</body>
-</html>'''
+def generate_percentiles(responses, demographics, scoring_results):
+    """
+    Generate percentiles for each individual question response.
     
-    return html
-
-
-if __name__ == '__main__':
-    # Test with sample data
-    sample_report = {
-        'metadata': {
-            'demographics': {
-                'age_group': '25-34',
-                'country': 'New Zealand'
-            }
-        },
-        'opening': 'This is a test opening paragraph.',
-        'section_1_dashboard': {
-            'dimensions': {
-                'trust': {
-                    'percentile': 72,
-                    'raw_score': 5.2,
-                    'research_insight': 'You show above-average trust in AI systems.'
+    For each of the 39 questions, calculate:
+    - User's response (1-7)
+    - Percentile vs all participants
+    - Percentile vs age group
+    - Question text
+    - Dimension
+    - Sample sizes
+    
+    Args:
+        responses (dict): User's 39 question responses
+        demographics (dict): Age group, gender, country, frequency
+        scoring_results (dict): Output from scoring_engine (has dimension_scores)
+    
+    Returns:
+        dict: {question_key: {response, percentile_overall, percentile_age_group, ...}}
+    """
+    try:
+        # Load benchmark to calculate percentiles
+        benchmark = get_benchmark()
+        
+        # Map questions to dimensions
+        dimension_variables = {
+            'trust': ['trust_q1', 'trust_q2', 'trust_q3', 'trust_q4'],
+            'disclosure': ['disc_q1', 'disc_q2', 'disc_q3', 'disc_q4'],
+            'reliance': ['rel_q1', 'rel_q2', 'rel_q3', 'rel_q4', 'rel_q5'],
+            'decision_delegation': ['del_q1', 'del_q2', 'del_q3', 'del_q4', 'del_q5'],
+            'verification': ['ver_q1', 'ver_q2', 'ver_q3', 'ver_q4'],
+            'human_agency': ['agency_q1', 'agency_q2', 'agency_q3', 'agency_q4', 'agency_q5'],
+            'emotional_regulation': ['emot_q1', 'emot_q2', 'emot_q3', 'emot_q4'],
+            'thought_partnership': ['thought_q1', 'thought_q2', 'thought_q3', 'thought_q4'],
+            'social_transparency': ['soc_q1', 'soc_q2', 'soc_q3', 'soc_q4']
+        }
+        
+        # Question text mapping (basic — can be enhanced)
+        question_text_map = {
+            'trust_q1': 'I feel confident trusting information from AI',
+            'trust_q2': 'I would rely on AI output without additional verification',
+            'trust_q3': 'I worry that AI might present false information to me',
+            'trust_q4': 'I trust AI to give me accurate information',
+            'disc_q1': 'I share personal thoughts and feelings with AI',
+            'disc_q2': 'I tell AI things I haven\'t told other people',
+            'disc_q3': 'I am more open with AI than I am with people',
+            'disc_q4': 'I use AI as a space to think through personal concerns',
+            'rel_q1': 'I feel restless when I don\'t have access to AI',
+            'rel_q2': 'I struggle to work without access to my AI tools',
+            'rel_q3': 'I feel confident relying on AI outputs',
+            'rel_q4': 'I would have difficulty doing my work without AI assistance',
+            'rel_q5': 'I rely on AI regularly in my daily work',
+            'del_q1': 'I rely on AI to make decisions for me',
+            'del_q2': 'I tend to follow AI recommendations even if I\'m unsure',
+            'del_q3': 'I worry my skills are declining from delegating to AI',
+            'del_q4': 'I regularly hand over tasks to AI',
+            'del_q5': 'I accept AI suggestions without much modification',
+            'ver_q1': 'I double-check information that AI provides',
+            'ver_q2': 'I skip verification because the effort isn\'t worth it',
+            'ver_q3': 'I use external sources to verify AI outputs',
+            'ver_q4': 'I proceed without checking AI information',
+            'agency_q1': 'I feel self-directed when using AI',
+            'agency_q2': 'I feel in control of my decisions when AI is involved',
+            'agency_q3': 'I trust my own judgement over AI suggestions',
+            'agency_q4': 'AI nudges influence me without my realizing it',
+            'agency_q5': 'I feel ownership over decisions I make with AI help',
+            'emot_q1': 'AI provides me emotional support',
+            'emot_q2': 'I use AI as an alternative to human emotional support',
+            'emot_q3': 'AI helps me process difficult emotions',
+            'emot_q4': 'I use AI to cope with stress or anxiety',
+            'thought_q1': 'AI helps me think more deeply',
+            'thought_q2': 'AI validates my existing beliefs rather than challenging them',
+            'thought_q3': 'I use AI as a thinking partner to develop ideas',
+            'thought_q4': 'AI helps me challenge my assumptions',
+            'soc_q1': 'I am transparent with others about my use of AI',
+            'soc_q2': 'I conceal how much I use AI from others',
+            'soc_q3': 'I am comfortable telling people about my AI use',
+            'soc_q4': 'There\'s a gap between how much AI I actually use and what others think',
+        }
+        
+        percentiles = {}
+        age_group = demographics.get('age_group', 'unknown')
+        
+        # Process each question
+        for dim_name, questions in dimension_variables.items():
+            for q_key in questions:
+                if q_key not in responses:
+                    continue
+                
+                user_response = responses[q_key]
+                
+                # Get percentiles from benchmark
+                pct_overall = benchmark.get_percentile(q_key, user_response, segment=None)
+                pct_age_group = benchmark.get_percentile(q_key, user_response, segment=('age_group', age_group))
+                
+                # Get sample sizes
+                n_overall = benchmark.get_sample_size(q_key, segment=None)
+                n_age_group = benchmark.get_sample_size(q_key, segment=('age_group', age_group))
+                
+                # Determine if rare or distinctive
+                is_rare = pct_overall >= 86 or pct_overall <= 14
+                
+                                
+                percentiles[q_key] = {
+                    'response': user_response,
+                    'percentile_overall': pct_overall,
+                    'percentile_age_group': pct_age_group,
+                    'question_text': question_text_map.get(q_key, f'Question {q_key}'),
+                    'dimension': dim_name,
+                    'n_overall': n_overall,
+                    'n_age_group': n_age_group,
+                    'is_rare': is_rare,
+                    'distribution': [sum(1 for v in benchmark.data['dimensions'][dim_name]['overall']['values'] if int(v) == i) for i in range(1, 8)],
                 }
-            }
-        }
+        
+        return percentiles
+    
+    except Exception as e:
+        print(f'Error generating response percentiles: {e}')
+        return {}
+
+
+# ============================================================
+# ASSESSMENT SCORING (POST /score)
+# ============================================================
+
+@app.route('/score', methods=['POST'])
+def score():
+    """
+    Score a completed assessment and store results.
+    
+    Request:
+    {
+        "responses": {39 question responses},
+        "demographics": {age_group, gender, country, ai_tool_use_frequency},
+        "report_email": "user@example.com",
+        "consent": true,
+        "consent_timestamp": "2026-06-25T...",
+        "session_id": "optional-existing-session-id"
     }
     
-    html = build_report_html(sample_report)
-    print(f"Generated {len(html)} characters of HTML")
+    Response:
+    {
+        "success": true,
+        "session_id": "...",
+        "dimension_scores": {...},
+        "full_results": {...}
+    }
+    """
+    try:
+        request_data = request.get_json()
+        if not request_data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        # Extract data
+        responses = request_data.get('responses', {})
+        demographics = request_data.get('demographics', {})
+        report_email = request_data.get('report_email')
+        consent = request_data.get('consent', False)
+        consent_timestamp = request_data.get('consent_timestamp')
+        session_id = request_data.get('session_id')
+        
+        # Validate required fields
+        if not responses or not demographics:
+            return jsonify({'success': False, 'error': 'Missing responses or demographics'}), 400
+        
+        # Generate session_id if not provided
+        if not session_id:
+            import uuid
+            session_id = str(uuid.uuid4())
+        
+        # Score the assessment (Layer 1)
+        scoring_results = score_assessment(responses, demographics, session_id=session_id)
+        
+        # Generate response percentiles (Requirement 2: variable-level answers vs full + age group)
+        percentiles = generate_percentiles(responses, demographics, scoring_results)
+        
+        # Store in Supabase - include ALL data so results page has complete access
+        db = get_supabase_client()
+        store_result = db.store_assessment(
+            session_id=session_id,
+            responses=responses,
+            demographics=demographics,
+            full_results=scoring_results,
+            dimension_scores=scoring_results.get('dimension_scores', {}),
+            perception_gaps=scoring_results.get('perception_gaps', []),
+            patterns=scoring_results.get('rare_combinations', []),
+            percentiles=percentiles,
+            report_email=report_email,
+            consent=consent,
+            consent_timestamp=consent_timestamp
+        )
+        
+        if not store_result.get('success'):
+            print(f'Failed to store assessment: {store_result.get("message")}')
+        
+        # Return results
+        return jsonify({
+            'success': True,
+            'session_id': session_id,
+            'dimension_scores': scoring_results.get('dimension_scores', {}),
+            'percentiles': percentiles,          # ← Question-level percentiles
+            'perception_gaps': scoring_results.get('perception_gaps', []),
+            'rare_combinations': scoring_results.get('rare_combinations', []),
+            'full_results': scoring_results
+        }), 200
+    
+    except Exception as e:
+        print(f'Score endpoint error: {e}')
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Assessment scoring failed'
+        }), 500
+
+
+# ============================================================
+# RETRIEVE RESULTS (GET /results)
+# ============================================================
+
+@app.route('/results', methods=['GET'])
+def get_results():
+    """
+    Retrieve stored assessment results by session_id.
+    
+    Query params:
+        session_id: Assessment session ID
+    
+    Response:
+    {
+        "success": true,
+        "session_id": "...",
+        "full_results": {...},
+        "report_email": "..."
+    }
+    """
+    try:
+        session_id = request.args.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+        
+        db = get_supabase_client()
+        assessment = db.get_assessment(session_id)
+        
+        if not assessment:
+            return jsonify({'success': False, 'error': 'Session not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'session_id': session_id,
+            'full_results': assessment.get('full_results'),
+            'percentiles': assessment.get('percentiles', {}),
+            'demographics': assessment.get('demographics', {}),
+            'report_email': assessment.get('report_email'),
+            'paid': assessment.get('paid', False)
+        }), 200
+    
+    except Exception as e:
+        print(f'Get results error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not retrieve results'}), 500
+
+
+# ============================================================
+# CREATE STRIPE CHECKOUT (POST /create-checkout)
+# ============================================================
+
+@app.route('/create-checkout', methods=['POST'])
+def create_checkout():
+    """
+    Create a Stripe Checkout Session for premium report.
+    
+    Request:
+    {
+        "session_id": "assessment-session-id",
+        "email": "user@example.com"  (optional)
+    }
+    
+    Response:
+    {
+        "success": true,
+        "session_id": "stripe-session-id",
+        "url": "https://checkout.stripe.com/..."
+    }
+    """
+    try:
+        request_data = request.get_json() or {}
+        session_id = request_data.get('session_id')
+        email = request_data.get('email')
+        
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+        
+        # Create checkout via Stripe
+        stripe = get_stripe_config()
+        result = stripe.create_checkout_session(session_id, email)
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'session_id': result['session_id'],
+                'url': result['url']
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('message', 'Checkout creation failed')
+            }), 400
+    
+    except Exception as e:
+        print(f'Create checkout error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Checkout creation failed'}), 500
+
+
+# ============================================================
+# STRIPE WEBHOOK (POST /webhook/stripe)
+# ============================================================
+
+@app.route('/webhook/stripe', methods=['POST'])
+def webhook_stripe():
+    """
+    Stripe webhook handler for payment confirmation.
+    
+    Stripe sends signed events to this endpoint.
+    On checkout.session.completed, we mark the assessment as paid,
+    store the Stripe session ID, and trigger report generation automatically.
+    """
+    try:
+        # Get raw request body and signature
+        payload = request.get_data(as_text=True)
+        signature = request.headers.get('Stripe-Signature')
+        
+        if not signature:
+            print('Missing Stripe-Signature header')
+            return jsonify({'error': 'Missing signature'}), 400
+        
+        # Verify signature
+        stripe = get_stripe_config()
+        if not stripe.verify_webhook_signature(payload, signature):
+            print('Webhook signature verification failed')
+            return jsonify({'error': 'Invalid signature'}), 403
+        
+        # Parse event
+        event = stripe.parse_webhook_event(payload)
+        if not event:
+            return jsonify({'error': 'Invalid JSON'}), 400
+        
+        # Handle checkout.session.completed
+        if event.get('type') == 'checkout.session.completed':
+            checkout_data = stripe.handle_checkout_completed(event)
+            if not checkout_data:
+                return jsonify({'error': 'Invalid event data'}), 400
+            
+            stripe_session_id = checkout_data['stripe_session_id']
+            customer_email = checkout_data['customer_email']
+            report_email = customer_email  # Email report to the Stripe customer's address
+            
+            # Fetch Stripe session to get client_reference_id (assessment session_id)
+            stripe_session = fetch_stripe_session(stripe_session_id)
+            if not stripe_session:
+                print(f'Failed to fetch Stripe session {stripe_session_id}')
+                return jsonify({'received': True}), 200  # Still return 200 to ack webhook
+            
+            session_id = stripe_session.get('client_reference_id')
+            if not session_id:
+                print(f'No client_reference_id in Stripe session {stripe_session_id}')
+                return jsonify({'received': True}), 200
+            
+            print(f'Webhook: Payment confirmed for Stripe session {stripe_session_id}, assessment {session_id}')
+            
+            # STEP 1: Update assessment to mark as paid and store stripe_session_id (SAME ROW)
+            db = get_supabase_client()
+            try:
+                paid_at = datetime.utcnow().isoformat()
+                # Use update_assessment to store stripe_session_id WITHOUT creating a new row
+                db.update_assessment(
+                    session_id=session_id,
+                    paid=True,
+                    paid_at=paid_at,
+                    stripe_session_id=stripe_session_id,
+                    report_email=customer_email
+                )
+                print(f'Marked assessment {session_id} as paid with Stripe session {stripe_session_id}')
+            except Exception as e:
+                print(f'Failed to mark assessment as paid: {e}')
+                return jsonify({'received': True}), 200  # Still ack webhook
+            
+            # STEP 2: Auto-trigger premium report generation
+            try:
+                # Get full results from DB
+                assessment = db.get_assessment(session_id)
+                if not assessment:
+                    print(f'Assessment {session_id} not found in DB')
+                    return jsonify({'received': True}), 200
+                
+                full_results = assessment.get('full_results')
+                if not full_results:
+                    print(f'No full_results for assessment {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Generate report
+                api_key = os.environ.get('ANTHROPIC_API_KEY')
+                if not api_key:
+                    print('ANTHROPIC_API_KEY not configured')
+                    return jsonify({'received': True}), 200
+                
+                # Build complete results structure with ALL needed fields
+                # Must match structure expected by generate_premium_report()
+                # This includes ALL data types: assessment responses (39), perception questions (3), demographics (4)
+                demographics = assessment.get('demographics', {})  # age_group, gender, country, ai_tool_use_frequency
+                responses = assessment.get('responses', {})        # 39 assessment + 3 perception questions
+                percentiles = assessment.get('percentiles', {})
+                
+                results_for_report = {
+                    'full_results': full_results,
+                    'demographics': demographics,  # ← CRITICAL: Used for cohort context in opening section
+                    'responses': responses,
+                    'percentiles': percentiles,
+                    'session_id': session_id
+                }
+                
+                print(f'Webhook: Generating premium report for session {session_id}')
+                report_dict = generate_premium_report(
+                    results=results_for_report,
+                    api_key=api_key,
+                    session_id=session_id
+                )
+                
+                if not report_dict:
+                    print(f'Report generation returned empty for session {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Build HTML
+                report_html_str = build_report_html(report_dict)
+                if not report_html_str:
+                    print(f'HTML builder failed for session {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Generate PDF
+                pdf_bytes = None
+                try:
+                    pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+                    if pdf_bytes:
+                        print(f'Report PDF generated successfully for session {session_id}')
+                    else:
+                        print(f'PDF generation returned None - email will send without attachment')
+                except Exception as e:
+                    print(f'PDF generation failed (non-fatal): {e}')
+                    traceback.print_exc()
+                
+                # Send email with report
+
+                
+                # Update DB with cached report
+                try:
+                    db.update_report(
+                        session_id=session_id,
+                        premium_report=report_dict
+                    )
+                    print(f'Report cached in DB for session {session_id}')
+                except Exception as e:
+                    print(f'Failed to cache report: {e}')
+                
+            except Exception as e:
+                print(f'Webhook: Report generation failed: {e}')
+                traceback.print_exc()
+                # Still return 200 to ack webhook (don't want Stripe retrying)
+        
+        return jsonify({'received': True}), 200
+    
+    except Exception as e:
+        print(f'Webhook error: {e}')
+        traceback.print_exc()
+        return jsonify({'error': 'Webhook processing failed'}), 500
+
+
+# ============================================================
+# GENERATE PREMIUM REPORT (POST /premium)
+# ============================================================
+
+@app.route('/premium', methods=['POST'])
+def premium():
+    """
+    Generate premium report after payment confirmation.
+    
+    Request:
+    {
+        "session_id": "assessment-session-id",  (optional - can be recovered from Stripe)
+        "stripe_session_id": "stripe_session_id",  (optional - used to verify payment)
+        "full_results": {...}  (optional, retrieved from DB if not provided)
+    }
+    
+    Response:
+    {
+        "success": true,
+        "message": "Report generated and emailed"
+    }
+    
+    This endpoint:
+    1. Checks if report is already cached (prevent duplicate generation)
+    2. Verifies payment via Stripe (if stripe_session_id provided)
+    3. Recovers session_id from Stripe client_reference_id if needed
+    4. Marks assessment as paid
+    5. Calls report_generator (Layer 3) to create HTML report
+    6. Generates PDF and uploads to Supabase Storage
+    7. Sends email with report link
+    8. Caches report in Supabase
+    """
+    try:
+        request_data = request.get_json() or {}
+        session_id = request_data.get('session_id')
+        stripe_session_id = request_data.get('stripe_session_id')
+        full_results = request_data.get('full_results')
+        report_email = request_data.get('report_email')
+        
+        db = get_supabase_client()
+        
+        # Step 1: Recover session_id from Stripe if not provided
+        # This handles the redirect case where session_id might not be in URL
+        stripe_session = None
+        if stripe_session_id:
+            stripe_session = fetch_stripe_session(stripe_session_id)
+            if stripe_session and not session_id:
+                session_id = stripe_session.get('client_reference_id')
+                print(f'Recovered session_id from Stripe: {session_id}')
+        
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided or recoverable'}), 400
+        
+        # Step 2: Check cache first
+        cached_report = db.get_cached_report(session_id)
+        if cached_report:
+            print(f'Report cache hit for session {session_id}')
+            return jsonify({
+                'success': True,
+                'report': cached_report,
+                'cached': True
+            }), 200
+        
+        # Step 3: Verify payment (STRICT GATE)
+        # If Stripe session was provided, verify payment was actually made
+        if stripe_session_id:
+            if not stripe_session:
+                return jsonify({
+                    'success': False,
+                    'error': 'Payment verification failed. Please contact support.'
+                }), 402
+            
+            payment_status = stripe_session.get('payment_status')
+            if payment_status != 'paid':
+                print(f'Payment not confirmed for Stripe session {stripe_session_id}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Payment not confirmed. If you just paid, please refresh this page.'
+                }), 402
+            
+            # Get customer email from Stripe (preferred over form email)
+            customer_details = stripe_session.get('customer_details') or {}
+            stripe_email = customer_details.get('email') or stripe_session.get('customer_email')
+            if stripe_email:
+                report_email = stripe_email
+                # Update assessment row with correct Stripe email (overrides burner email from /score)
+                db.update_assessment(
+                    session_id=session_id,
+                    report_email=stripe_email
+                )
+                print(f'Updated assessment report_email to: {stripe_email}')
+        
+       # Step 4: Get complete assessment (all fields needed for report)
+        if not full_results:
+            assessment = db.get_assessment(session_id)
+            if not assessment:
+                return jsonify({
+                    'success': False,
+                    'error': 'Assessment data not found'
+                }), 404
+            full_results = assessment.get('full_results')
+            if not full_results:
+                return jsonify({
+                    'success': False,
+                    'error': 'Assessment scoring data not found'
+                }), 404
+        else:
+            # If full_results was provided in request, still get full assessment for other fields
+            assessment = db.get_assessment(session_id)
+        
+        # Extract all needed fields from assessment
+        demographics = assessment.get('demographics', {})
+        responses = assessment.get('responses', {})
+        percentiles = assessment.get('percentiles', {})
+        
+        # Step 5: Mark as paid and store stripe_session_id (SAME ROW)
+        from datetime import datetime
+        db.update_assessment(
+            session_id=session_id,
+            paid=True,
+            paid_at=datetime.utcnow().isoformat(),
+            stripe_session_id=stripe_session_id
+        )
+        
+        # Step 6: Generate premium report (Layer 3)
+        # This calls report_generator which makes 9 Claude API calls
+        try:
+            api_key = os.environ.get('ANTHROPIC_API_KEY')
+            if not api_key:
+                print('ANTHROPIC_API_KEY not configured')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report generation not available'
+                }), 503
+            
+            print(f'Generating premium report for session {session_id}')
+            
+            # Build complete results structure with all data report generator needs
+            results_for_report = {
+                'full_results': full_results,
+                'demographics': demographics,
+                'responses': responses,
+                'percentiles': percentiles,
+                'session_id': session_id
+            }
+            
+            # Generate report dict (9 API calls + 4 data sections)
+            report_dict = generate_premium_report(
+                results=results_for_report,
+                api_key=api_key,
+                session_id=session_id
+            )
+            
+            if not report_dict:
+                print(f'Report generator returned empty dict for session {session_id}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report generation failed'
+                }), 500
+            
+            # Convert report_dict to professional HTML for PDF
+            print(f'Building HTML for session {session_id}')
+            report_html_str = build_report_html(report_dict)
+            
+            if not report_html_str:
+                print(f'HTML builder returned empty string for session {session_id}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report rendering failed'
+                }), 500
+        
+        except ImportError as e:
+            print(f'Missing report generator module: {e}')
+            return jsonify({
+                'success': False,
+                'error': 'Report generator not available'
+            }), 500
+        except Exception as e:
+            print(f'Report generation error: {e}')
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'error': f'Report generation failed: {str(e)}'
+            }), 500
+        
+        # Step 7: PDF generation
+        pdf_bytes = None
+        try:
+            pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+            if pdf_bytes:
+                print(f'Report PDF generated successfully for session {session_id}')
+            else:
+                print(f'PDF generation returned None - email will send without attachment')
+        except Exception as e:
+            print(f'PDF generation error (non-fatal): {e}')
+            traceback.print_exc()
+            # Non-fatal - report still displays in browser without PDF
+        
+        # Step 8: Send email with report link
+        email_sent = False
+        try:
+            if report_email:
+                # Call send_report_email directly with all required parameters
+                resend_key = os.environ.get('RESEND_API_KEY')
+                if resend_key:
+                    email_result = send_report_email(
+                        to_email=report_email,
+                        report=report_dict,
+                        demographics=demographics,
+                        resend_api_key=resend_key,
+                        report_url=f'https://humanclarityinstitute.com/ai-assessment/report/?session_id={session_id}',
+                        pdf_bytes=pdf_bytes,
+                        pdf_filename='HCI-AI-Identity-Report.pdf'
+                    )
+                    if email_result:
+                        email_sent = True
+                        print(f'Report email sent to {report_email}')
+                    else:
+                        print(f'Email send failed')
+                else:
+                    print('RESEND_API_KEY not configured')
+        
+        except Exception as e:
+            print(f'Email sending error: {e}')
+            traceback.print_exc()
+        
+        # Step 9: Upload PDF to Supabase Storage and cache report
+        pdf_url = None
+        try:
+            if pdf_bytes:
+                pdf_url = upload_report_pdf(session_id, pdf_bytes)
+                print(f'PDF stored with URL: {pdf_url}' if pdf_url else 'PDF upload failed')
+        except Exception as e:
+            print(f'PDF storage step failed (non-fatal): {e}')
+
+        # Step 10: Cache report and PDF URL in Supabase
+        try:
+            db.update_report(
+                session_id,
+                premium_report=report_dict,     # Full report data as JSON
+                report_pdf_url=pdf_url          # Public PDF URL (may be None if upload failed)
+            )
+            print(f'Report and PDF URL cached for session {session_id}')
+        
+        except Exception as e:
+            print(f'Report caching error: {e}')
+        
+        return jsonify({
+            'success': True,
+            'report': report_dict
+        }), 200
+    
+    except Exception as e:
+        print(f'Premium endpoint error: {e}')
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': 'Report generation failed'
+        }), 500
+
+
+# ============================================================
+# RETRIEVE PREMIUM REPORT (GET /report)
+# ============================================================
+
+@app.route('/report', methods=['GET'])
+def get_report():
+    """
+    Retrieve cached premium report by session_id.
+    
+    Query params:
+        session_id: Assessment session ID
+    
+    Response:
+    {
+        "success": true,
+        "report": {...cached report HTML...}
+    }
+    """
+    try:
+        session_id = request.args.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session_id provided'}), 400
+        
+        db = get_supabase_client()
+        assessment = db.get_assessment(session_id)
+        
+        if not assessment:
+            return jsonify({'success': False, 'error': 'Session not found'}), 404
+        
+        if not assessment.get('paid'):
+            return jsonify({'success': False, 'error': 'Report not purchased'}), 403
+        
+        report_data = assessment.get('premium_report')
+        if not report_data:
+            return jsonify({'success': False, 'error': 'Report not yet generated'}), 404
+        
+        return jsonify({
+            'success': True,
+            'report': report_data
+        }), 200
+    
+    except Exception as e:
+        print(f'Get report error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not retrieve report'}), 500
+
+
+# ============================================================
+# ERROR HANDLERS
+# ============================================================
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({'error': 'Not found'}), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({'error': 'Server error'}), 500
+
+
+# ============================================================
+# STARTUP
+# ============================================================
+
+if __name__ == '__main__':
+    # Verify dependencies on startup
+    try:
+        _ = get_supabase_client()
+        print('✓ Supabase client initialized')
+    except Exception as e:
+        print(f'⚠ Supabase initialization failed: {e}')
+    
+    try:
+        _ = get_stripe_config()
+        print('✓ Stripe config initialized')
+    except Exception as e:
+        print(f'⚠ Stripe initialization failed: {e}')
+    
+    
+    try:
+        _ # PDF generation uses build_report_pdf - no separate initialization needed
+        print('✓ PDF handler configured')
+    except Exception as e:
+        print(f'⚠ PDF handler configuration failed: {e}')
+    
+    print('\nStarting HCI Assessment API...')
+    app.run(host='0.0.0.0', port=5000, debug=False)
