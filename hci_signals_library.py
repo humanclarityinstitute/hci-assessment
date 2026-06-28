@@ -3,6 +3,8 @@
 ## Source: Master Synthesis, Benchmark Findings, Values/HBE Signals, Signals Library
 ## Date: June 2026
 
+from question_metadata import QUESTION_MAP, get_question_text
+
 SIGNALS = {
     
     # ========== DIMENSIONS ==========
@@ -252,12 +254,12 @@ DIMENSION_VARIABLES = {
     'trust': [
         'trust_ai_for_accuracy',
         'confident_relying_on_ai_outputs',
-        'worry_ai_presents_false_info'
+        'trust_q3'
     ],
     'verification': [
         'double_check_ai_info',
-        'verify_skip_due_to_effort',
-        'proceed_without_checking',
+        'ver_q2',
+        'ver_q3',
         'verify_use_external_sources'
     ],
     'decision_delegation': [
@@ -271,7 +273,7 @@ DIMENSION_VARIABLES = {
         'self_directed_action_feeling',
         'agency_control_feel_in_control',
         'agency_trust_own_judgement',
-        'nudging_influenced_unaware',
+        'agency_q4',
         'ai_identity_mine_vs_ai',
         'override_follow_despite_discomfort'
     ],
@@ -291,11 +293,11 @@ DIMENSION_VARIABLES = {
         'thought_partnership_sounding_board',
         'thought_partnership_belief_challenge',
         'ai_thinking_depth_engagement',
-        'ai_validation_reinforce_beliefs'
+        'thought_q4'
     ],
     'social_transparency': [
         'social_transparency_professional',
-        'social_transparency_concealment',
+        'soc_q2',
         'social_transparency_comfort',
         'social_transparency_gap'
     ]
