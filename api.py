@@ -586,13 +586,14 @@ def webhook_stripe():
                 
                 # Build complete results structure with ALL needed fields
                 # Must match structure expected by generate_premium_report()
-                demographics = assessment.get('demographics', {})
-                responses = assessment.get('responses', {})
+                # This includes ALL data types: assessment responses (39), perception questions (3), demographics (4)
+                demographics = assessment.get('demographics', {})  # age_group, gender, country, ai_tool_use_frequency
+                responses = assessment.get('responses', {})        # 39 assessment + 3 perception questions
                 percentiles = assessment.get('percentiles', {})
                 
                 results_for_report = {
                     'full_results': full_results,
-                    'demographics': demographics,
+                    'demographics': demographics,  # ← CRITICAL: Used for cohort context in opening section
                     'responses': responses,
                     'percentiles': percentiles,
                     'session_id': session_id
