@@ -92,6 +92,74 @@ def positional_label(p: Optional[int]) -> str:
         return "exceptionally low"
 
 
+def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
+    """Format Section 3: How Typical data into HTML.
+    
+    Data structure:
+    {
+        'distinctive': [{key, name, percentile}, ...],
+        'typical': [{key, name, percentile}, ...],
+        'moderate': [{key, name, percentile}, ...]
+    }
+    """
+    if not how_typical_data:
+        return ""
+    
+    html = ""
+    
+    # PART 1: DISTINCTIVE AREAS
+    distinctive = how_typical_data.get('distinctive', [])
+    if distinctive:
+        html += '<div class="how-typical-section">\n'
+        html += '<h3 class="how-typical-heading">Where You\'re Distinctive</h3>\n'
+        html += '<div class="how-typical-items">\n'
+        
+        for dim in distinctive:
+            name = dim.get('name', 'Unknown')
+            pct = dim.get('percentile', 50)
+            label = positional_label(pct)
+            
+            # Interpretation based on percentile
+            if pct > 75:
+                interpretation = f"You sit notably/exceptionally high on {name}. This suggests your pattern in this area is more pronounced than most people."
+            else:  # pct < 25
+                interpretation = f"You sit notably/exceptionally low on {name}. This suggests you maintain a distinctive boundary in this area compared to most people."
+            
+            html += f'''<div class="how-typical-item">
+    <div class="how-typical-label">{name} — {label} ({pct}th %ile)</div>
+    <div class="how-typical-interpretation">{escape_html(interpretation)}</div>
+</div>\n'''
+        
+        html += '</div>\n'
+        html += '<div class="how-typical-summary">You sit notably above or below average on these dimensions. This reflects distinctive patterning in these areas of your relationship with AI.</div>\n'
+        html += '</div>\n'
+    
+    # PART 2: TYPICAL AREAS
+    typical = how_typical_data.get('typical', [])
+    if typical:
+        html += '<div class="how-typical-section">\n'
+        html += '<h3 class="how-typical-heading">Where You\'re Typical</h3>\n'
+        html += '<div class="how-typical-items">\n'
+        
+        for dim in typical:
+            name = dim.get('name', 'Unknown')
+            pct = dim.get('percentile', 50)
+            label = positional_label(pct)
+            
+            interpretation = f"You sit in the middle range on {name}. This means you move through this area without standing out — neither notably cautious nor notably open."
+            
+            html += f'''<div class="how-typical-item">
+    <div class="how-typical-label">{name} — {label} ({pct}th %ile)</div>
+    <div class="how-typical-interpretation">{escape_html(interpretation)}</div>
+</div>\n'''
+        
+        html += '</div>\n'
+        html += '<div class="how-typical-summary">You sit in the middle range on these dimensions, meaning you move through these areas without distinctive patterning.</div>\n'
+        html += '</div>\n'
+    
+    return html
+
+
 def build_dimension_cards(dimensions: Dict[str, Any]) -> str:
     """Build HTML for dimension cards (Section 1: Dashboard)."""
     if not dimensions:
@@ -493,7 +561,7 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
 
     <div class="report-section">
         <h2>How Typical Is Your AI Behaviour?</h2>
-        <div class="narrative">{escape_html(str(section_3_how_typical))}</div>
+        {format_how_typical(section_3_how_typical)}
     </div>
 
     <div class="report-section">
