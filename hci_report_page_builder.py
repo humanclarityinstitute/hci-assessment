@@ -108,6 +108,17 @@ def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
     if not how_typical_data:
         return ""
     
+    print(f"[DEBUG format_how_typical] Received data type: {type(how_typical_data)}")
+    print(f"[DEBUG format_how_typical] Received keys: {how_typical_data.keys() if isinstance(how_typical_data, dict) else 'NOT A DICT'}")
+    
+    if 'distinctive' in how_typical_data:
+        distinctive_data = how_typical_data['distinctive']
+        print(f"[DEBUG format_how_typical] distinctive type: {type(distinctive_data)}, len: {len(distinctive_data) if hasattr(distinctive_data, '__len__') else 'N/A'}")
+        if isinstance(distinctive_data, dict) and distinctive_data:
+            first_key = list(distinctive_data.keys())[0]
+            first_val = distinctive_data[first_key]
+            print(f"[DEBUG format_how_typical] distinctive['{first_key}']: {first_val}")
+    
     html = ""
     
     # PART 1: DISTINCTIVE AREAS
