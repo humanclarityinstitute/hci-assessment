@@ -1253,21 +1253,32 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
     how_typical_html = format_how_typical(section_3_how_typical)
     print(f"[DEBUG build_report_html] format_how_typical returned: {len(how_typical_html)} characters")
     
-    html = html.replace('{format_how_typical(section_3_how_typical)}', how_typical_html)
-    print(f"[DEBUG build_report_html] AFTER replacement, checking if HTML is there...")
-    if '<div class="how-typical-section">' in html:
-        print(f"[DEBUG build_report_html] ✅ HTML WAS INSERTED - found 'how-typical-section' div")
-    else:
-        print(f"[DEBUG build_report_html] ❌ HTML NOT INSERTED - 'how-typical-section' div NOT found")
+    # Build HTML for all sections
+    opening_statement_html = format_prose(opening_statement)
+    top_3_findings_html = format_prose(top_3_findings)
+    dashboard_html = build_dimension_cards(section_1_dashboard)  # FIXED: Pass dict directly
+    question_profile_html = build_question_profile(section_6_question_profile)  # FIXED: Pass dict directly
+    rare_combos_html = format_prose(section_4_rare_combos)  # FIXED: Variable name
+    behaviour_html = format_prose(section_5_behaviour_story)
+    distinctive_html = format_prose(section_7_distinctive)  # FIXED: Variable name
+    perception_gap_html = format_prose(section_8_perception_gap)
+    what_to_protect_html = format_what_to_protect(section_9_what_to_protect)
+    trajectory_html = format_prose(section_10_trajectory)
+    next_steps_html = format_next_steps(section_11_next_steps)
     
-    html = html.replace('{format_prose(section_7_distinctive_responses)}', format_prose(section_7_distinctive_responses))
-    html = html.replace('{format_prose(section_5_behaviour_story)}', format_prose(section_5_behaviour_story))
-    html = html.replace('{format_prose(section_8_perception_gap)}', format_prose(section_8_perception_gap))
-    html = html.replace('{format_what_to_protect(section_9_what_to_protect)}', format_what_to_protect(section_9_what_to_protect))  # NEW
-    html = html.replace('{format_next_steps(section_11_next_steps)}', format_next_steps(section_11_next_steps))  # NEW
-    html = html.replace('{format_prose(section_10_trajectory)}', format_prose(section_10_trajectory))
-    html = html.replace('{build_dimension_cards(section_1_dashboard.get("dimensions", {}))}', build_dimension_cards(section_1_dashboard.get('dimensions', {})))
-    html = html.replace('{build_question_profile(section_6_question_profile.get("questions", []))}', build_question_profile(section_6_question_profile.get('questions', [])))
+    # Replace all placeholders in template
+    html = html.replace('{format_prose(opening_statement)}', opening_statement_html)
+    html = html.replace('{format_prose(top_3_findings)}', top_3_findings_html)
+    html = html.replace('{build_dimension_cards(section_1_dashboard)}', dashboard_html)
+    html = html.replace('{format_how_typical(section_3_how_typical)}', how_typical_html)
+    html = html.replace('{format_prose(section_4_rare_combos)}', rare_combos_html)
+    html = html.replace('{format_prose(section_5_behaviour_story)}', behaviour_html)
+    html = html.replace('{build_question_profile(section_6_question_profile)}', question_profile_html)
+    html = html.replace('{format_prose(section_7_distinctive)}', distinctive_html)
+    html = html.replace('{format_prose(section_8_perception_gap)}', perception_gap_html)
+    html = html.replace('{format_what_to_protect(section_9_what_to_protect)}', what_to_protect_html)
+    html = html.replace('{format_prose(section_10_trajectory)}', trajectory_html)
+    html = html.replace('{format_next_steps(section_11_next_steps)}', next_steps_html)
     
     return html
 
