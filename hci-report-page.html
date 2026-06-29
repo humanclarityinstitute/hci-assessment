@@ -536,7 +536,9 @@ function renderReport(report) {
       if (q.dimension !== currentDim) {
         if (currentDim !== '') html += '</div>';
         currentDim = q.dimension;
-        html += `<div class="question-dimension"><h3>${q.dimension_label}</h3>`;
+        // Format dimension name: human_agency -> Human Agency
+        const dimLabel = q.dimension.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        html += `<div class="question-dimension"><h3>${dimLabel}</h3>`;
       }
       
       // Calculate histogram bar heights
