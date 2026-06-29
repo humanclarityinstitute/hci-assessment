@@ -353,6 +353,7 @@ def score():
         
         # Generate response percentiles (Requirement 2: variable-level answers vs full + age group)
         percentiles = generate_percentiles(responses, demographics, scoring_results)
+        scoring_results['percentiles'] = percentiles
         
         # Store in Supabase - include ALL data so results page has complete access
         db = get_supabase_client()
