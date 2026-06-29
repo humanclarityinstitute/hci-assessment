@@ -881,6 +881,7 @@ def generate_question_profile(results: Dict) -> Dict:
         if isinstance(p_data, dict):
         print(f"[DEBUG] {q_key} has 'dimension' key? {'dimension' in p_data}")
         print(f"[DEBUG] {q_key} dimension value = {p_data.get('dimension', 'MISSING')}")
+        
         profile['questions'].append({
             'dimension': dimension,
             'number': question_count,  # Correct numbering (1-39, not 1-42)
