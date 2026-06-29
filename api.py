@@ -433,6 +433,7 @@ def get_results():
             'full_results': assessment.get('full_results'),
             'percentiles': assessment.get('percentiles', {}),
             'demographics': assessment.get('demographics', {}),
+            'responses': assessment.get('responses', {}),
             'report_email': assessment.get('report_email'),
             'paid': assessment.get('paid', False)
         }), 200
