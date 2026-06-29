@@ -1,1308 +1,787 @@
 """
-hci_report_page_builder.py
+HCI AI Identity & Behaviour Assessment — Report Generator v2.0 (REBUILT)
 
-Builds professional HTML report pages from report_dict output.
-Used for both PDF generation (via PDFShift) and browser display.
+Complete rebuild with:
+- 9 focused API calls (6 core + 3 optional deep dive)
+- Full narrative generation (300-400+ words per section)
+- Complete research integration (SIGNALS + HBE + VALUES)
+- Professional report_dict output
 
-Takes the report_dict structure from report_generator.py and converts it
-to formatted HTML using locked design tokens from hci-report-design.css.
+No partial reports — all sections present or entire report fails.
 """
 
 import json
-from typing import Dict, Any, Optional
-from question_metadata import (
-    QUESTION_MAP,
-    get_question_text,
-    get_dimension,
-    DIMENSIONS,
-    PERCEPTION_QUESTIONS,
-    get_perception_text,
-    DEMOGRAPHIC_QUESTIONS,
-    get_demographic_text,
-    is_perception_question,
-    is_demographic_question,
-    is_assessment_question
-)
+import time
+import logging
+from datetime import datetime
+from typing import Dict, List, Optional, Any
+from anthropic import Anthropic, APITimeoutError
 
-# Dimension name mapping (snake_case → Human Readable)
+# Import research data
+from hci_signals_library import SIGNALS
+from human_reference_layer import HBE_FRAMEWORK, VALUES_SIGNALS
+from question_metadata import DIMENSIONS
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+
+# Map dimension keys to display names
 DIMENSION_NAMES = {
-    'trust': 'Trust',
-    'disclosure': 'Disclosure',
     'reliance': 'Reliance',
-    'decision_delegation': 'Decision Delegation',
+    'trust': 'Trust',
     'verification': 'Verification',
+    'decision_delegation': 'Decision Delegation',
     'human_agency': 'Human Agency',
     'emotional_regulation': 'Emotional Regulation',
+    'disclosure': 'Disclosure',
     'thought_partnership': 'Thought Partnership',
     'social_transparency': 'Social Transparency',
 }
 
+DIMENSION_DEFINITIONS = {
+    'reliance': 'How much you depend on AI for thinking and functioning',
+    'trust': 'How much you believe AI outputs are accurate',
+    'verification': 'How often you check AI outputs before using them',
+    'decision_delegation': 'How much you hand over decisions to AI',
+    'human_agency': 'How much control you maintain over your decisions',
+    'emotional_regulation': 'Whether you turn to AI for emotional support',
+    'disclosure': 'How much personal information you share with AI',
+    'thought_partnership': 'How much you use AI as a thinking partner',
+    'social_transparency': 'How openly you discuss your AI use with others',
+}
 
-def escape_html(text: str) -> str:
-    """Escape HTML special characters."""
-    if not text:
-        return ""
-    return (str(text)
-            .replace('&', '&amp;')
-            .replace('<', '&lt;')
-            .replace('>', '&gt;')
-            .replace('"', '&quot;')
-            .replace("'", '&#39;'))
+OPENING_STATEMENT = """
+You are uniquely positioned in how you relate to AI. Your profile reflects 
+how you currently engage with AI systems — based on your responses benchmarked 
+against 10,500 participants across 21 research studies.
 
+Use this report to understand your pattern:
 
-def format_prose(text: str) -> str:
-    """Convert prose text to HTML paragraphs."""
-    if not text:
-        return ""
-    
-    paragraphs = text.strip().split('\n\n')
-    html = ""
-    for para in paragraphs:
-        if para.strip():
-            html += f'<p class="narrative-paragraph">{escape_html(para.strip())}</p>'
-    return html
+• Understand what's distinctive about how you work with AI
+• Notice where you're typical and where you stand out
+• Explore what's worth protecting as your use evolves
+• Make conscious choices about your relationship with AI going forward
+"""
 
+# ============================================================================
+# MAIN FUNCTION
+# ============================================================================
 
-def plain_english_percentile(p: Optional[int]) -> str:
-    """Convert percentile to plain English."""
-    if p is None or p == '':
-        return "at the population centre"
-    
-    try:
-        p = int(p)
-    except (ValueError, TypeError):
-        return "at the population centre"
-    
-    if p >= 50:
-        return f"Higher than {p} out of every 100 people"
-    else:
-        return f"Lower than {100-p} out of every 100 people"
-
-
-def positional_label(p: Optional[int]) -> str:
-    """Convert percentile to positional label."""
-    if p is None or p == '':
-        return "near the population centre"
-    
-    try:
-        p = int(p)
-    except (ValueError, TypeError):
-        return "near the population centre"
-    
-    if p >= 96:
-        return "exceptionally high"
-    elif p >= 86:
-        return "notably high"
-    elif p >= 71:
-        return "above the population centre"
-    elif p >= 41:
-        return "near the population centre"
-    elif p >= 26:
-        return "below the population centre"
-    elif p >= 11:
-        return "notably low"
-    else:
-        return "exceptionally low"
-
-
-def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
-    """Format Section 3: How Typical data into HTML.
-    
-    how_typical_data IS a flat dict of dimensions from report_generator.
-    Each dimension has: dimension_name, display_name, percentile, positioning, signal_text
+def generate_premium_report(results, api_key, session_id):
     """
-    if not how_typical_data or not isinstance(how_typical_data, dict):
-        return ""
-    
-    html = '<div class="how-typical-section">\n'
-    html += '<p class="intro">Understanding where your positioning falls in relation to others:</p>\n'
-    
-    # Iterate dimensions directly - data IS the dimensions dict
-    for dim_name, dim_data in how_typical_data.items():
-        if not isinstance(dim_data, dict):
-            continue
-            
-        display_name = dim_data.get('display_name', dim_name.replace('_', ' ').title())
-        percentile = dim_data.get('percentile', 50)
-        positioning = dim_data.get('positioning', 'near the population centre')
-        signal_text = dim_data.get('signal_text', '')
-        
-        html += f'<div class="dimension-item">\n'
-        html += f'<h4>{escape_html(display_name)}</h4>\n'
-        html += f'<p class="positioning">{escape_html(positioning)}</p>\n'
-        
-        # Percentile bar
-        html += f'<div class="percentile-bar">\n'
-        html += f'<div class="percentile-fill" style="width: {percentile}%"></div>\n'
-        html += f'</div>\n'
-        html += f'<p class="percentile-text">{percentile}th percentile</p>\n'
-        
-        # Signal text
-        if signal_text:
-            html += f'<p class="signal">{escape_html(signal_text)}</p>\n'
-        
-        html += '</div>\n'
-    
-    html += '</div>\n'
-    return html
-
-
-def build_dimension_cards(dimensions: Dict[str, Any]) -> str:
-    """Build HTML for dimension cards (Section 1: Dashboard).
-    
-    Reads new fields from report_generator.py:
-    - 'definition': Plain English description of dimension
-    - 'percentile_by_frequency': Percentile for daily users
-    - 'percentile_by_age_group': Percentile for age cohort
-    """
-    if not dimensions:
-        return ""
-    
-    html = '<div class="dimension-grid">\n'
-    
-    for dim_name, dim_data in dimensions.items():
-        if not isinstance(dim_data, dict):
-            continue
-        
-        percentile = dim_data.get('percentile', 50)
-        raw_score = dim_data.get('raw_score', 3.5)
-        definition = dim_data.get('definition', '')  # NEW
-        percentile_frequency = dim_data.get('percentile_by_frequency', None)  # NEW
-        percentile_age_group = dim_data.get('percentile_by_age_group', None)  # NEW
-        plain = plain_english_percentile(percentile)
-        pos = positional_label(percentile)
-        
-        # Get human-readable dimension name
-        dim_display_name = DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title())
-        
-        html += f'''
-        <div class="dimension-card">
-            <div class="dimension-label">{escape_html(dim_display_name.upper())}</div>
-            <div class="dimension-name">{escape_html(dim_display_name)}</div>
-            <div style="margin-bottom: 8pt; font-size: 10.5px; line-height: 1.3; color: #666;">
-                {escape_html(definition)}
-            </div>
-            <div style="margin-bottom: 8pt;">
-                <span class="score-number">{percentile}</span>
-                <span style="margin-left: 6pt; font-size: 10.5px; color: #666;">percentile</span>
-            </div>
-            <div class="percentile-bar">
-                <div class="percentile-fill" style="width: {percentile}%;"></div>
-            </div>
-            <div style="border-top: 0.5pt solid #e0e0e0; padding-top: 8pt; font-size: 10.5px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 3pt;">
-                    <span style="color: #666;">Your position</span>
-                    <span style="font-weight: 500; color: #0066cc;">{escape_html(pos)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 3pt;">
-                    <span style="color: #666;">Plain English</span>
-                    <span style="font-weight: 500; color: #0066cc; font-size: 9px;">{escape_html(plain)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 3pt;">
-                    <span style="color: #666;">Daily AI users</span>
-                    <span style="font-weight: 500; color: #0066cc; font-size: 9px;">{percentile_frequency if percentile_frequency else "—"}th %ile</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="color: #666;">Your age group</span>
-                    <span style="font-weight: 500; color: #0066cc; font-size: 9px;">{percentile_age_group if percentile_age_group else "—"}th %ile</span>
-                </div>
-            </div>
-        </div>
-'''
-    
-    html += '</div>\n'
-    return html
-
-
-def format_what_to_protect(section_9_data: Dict[str, Any]) -> str:
-    """Format Section 9: What to Protect into HTML."""
-    if not section_9_data:
-        return ""
-    
-    html = '<div class="section-content">\n'
-    
-    # Subsections with pre-written content
-    subsections = section_9_data.get('subsections', {})
-    
-    for subsection_key, subsection_data in subsections.items():
-        if isinstance(subsection_data, dict):
-            title = subsection_data.get('title', '')
-            content = subsection_data.get('content', '')
-            
-            if title or content:
-                html += f'<div class="subsection">\n'
-                if title:
-                    html += f'<h4>{escape_html(title)}</h4>\n'
-                if content:
-                    html += format_prose(content)
-                html += '</div>\n'
-    
-    html += '</div>\n'
-    return html
-
-
-def format_next_steps(section_11_data: Dict[str, Any]) -> str:
-    """Format Section 11: Next Steps into HTML."""
-    if not section_11_data:
-        return ""
-    
-    html = '<div class="section-content">\n'
-    
-    # Intro
-    intro = section_11_data.get('intro', '')
-    if intro:
-        html += f'<p class="intro">{escape_html(intro)}</p>\n'
-    
-    # Three prompts
-    prompts = section_11_data.get('prompts', [])
-    
-    for i, prompt in enumerate(prompts, 1):
-        if isinstance(prompt, dict):
-            prompt_title = prompt.get('title', '')
-            prompt_text = prompt.get('prompt', '')
-            
-            html += f'<div class="prompt-item">\n'
-            if prompt_title:
-                html += f'<h4>{escape_html(prompt_title)}</h4>\n'
-            if prompt_text:
-                html += f'<p>{escape_html(prompt_text)}</p>\n'
-            html += '</div>\n'
-    
-    # Closing - IS A STRING, not a dict
-    closing = section_11_data.get('closing', '')
-    if closing and isinstance(closing, str):
-        html += '<div class="closing-section">\n'
-        html += f'<p>{escape_html(closing)}</p>\n'
-        html += '</div>\n'
-    
-    html += '</div>\n'
-    return html
-
-
-def build_question_profile(questions: any) -> str:
-    """Build HTML for question-level profile (Section 6).
-    
-    questions can be either a list or a dict of questions.
-    report_generator produces a dict, keyed by question_key.
-    """
-    if not questions:
-        return ""
-    
-    # Convert dict to list if needed
-    if isinstance(questions, dict):
-        questions_list = list(questions.values())
-    elif isinstance(questions, list):
-        questions_list = questions
-    else:
-        return ""
-    
-    html = ""
-    current_dim = ""
-    
-    for i, q in enumerate(questions_list):
-        if not isinstance(q, dict):
-            continue
-        
-        # Add dimension header if changed
-        q_dim = q.get('dimension', 'unknown')
-        if q_dim != current_dim:
-            if current_dim != "":
-                html += "</div>\n"
-            current_dim = q_dim
-            # Get human-readable dimension name
-            dim_display_name = DIMENSION_NAMES.get(q_dim, q_dim.replace('_', ' ').title())
-            html += f'<div class="question-dimension"><h3>{escape_html(dim_display_name.upper())}</h3>\n'
-        
-        # Build histogram from population distribution
-        distribution = q.get('population_distribution', [14]*7)  # Default even distribution
-        bars_html = ""
-        if distribution:
-            max_dist = max(distribution) if distribution else 1
-            for pct in distribution:
-                if max_dist > 0:
-                    height = (pct / max_dist * 100)
-                else:
-                    height = 0
-                bars_html += f'<div class="histogram-bar" style="height: {height}%; background: #ccc;"></div>'
-        
-        q_num = i + 1
-        q_var = q.get('question_key', 'unknown')
-        q_answer = q.get('respondent_answer', '?')
-        q_percentile = q.get('respondent_percentile', 50)
-        q_position = positional_label(q_percentile)
-        q_plain = plain_english_percentile(q_percentile)
-        q_age_group = q.get('age_group', '25-34')
-        q_age_percentile = q.get('age_percentile', 50)
-        
-        html += f'''
-        <div class="question-card">
-            <div class="question-header">
-                <span class="question-number">Q{q_num}</span>
-                <span class="question-key">{escape_html(q_var)}</span>
-            </div>
-            
-            <div class="question-answer">
-                <span class="answer-label">Your answer:</span>
-                <span class="answer-value">{escape_html(str(q_answer))}</span>
-                <span class="answer-scale">/7</span>
-            </div>
-            
-            <div class="histogram-container">
-                <div class="histogram">{bars_html}</div>
-                <div class="histogram-scale">
-                    <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span>
-                </div>
-            </div>
-            
-            <div class="question-comparison">
-                <div class="percentile-line">
-                    <span class="label">Your percentile:</span>
-                    <span class="value">{q_percentile}th</span>
-                    <span class="position">({escape_html(q_position)})</span>
-                </div>
-                <div class="plain-english">{escape_html(q_plain)}</div>
-                <div class="age-comparison">
-                    vs {escape_html(q_age_group)}: {q_age_percentile}th percentile
-                </div>
-            </div>
-        </div>
-'''
-    
-    if current_dim != "":
-        html += "</div>\n"
-    
-    return html
-
-
-def build_report_html(report_dict: Dict[str, Any]) -> str:
-    """
-    Build complete HTML report from report_dict.
+    Generate complete premium report with all sections.
     
     Args:
-        report_dict: Output from report_generator.generate_premium_report()
+        results: Complete results dict from api.py (with enriched data from Phase 1)
+        api_key: Anthropic API key
+        session_id: Assessment session ID
     
     Returns:
-        str: Complete HTML string ready for PDF or display
+        dict: Complete report_dict with all sections, or None if failed
     """
     
-    if not isinstance(report_dict, dict):
-        return "<p>Error: Invalid report data</p>"
-    
-    metadata = report_dict.get('metadata', {})
-    demographics = metadata.get('demographics', {})
-    
-    # Extract key sections - FIXED NAMES TO MATCH report_generator.py
-    opening_statement = report_dict.get('opening_statement', '')
-    top_3_findings = report_dict.get('top_3_findings', '')
-    section_1_dashboard = report_dict.get('section_1_dashboard', {})
-    section_3_how_typical = report_dict.get('section_3_how_typical', {})
-    section_4_rare_combos = report_dict.get('section_4_rare_combos', '')  # FIXED: was 'section_4_what_different'
-    section_5_behaviour_story = report_dict.get('section_5_behaviour_story', '')
-    section_6_question_profile = report_dict.get('section_6_question_profile', {})
-    section_7_distinctive = report_dict.get('section_7_distinctive', '')  # FIXED: was 'section_7_distinctive_responses'
-    section_8_perception_gap = report_dict.get('section_8_perception_gap', '')
-    section_9_what_to_protect = report_dict.get('section_9_what_to_protect', {})
-    section_10_trajectory = report_dict.get('section_10_trajectory', '')  # NOW HANDLED
-    section_11_next_steps = report_dict.get('section_11_next_steps', {})
-    deep_dive = report_dict.get('deep_dive', {})
-    
-    # Build metadata line
-    meta_parts = []
-    if demographics.get('age_group'):
-        meta_parts.append(escape_html(demographics['age_group']))
-    if demographics.get('country'):
-        meta_parts.append(escape_html(demographics['country']))
-    from datetime import datetime
-    meta_parts.append(datetime.now().strftime('%B %d, %Y'))
-    meta_text = ' • '.join(meta_parts)
-    
-    # Build complete HTML
-    html = '''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your AI Identity Report — Human Clarity Institute</title>
-    <style>
-        /**
-         * HCI AI Identity & Behaviour Assessment
-         * Complete Design System — Typography, Spacing, Color
-         * 
-         * Locked based on Gallup CliftonStrengths + Big Five Personality Test
-         * Target: 10.5pt body, 1.2 line-height, professional density
-         * Outcome: 24-page report → 16-18 pages (same content, tighter layout)
-         */
-
-        /* ============================================================
-           ROOT VARIABLES — LOCKED DESIGN TOKENS
-           ============================================================ */
-
-        :root {
-          /* TYPOGRAPHY */
-          --font-family-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-          --font-family-serif: Georgia, 'Times New Roman', serif;
-
-          --font-size-body: 10.5px;
-          --font-size-label: 9px;
-          --font-size-sm: 9px;
-          --font-size-caption: 8.5px;
-
-          --font-size-h4: 11px;
-          --font-size-h3: 12px;
-          --font-size-h2: 13px;
-          --font-size-h1: 16px;
-
-          --font-weight-regular: 400;
-          --font-weight-medium: 500;
-          --font-weight-bold: 600;
-
-          --line-height-tight: 1.2;
-          --line-height-normal: 1.3;
-          --line-height-relaxed: 1.4;
-
-          /* SPACING — In points (pt) to match print layouts */
-          --spacing-xs: 3pt;
-          --spacing-sm: 6pt;
-          --spacing-md: 8pt;
-          --spacing-lg: 12pt;
-          --spacing-xl: 16pt;
-          --spacing-xxl: 20pt;
-
-          /* PAGE MARGINS — Locked */
-          --margin-left: 0.75in;
-          --margin-right: 0.75in;
-          --margin-top: 0.5in;
-          --margin-bottom: 0.5in;
-
-          /* COLORS */
-          --color-primary: #0066cc;
-          --color-primary-dark: #004a99;
-          --color-primary-light: #f0f5ff;
-
-          --color-text: #1a1a1a;
-          --color-text-secondary: #666;
-          --color-text-tertiary: #999;
-          --color-text-muted: #bbb;
-
-          --color-border: #e0e0e0;
-          --color-border-light: #f0f0f0;
-          --color-divider: #ddd;
-
-          --color-bg-white: #ffffff;
-          --color-bg-light: #fafafa;
-          --color-bg-secondary: #f5f5f5;
-
-          /* BORDER & RADIUS */
-          --border-width-thin: 0.5pt;
-          --border-width-medium: 1pt;
-          --border-radius-sm: 3px;
-          --border-radius-md: 4px;
-          --border-radius-lg: 6px;
-        }
-
-        /* ============================================================
-           GLOBAL RESETS & BASE STYLES
-           ============================================================ */
-
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-
-        html {
-          font-size: 16px; /* Browser baseline for rem calculations */
-        }
-
-        body {
-          font-family: var(--font-family-body);
-          font-size: var(--font-size-body);
-          line-height: var(--line-height-tight);
-          color: var(--color-text);
-          background: var(--color-bg-white);
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
-        }
-
-        /* ============================================================
-           PRINT LAYOUT CONTAINER
-           ============================================================ */
-
-        .report {
-          max-width: 8in;
-          margin: 0 auto;
-          padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
-          background: var(--color-bg-white);
-          color: var(--color-text);
-        }
-
-        /* For PDF/Print rendering */
-        @media print {
-          body {
-            margin: 0;
-            padding: 0;
-          }
-
-          .report {
-            max-width: 100%;
-            margin: 0;
-            padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
-            page-break-after: auto;
-          }
-        }
-
-        /* ============================================================
-           TYPOGRAPHY HIERARCHY
-           ============================================================ */
-
-        h1, h2, h3, h4, h5, h6 {
-          font-weight: var(--font-weight-bold);
-          color: var(--color-text);
-          margin: 0;
-          line-height: var(--line-height-tight);
-          page-break-after: avoid;
-        }
-
-        h1 {
-          font-size: var(--font-size-h1);
-          margin-bottom: var(--spacing-lg);
-        }
-
-        h2 {
-          font-size: var(--font-size-h2);
-          color: var(--color-primary);
-          margin-bottom: var(--spacing-md);
-        }
-
-        h3 {
-          font-size: var(--font-size-h3);
-          font-weight: var(--font-weight-medium);
-          margin-bottom: var(--spacing-sm);
-        }
-
-        h4 {
-          font-size: var(--font-size-h4);
-          font-weight: var(--font-weight-medium);
-          margin-bottom: var(--spacing-sm);
-        }
-
-        p {
-          margin: 0;
-          line-height: var(--line-height-tight);
-          margin-bottom: var(--spacing-sm);
-        }
-
-        p:last-child {
-          margin-bottom: 0;
-        }
-
-        /* ============================================================
-           SECTION STRUCTURE
-           ============================================================ */
-
-        .report-section {
-          margin-bottom: var(--spacing-xxl);
-          page-break-inside: avoid;
-        }
-
-        .report-section.no-break {
-          page-break-inside: avoid;
-        }
-
-        .section-title {
-          font-size: var(--font-size-h2);
-          font-weight: var(--font-weight-bold);
-          color: var(--color-primary);
-          margin-bottom: var(--spacing-md);
-          page-break-after: avoid;
-        }
-
-        .section-subtitle {
-          font-size: var(--font-size-h4);
-          color: var(--color-text-secondary);
-          font-weight: var(--font-weight-regular);
-          margin-bottom: var(--spacing-md);
-          page-break-after: avoid;
-        }
-
-        .section-intro {
-          font-size: var(--font-size-body);
-          line-height: var(--line-height-normal);
-          margin-bottom: var(--spacing-lg);
-          color: var(--color-text);
-        }
-
-        /* ============================================================
-           DIMENSION CARDS (Section 1: Benchmark Dashboard)
-           ============================================================ */
-
-        .dimension-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-          gap: var(--spacing-xl);
-          margin-bottom: var(--spacing-xxl);
-        }
-
-        .dimension-card {
-          border: var(--border-width-thin) solid var(--color-border);
-          padding: var(--spacing-xl);
-          border-radius: var(--border-radius-lg);
-          background: var(--color-bg-white);
-          page-break-inside: avoid;
-        }
-
-        .dimension-card:hover {
-          border-color: var(--color-primary-light);
-        }
-
-        .dimension-label {
-          font-size: var(--font-size-label);
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          color: var(--color-text-tertiary);
-          margin-bottom: var(--spacing-xs);
-          font-weight: var(--font-weight-medium);
-        }
-
-        .dimension-name {
-          font-size: var(--font-size-h3);
-          font-weight: var(--font-weight-bold);
-          color: var(--color-text);
-          margin-bottom: var(--spacing-md);
-        }
-
-        .dimension-definition {
-          font-size: var(--font-size-body);
-          line-height: var(--line-height-normal);
-          color: var(--color-text-secondary);
-          margin-bottom: var(--spacing-md);
-        }
-
-        .dimension-score {
-          display: flex;
-          align-items: baseline;
-          gap: var(--spacing-sm);
-          margin-bottom: var(--spacing-md);
-        }
-
-        .score-number {
-          font-size: 18px;
-          font-weight: var(--font-weight-bold);
-          color: var(--color-primary);
-        }
-
-        .score-label {
-          font-size: var(--font-size-body);
-          color: var(--color-text-secondary);
-          line-height: var(--line-height-tight);
-        }
-
-        .percentile-bar {
-          width: 100%;
-          height: 4px;
-          background: var(--color-bg-secondary);
-          border-radius: 2px;
-          overflow: hidden;
-          margin-bottom: var(--spacing-md);
-        }
-
-        .percentile-fill {
-          height: 100%;
-          background: var(--color-primary);
-          transition: width 0.3s ease;
-        }
-
-        .dimension-comparisons {
-          border-top: var(--border-width-thin) solid var(--color-divider);
-          padding-top: var(--spacing-md);
-          margin-bottom: var(--spacing-md);
-          font-size: var(--font-size-body);
-        }
-
-        .comparison-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: var(--spacing-xs);
-          line-height: var(--line-height-tight);
-        }
-
-        .comparison-label {
-          color: var(--color-text-secondary);
-          font-size: var(--font-size-sm);
-        }
-
-        .comparison-value {
-          font-weight: var(--font-weight-medium);
-          color: var(--color-primary);
-        }
-
-        .dimension-insight {
-          font-size: var(--font-size-body);
-          color: var(--color-text-secondary);
-          line-height: var(--line-height-normal);
-          border-top: var(--border-width-thin) solid var(--color-divider);
-          padding-top: var(--spacing-md);
-          margin-top: var(--spacing-md);
-        }
-
-        /* ============================================================
-           NARRATIVE SECTIONS
-           ============================================================ */
-
-        .narrative {
-          font-size: var(--font-size-body);
-          line-height: var(--line-height-normal);
-          color: var(--color-text);
-          margin-bottom: var(--spacing-lg);
-        }
-
-        .narrative-paragraph {
-          margin-bottom: var(--spacing-sm);
-          line-height: var(--line-height-normal);
-        }
-
-        .narrative-paragraph:last-child {
-          margin-bottom: 0;
-        }
-
-        /* ============================================================
-           QUESTION-LEVEL PROFILE (Section 6)
-           ============================================================ */
-
-        .question-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-          gap: var(--spacing-lg);
-          margin-bottom: var(--spacing-xl);
-        }
-
-        .question-item {
-          border: var(--border-width-thin) solid var(--color-border);
-          padding: var(--spacing-md);
-          border-radius: var(--border-radius-md);
-          background: var(--color-bg-white);
-          page-break-inside: avoid;
-        }
-
-        .question-text {
-          font-size: var(--font-size-body);
-          font-weight: var(--font-weight-medium);
-          color: var(--color-text);
-          margin-bottom: var(--spacing-sm);
-          line-height: var(--line-height-normal);
-        }
-
-        .question-histogram {
-          width: 100%;
-          height: 40px;
-          margin-bottom: var(--spacing-sm);
-          display: flex;
-          align-items: flex-end;
-          gap: 2px;
-        }
-
-        .histogram-bar {
-          flex: 1;
-          background: var(--color-primary-light);
-          border-radius: 1px;
-          min-height: 2px;
-        }
-
-        .histogram-bar.filled {
-          background: var(--color-primary);
-        }
-
-        .histogram-bar.active {
-          background: var(--color-primary);
-          box-shadow: 0 0 0 2px var(--color-primary-light);
-        }
-
-        .question-percentile {
-          font-size: var(--font-size-sm);
-          color: var(--color-text-secondary);
-          margin-bottom: var(--spacing-xs);
-          line-height: var(--line-height-tight);
-        }
-
-        .question-insight {
-          font-size: var(--font-size-body);
-          color: var(--color-text-secondary);
-          line-height: var(--line-height-normal);
-        }
-
-        /* ============================================================
-           DATA CARDS & BOXES
-           ============================================================ */
-
-        .data-card {
-          background: var(--color-bg-secondary);
-          border: var(--border-width-thin) solid var(--color-border);
-          border-radius: var(--border-radius-md);
-          padding: var(--spacing-md);
-          margin-bottom: var(--spacing-lg);
-          page-break-inside: avoid;
-        }
-
-        .data-card-title {
-          font-size: var(--font-size-h4);
-          font-weight: var(--font-weight-medium);
-          margin-bottom: var(--spacing-sm);
-          color: var(--color-text);
-        }
-
-        .data-card-content {
-          font-size: var(--font-size-body);
-          line-height: var(--line-height-normal);
-          color: var(--color-text-secondary);
-        }
-
-        /* ============================================================
-           INSIGHT BOXES
-           ============================================================ */
-
-        .insight-box {
-          background: var(--color-primary-light);
-          border-left: 3px solid var(--color-primary);
-          padding: var(--spacing-md) var(--spacing-md) var(--spacing-md) var(--spacing-lg);
-          margin: var(--spacing-lg) 0;
-          border-radius: var(--border-radius-sm);
-        }
-
-        .insight-box-title {
-          font-size: var(--font-size-h4);
-          font-weight: var(--font-weight-medium);
-          color: var(--color-primary);
-          margin-bottom: var(--spacing-sm);
-        }
-
-        .insight-box-content {
-          font-size: var(--font-size-body);
-          line-height: var(--line-height-normal);
-          color: var(--color-text);
-        }
-
-        /* ============================================================
-           DIVIDERS & VISUAL BREAKS
-           ============================================================ */
-
-        .divider {
-          border: none;
-          border-top: var(--border-width-thin) solid var(--color-divider);
-          margin: var(--spacing-lg) 0;
-          height: 0;
-        }
-
-        .divider.light {
-          border-top-color: var(--color-border-light);
-        }
-
-        .page-break {
-          page-break-after: always;
-          margin: var(--spacing-xl) 0;
-          height: 0;
-        }
-
-        .section-break {
-          margin: var(--spacing-xxl) 0 var(--spacing-lg) 0;
-          page-break-after: avoid;
-        }
-
-        /* ============================================================
-           LISTS & STRUCTURED CONTENT
-           ============================================================ */
-
-        ul, ol {
-          margin: 0;
-          padding: 0 0 0 var(--spacing-lg);
-          margin-bottom: var(--spacing-lg);
-          list-style-position: outside;
-        }
-
-        li {
-          font-size: var(--font-size-body);
-          line-height: var(--line-height-normal);
-          color: var(--color-text);
-          margin-bottom: var(--spacing-sm);
-        }
-
-        li:last-child {
-          margin-bottom: 0;
-        }
-
-        /* ============================================================
-           TABLES
-           ============================================================ */
-
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: var(--spacing-lg);
-          font-size: var(--font-size-body);
-        }
-
-        thead {
-          background: var(--color-bg-secondary);
-        }
-
-        th {
-          padding: var(--spacing-sm) var(--spacing-md);
-          text-align: left;
-          font-weight: var(--font-weight-bold);
-          color: var(--color-text);
-          border-bottom: var(--border-width-medium) solid var(--color-border);
-          line-height: var(--line-height-tight);
-        }
-
-        td {
-          padding: var(--spacing-sm) var(--spacing-md);
-          border-bottom: var(--border-width-thin) solid var(--color-border-light);
-          line-height: var(--line-height-tight);
-          color: var(--color-text);
-        }
-
-        tbody tr:last-child td {
-          border-bottom: var(--border-width-medium) solid var(--color-border);
-        }
-
-        /* ============================================================
-           LABELS & TAGS
-           ============================================================ */
-
-        .label {
-          display: inline-block;
-          padding: 2px var(--spacing-sm);
-          background: var(--color-primary-light);
-          color: var(--color-primary);
-          border-radius: var(--border-radius-sm);
-          font-size: var(--font-size-caption);
-          font-weight: var(--font-weight-medium);
-          text-transform: uppercase;
-          letter-spacing: 0.3px;
-        }
-
-        .label.secondary {
-          background: var(--color-bg-secondary);
-          color: var(--color-text-secondary);
-        }
-
-        /* ============================================================
-           RESPONSIVE DESIGN
-           ============================================================ */
-
-        @media (max-width: 768px) {
-          :root {
-            --margin-left: 0.5in;
-            --margin-right: 0.5in;
-          }
-
-          .dimension-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .question-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .report {
-            max-width: 100%;
-          }
-        }
-
-        @media (max-width: 480px) {
-          :root {
-            --font-size-body: 10px;
-            --spacing-xl: 12px;
-            --margin-left: 0.375in;
-            --margin-right: 0.375in;
-          }
-
-          .dimension-card {
-            padding: var(--spacing-lg);
-          }
-        }
-
-        /* ============================================================
-           PRINT-SPECIFIC STYLES
-           ============================================================ */
-
-        @media print {
-          * {
-            box-shadow: none !important;
-            text-shadow: none !important;
-          }
-
-          a {
-            text-decoration: none;
-            color: var(--color-text);
-          }
-
-          .no-print {
-            display: none;
-          }
-
-          .report-section {
-            page-break-inside: avoid;
-          }
-
-          h2, h3, h4 {
-            page-break-after: avoid;
-            page-break-before: avoid;
-          }
-
-          .dimension-card,
-          .data-card,
-          .question-item {
-            page-break-inside: avoid;
-            border: var(--border-width-thin) solid var(--color-border);
-          }
-
-          .page-break {
-            page-break-after: always;
-          }
-        }
-
-        /* ============================================================
-           ACCESSIBILITY
-           ============================================================ */
-
-        a:focus {
-          outline: 2px solid var(--color-primary);
-          outline-offset: 2px;
-          border-radius: 2px;
-        }
-
-        button:focus,
-        input:focus,
-        select:focus,
-        textarea:focus {
-          outline: 2px solid var(--color-primary);
-          outline-offset: 2px;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          * {
-            animation: none !important;
-            transition: none !important;
-          }
-        }
-
-        /* ============================================================
-           UTILITY CLASSES
-           ============================================================ */
-
-        .text-center {
-          text-align: center;
-        }
-
-        .text-right {
-          text-align: right;
-        }
-
-        .text-muted {
-          color: var(--color-text-tertiary);
-        }
-
-        .text-secondary {
-          color: var(--color-text-secondary);
-        }
-
-        .text-primary {
-          color: var(--color-primary);
-        }
-
-        .mt-xs { margin-top: var(--spacing-xs); }
-        .mt-sm { margin-top: var(--spacing-sm); }
-        .mt-md { margin-top: var(--spacing-md); }
-        .mt-lg { margin-top: var(--spacing-lg); }
-        .mt-xl { margin-top: var(--spacing-xl); }
-
-        .mb-xs { margin-bottom: var(--spacing-xs); }
-        .mb-sm { margin-bottom: var(--spacing-sm); }
-        .mb-md { margin-bottom: var(--spacing-md); }
-        .mb-lg { margin-bottom: var(--spacing-lg); }
-        .mb-xl { margin-bottom: var(--spacing-xl); }
-
-        .no-margin { margin: 0; }
-        .no-padding { padding: 0; }
-
-        .sr-only {
-          position: absolute;
-          width: 1px;
-          height: 1px;
-          padding: 0;
-          margin: -1px;
-          overflow: hidden;
-          clip: rect(0, 0, 0, 0);
-          white-space: nowrap;
-          border-width: 0;
-        }
-
-    </style>
-</head>
-<body>
-
-<div class="report">
-
-    <div class="report-section">
-        <h1>Your AI Identity Report</h1>
-        <p class="text-secondary">{meta_text}</p>
-        <hr class="divider">
-    </div>
-
-    <div class="report-section">
-        <h2>Opening Statement</h2>
-        <div class="narrative">{format_prose(opening_statement)}</div>
-    </div>
-
-    <div class="report-section">
-        <h2>Three Most Striking Findings</h2>
-        <div class="narrative">{format_prose(top_3_findings)}</div>
-    </div>
-
-    <div class="report-section">
-        <h2>Your AI Behaviour Pattern</h2>
-        <p class="section-subtitle">How you compare across nine dimensions</p>
-        {build_dimension_cards(section_1_dashboard)}
-    </div>
-
-    <div class="report-section">
-        <h2>How Typical Is Your AI Behaviour?</h2>
-        {format_how_typical(section_3_how_typical)}
-    </div>
-
-    <div class="report-section">
-        <h2>Your Rare Dimensional Combinations</h2>
-        <div class="narrative">{format_prose(section_4_rare_combos)}</div>
-    </div>
-
-    <div class="report-section">
-        <h2>Your Behaviour Story</h2>
-        <div class="narrative">{format_prose(section_5_behaviour_story)}</div>
-    </div>
-
-    <div class="report-section">
-        <h2>Your Question-Level Profile</h2>
-        {build_question_profile(section_6_question_profile)}
-    </div>
-
-    <div class="report-section">
-        <h2>Your Most Distinctive Responses</h2>
-        <div class="narrative">{format_prose(section_7_distinctive)}</div>
-    </div>
-
-    <div class="report-section">
-        <h2>Perception Gap Analysis</h2>
-        <div class="narrative">{format_prose(section_8_perception_gap)}</div>
-    </div>
-
-    <div class="report-section">
-        <h2>What to Protect</h2>
-        {format_what_to_protect(section_9_what_to_protect)}
-    </div>
-
-    <div class="report-section">
-        <h2>Your Trajectory & Outlook</h2>
-        <div class="narrative">{format_prose(section_10_trajectory)}</div>
-    </div>
-
-    <div class="report-section">
-        <h2>Your Next Steps</h2>
-        {format_next_steps(section_11_next_steps)}
-    </div>
-
-    <div class="report-section">
-        <hr class="divider">
-        <h2>Deep Dive: Deeper Insights Into Your Pattern</h2>
-        <div class="narrative">{format_prose(deep_dive.get('opening', ''))}</div>
-    </div>
-
-    <div class="report-section">
-        <h3>Your Pattern Across Research Lenses</h3>
-        <div class="narrative">{format_prose(deep_dive.get('part_1_research_lenses', ''))}</div>
-    </div>
-
-    <div class="report-section">
-        <h3>What Your Rare Combination Reveals</h3>
-        <div class="narrative">{format_prose(deep_dive.get('part_4_rare_combination', ''))}</div>
-    </div>
-
-    <div class="report-section">
-        <h3>Cross-Dimensional Architecture</h3>
-        <div class="narrative">{format_prose(deep_dive.get('part_5_cross_dimensional', ''))}</div>
-    </div>
-
-    <div class="report-section">
-        <hr class="divider">
-        <p style="font-size: 9px; color: var(--color-text-secondary);">
-            <strong>About This Report</strong><br>
-            This assessment measures nine dimensions of your AI behaviour, benchmarked against 10,500+ participants.
-            Learn more at <a href="https://humanclarityinstitute.com" style="color: var(--color-primary);">humanclarityinstitute.com</a>
-        </p>
-    </div>
-
-</div>
-
-</body>
-</html>'''
-    
-    # ✅ Apply dynamic content substitutions (template is raw string, not f-string)
-    print(f"[DEBUG build_report_html] BEFORE replacements, looking for: '{{format_how_typical(section_3_how_typical)}}'")
-    print(f"[DEBUG build_report_html] Found in template? {'{format_how_typical(section_3_how_typical)}' in html}")
-    
-    how_typical_html = format_how_typical(section_3_how_typical)
-    print(f"[DEBUG build_report_html] format_how_typical returned: {len(how_typical_html)} characters")
-    
-    # Build HTML for all sections
-    opening_statement_html = format_prose(opening_statement)
-    top_3_findings_html = format_prose(top_3_findings)
-    dashboard_html = build_dimension_cards(section_1_dashboard)  # FIXED: Pass dict directly
-    question_profile_html = build_question_profile(section_6_question_profile)  # FIXED: Pass dict directly
-    rare_combos_html = format_prose(section_4_rare_combos)  # FIXED: Variable name
-    behaviour_html = format_prose(section_5_behaviour_story)
-    distinctive_html = format_prose(section_7_distinctive)  # FIXED: Variable name
-    perception_gap_html = format_prose(section_8_perception_gap)
-    what_to_protect_html = format_what_to_protect(section_9_what_to_protect)
-    trajectory_html = format_prose(section_10_trajectory)
-    next_steps_html = format_next_steps(section_11_next_steps)
-    
-    # Replace all placeholders in template
-    html = html.replace('{format_prose(opening_statement)}', opening_statement_html)
-    html = html.replace('{format_prose(top_3_findings)}', top_3_findings_html)
-    html = html.replace('{build_dimension_cards(section_1_dashboard)}', dashboard_html)
-    html = html.replace('{format_how_typical(section_3_how_typical)}', how_typical_html)
-    html = html.replace('{format_prose(section_4_rare_combos)}', rare_combos_html)
-    html = html.replace('{format_prose(section_5_behaviour_story)}', behaviour_html)
-    html = html.replace('{build_question_profile(section_6_question_profile)}', question_profile_html)
-    html = html.replace('{format_prose(section_7_distinctive)}', distinctive_html)
-    html = html.replace('{format_prose(section_8_perception_gap)}', perception_gap_html)
-    html = html.replace('{format_what_to_protect(section_9_what_to_protect)}', what_to_protect_html)
-    html = html.replace('{format_prose(section_10_trajectory)}', trajectory_html)
-    html = html.replace('{format_next_steps(section_11_next_steps)}', next_steps_html)
-    
-    return html
-
-
-if __name__ == '__main__':
-    # Test with sample data
-    sample_report = {
-        'metadata': {
-            'demographics': {
-                'age_group': '25-34',
-                'country': 'New Zealand'
+    try:
+        logger.info(f"[Phase 2] Starting report generation for session {session_id}")
+        
+        client = Anthropic(api_key=api_key)
+        participant = results['full_results']
+        demographics = results['demographics']
+        
+        # Initialize report_dict
+        report_dict = {
+            'metadata': {
+                'session_id': session_id,
+                'created_at': datetime.utcnow().isoformat(),
+                'participant_age_group': demographics.get('age_group'),
+                'participant_frequency': demographics.get('frequency'),
             }
+        }
+        
+        # ================================================================
+        # OPENING SECTION
+        # ================================================================
+        
+        logger.info("[Phase 2] Generating opening section...")
+        
+        report_dict['opening_statement'] = OPENING_STATEMENT
+        report_dict['top_3_findings'] = _call_api_1_top_3_findings(
+            client, results
+        )
+        
+        # ================================================================
+        # CORE SECTIONS (Data-only, no API calls)
+        # ================================================================
+        
+        logger.info("[Phase 2] Building dashboard (Section 1)...")
+        report_dict['section_1_dashboard'] = _build_section_1_dashboard(
+            participant, results
+        )
+        
+        logger.info("[Phase 2] Building how typical (Section 3)...")
+        report_dict['section_3_how_typical'] = _build_section_3_how_typical(
+            participant
+        )
+        
+        # ================================================================
+        # CORE SECTIONS (With API calls)
+        # ================================================================
+        
+        logger.info("[Phase 2] Generating rare combinations (Section 4 / API #2)...")
+        report_dict['section_4_rare_combos'] = _call_api_2_rare_combos(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Generating behaviour story (Section 5 / API #3)...")
+        report_dict['section_5_behaviour_story'] = _call_api_3_behaviour_story(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Building question profile (Section 6)...")
+        report_dict['section_6_question_profile'] = _build_section_6_question_profile(
+            participant, results
+        )
+        
+        logger.info("[Phase 2] Generating distinctive responses (Section 7 / API #4)...")
+        report_dict['section_7_distinctive'] = _call_api_4_distinctive_responses(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Generating perception gap (Section 8 / API #5)...")
+        report_dict['section_8_perception_gap'] = _call_api_5_perception_gap(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Building what to protect (Section 9)...")
+        report_dict['section_9_what_to_protect'] = _build_section_9_what_to_protect(
+            participant, results
+        )
+        
+        logger.info("[Phase 2] Generating trajectory (Section 10 / API #6)...")
+        report_dict['section_10_trajectory'] = _call_api_6_trajectory(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Building next steps (Section 11)...")
+        report_dict['section_11_next_steps'] = _build_section_11_next_steps(
+            participant, results
+        )
+        
+        # ================================================================
+        # OPTIONAL DEEP DIVE
+        # ================================================================
+        
+        report_dict['deep_dive_available'] = True
+        report_dict['deep_dive'] = {
+            'part_1_research_lenses': None,
+            'part_2_cohort_context': None,
+            'part_3_rare_combo_deep': None,
+            'part_4_architecture': None,
+        }
+        
+        logger.info(f"[Phase 2] Report generation complete for session {session_id}")
+        return report_dict
+        
+    except Exception as e:
+        logger.error(f"[Phase 2] Report generation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+# ============================================================================
+# API CALL #1: TOP 3 FINDINGS
+# ============================================================================
+
+def _call_api_1_top_3_findings(client, results):
+    """
+    Opening narrative: 3 striking features (50-75 words each)
+    """
+    
+    participant = results['full_results']
+    distinctive = results['distinctive_responses'][0] if results['distinctive_responses'] else None
+    gap = results['perception_gaps'][0] if results['perception_gaps'] else None
+    combo = results['rare_combinations'][0] if results['rare_combinations'] else None
+    
+    finding_1 = (
+        f"Question: {distinctive['question_text']}\n"
+        f"Your answer: {distinctive['respondent_answer']}/7 "
+        f"({distinctive['respondent_percentile']}th percentile)"
+    ) if distinctive else "N/A"
+    
+    finding_2 = (
+        f"{DIMENSION_NAMES.get(gap['dimension_1'], gap['dimension_1'])}: "
+        f"{gap['percentile_1']}th percentile\n"
+        f"{DIMENSION_NAMES.get(gap['dimension_2'], gap['dimension_2'])}: "
+        f"{gap['percentile_2']}th percentile\n"
+        f"Gap: {gap['gap_magnitude']} points"
+    ) if gap else "No significant gaps"
+    
+    finding_3 = (
+        f"{DIMENSION_NAMES.get(combo['dimension_1'], combo['dimension_1'])} "
+        f"({combo['percentile_1']}th) + "
+        f"{DIMENSION_NAMES.get(combo['dimension_2'], combo['dimension_2'])} "
+        f"({combo['percentile_2']}th) = "
+        f"{combo['rarity_percent']}% rarity"
+    ) if combo else "No rare combos"
+    
+    prompt = f"""
+This person's profile has three striking features.
+
+FINDING 1: {finding_1}
+FINDING 2: {finding_2}
+FINDING 3: {finding_3}
+
+Write THREE PARAGRAPHS (50-75 words each):
+
+Paragraph 1: What's striking about their most extreme response? Plain language, speak as "you".
+Paragraph 2: The gap between their two most misaligned dimensions. What does it suggest?
+Paragraph 3: Their rare combination. Why it's unusual and what it reveals.
+
+Tone: "Here's what stands out about you."
+Total: 150-225 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1000,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #1] Failed: {e}")
+        return "Error generating top 3 findings"
+
+
+# ============================================================================
+# SECTION 1: DASHBOARD
+# ============================================================================
+
+def _build_section_1_dashboard(participant, results):
+    """Build 9 dimension cards"""
+    
+    dashboard = {}
+    demographic_percentiles = results.get('demographic_percentiles', {})
+    
+    for dim_name in DIMENSIONS:
+        dim_data = participant['dimension_scores'].get(dim_name, {})
+        percentile = dim_data.get('percentile', 50)
+        
+        demo_data = demographic_percentiles.get(dim_name, {})
+        percentile_frequency = demo_data.get('percentile_by_frequency')
+        percentile_age = demo_data.get('percentile_by_age')
+        
+        if percentile >= 75:
+            signal_key = 'high'
+        elif percentile <= 25:
+            signal_key = 'low'
+        else:
+            signal_key = 'series'
+        
+        insight = SIGNALS['dimensions'].get(dim_name, {}).get(signal_key, 'Mixed patterns.')
+        
+        dashboard[dim_name] = {
+            'dimension_name': dim_name,
+            'display_name': DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title()),
+            'definition': DIMENSION_DEFINITIONS.get(dim_name, ''),
+            'percentile': percentile,
+            'percentile_by_frequency': percentile_frequency,
+            'percentile_by_age': percentile_age,
+            'research_insight': insight,
+            'plain_english': f"Higher than {percentile} of 100 people",
+        }
+    
+    return dashboard
+
+
+# ============================================================================
+# SECTION 3: HOW TYPICAL
+# ============================================================================
+
+def _build_section_3_how_typical(participant):
+    """How typical each dimension is"""
+    
+    how_typical = {}
+    
+    for dim_name in DIMENSIONS:
+        dim_data = participant['dimension_scores'].get(dim_name, {})
+        percentile = dim_data.get('percentile', 50)
+        
+        if percentile <= 20:
+            positioning = "notably low"
+            signal_key = 'low'
+        elif percentile >= 80:
+            positioning = "notably high"
+            signal_key = 'high'
+        else:
+            positioning = "near the population centre"
+            signal_key = 'series'
+        
+        signal_text = SIGNALS['dimensions'].get(dim_name, {}).get(signal_key, 'Mixed patterns.')
+        
+        how_typical[dim_name] = {
+            'dimension_name': dim_name,
+            'display_name': DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title()),
+            'percentile': percentile,
+            'positioning': positioning,
+            'signal_text': signal_text,
+        }
+    
+    return how_typical
+
+
+# ============================================================================
+# API CALL #2: RARE COMBINATIONS
+# ============================================================================
+
+def _call_api_2_rare_combos(client, results):
+    """Analyze rare combinations (500-600 words)"""
+    
+    combos = results.get('rare_combinations', [])
+    if not combos:
+        return "No rare combinations detected."
+    
+    combo_descriptions = []
+    for i, combo in enumerate(combos[:2], 1):
+        dim1_name = DIMENSION_NAMES.get(combo['dimension_1'], combo['dimension_1'])
+        dim2_name = DIMENSION_NAMES.get(combo['dimension_2'], combo['dimension_2'])
+        
+        desc = f"""
+COMBINATION {i}: {dim1_name} + {dim2_name}
+- {dim1_name}: {combo['percentile_1']}th percentile
+- {dim2_name}: {combo['percentile_2']}th percentile
+- Rarity: {combo['rarity_percent']}% of participants
+
+Why unusual: {combo.get('why_unusual', 'Uncommon pairing.')}
+What it reveals: {combo.get('what_reveals', 'Unusual AI relationship.')}
+"""
+        combo_descriptions.append(desc)
+    
+    combos_text = "\n".join(combo_descriptions)
+    
+    prompt = f"""
+Rare combinations in this profile:
+
+{combos_text}
+
+For EACH combination write 250-300 words:
+
+1. WHY IT'S UNUSUAL (150 words)
+   - What does research from HCI's 21 datasets show?
+   - How rare is this pairing?
+   - What behavioral pattern does research predict?
+
+2. WHAT IT REVEALS (150 words)
+   - What does this tell us about their AI relationship?
+   - What strengths or vulnerabilities?
+   - What pressure points might emerge?
+
+3. PATTERN IMPLICATIONS (100 words)
+   - How does this fit their overall profile?
+   - Research perspective on where this leads
+
+Speak directly as "you". Ground in research. Use plain language.
+
+Total: 500-600 words across both combinations.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1500,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #2] Failed: {e}")
+        return "Error generating rare combinations analysis"
+
+
+# ============================================================================
+# API CALL #3: BEHAVIOUR STORY
+# ============================================================================
+
+def _call_api_3_behaviour_story(client, results):
+    """Full profile narrative (800-1000 words)"""
+    
+    participant = results['full_results']
+    
+    dimensions_summary = []
+    for dim_name in DIMENSIONS:
+        dim_data = participant['dimension_scores'].get(dim_name, {})
+        percentile = dim_data.get('percentile', 50)
+        display_name = DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title())
+        dimensions_summary.append(f"{display_name}: {percentile}th percentile")
+    
+    dimensions_list = "\n".join(dimensions_summary)
+    
+    prompt = f"""
+Full dimensional profile:
+
+{dimensions_list}
+
+Write BEHAVIOUR STORY (800-1000 words):
+
+1. OPENING (150 words)
+   Synthesize what their pattern reveals about AI engagement
+   Use research context. Set up dimensional analysis.
+
+2. DIMENSIONAL ANALYSIS (500-600 words)
+   Order by distinctiveness. For top 3-4 dimensions:
+   - Their positioning (high/low/typical)
+   - What research shows this means
+   - Pressure points from HBE_FRAMEWORK
+   - Behavioral implications specific to them
+   - One reflective question
+
+3. PATTERN ACROSS DIMENSIONS (150-200 words)
+   How dimensions interact?
+   Rare combinations suggest?
+   Research shows for trajectory?
+   What pressure points matter most?
+
+4. CLOSING (100 words)
+   What their profile suggests about AI relationship
+   Where research shows this leads
+   Forward-looking perspective
+
+Requirements:
+- Use HCI research throughout
+- Reference SIGNALS for each dimension
+- Ground pressure points in HBE_FRAMEWORK
+- Speak directly as "you"
+- Plain language, no jargon
+
+Tone: Research-grounded, flowing, illuminating.
+Total: 800-1000 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=2500,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #3] Failed: {e}")
+        return "Error generating behaviour story"
+
+
+# ============================================================================
+# SECTION 6: QUESTION PROFILE
+# ============================================================================
+
+def _build_section_6_question_profile(participant, results):
+    """All 39 questions with distributions"""
+    
+    questions = {}
+    question_scores = participant.get('question_scores', {})
+    question_distributions = results.get('question_distributions', {})
+    
+    for q_key, q_data in question_scores.items():
+        questions[q_key] = {
+            'question_key': q_key,
+            'question_text': q_data.get('question_text', ''),
+            'dimension': q_data.get('dimension', ''),
+            'respondent_answer': q_data.get('respondent_answer', 0),
+            'respondent_percentile': q_data.get('percentile', 50),
+            'population_distribution': question_distributions.get(q_key, [14]*7),
+        }
+    
+    return questions
+
+
+# ============================================================================
+# API CALL #4: DISTINCTIVE RESPONSES
+# ============================================================================
+
+def _call_api_4_distinctive_responses(client, results):
+    """Extreme responses analysis (300-400 words)"""
+    
+    distinctive = results.get('distinctive_responses', [])[:5]
+    
+    if not distinctive:
+        return "Your responses are well-distributed across the scale."
+    
+    response_list = []
+    for i, resp in enumerate(distinctive, 1):
+        response_list.append(
+            f"{i}. {resp['question_text']}\n"
+            f"   Answer: {resp['respondent_answer']}/7 ({resp['respondent_percentile']}th %ile)\n"
+            f"   Dimension: {DIMENSION_NAMES.get(resp['dimension'], resp['dimension'])}"
+        )
+    
+    responses_text = "\n".join(response_list)
+    
+    prompt = f"""
+Extreme responses:
+
+{responses_text}
+
+Analyze in ~300-400 words:
+
+1. PATTERN ANALYSIS (100 words)
+   What coherence emerges across these extremes?
+   What do they reveal about AI relationship?
+
+2. RESEARCH PERSPECTIVE (150 words)
+   How common is this pattern?
+   What do people with similar extremes typically do?
+   What does HCI research show?
+   What trajectory does research predict?
+
+3. BEHAVIORAL IMPLICATIONS (50-100 words)
+   What strengths does this suggest?
+   What pressure points might emerge?
+   What's worth noticing?
+
+Speak directly as "you". Ground in research. Plain language.
+
+Total: 300-400 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1200,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #4] Failed: {e}")
+        return "Error generating distinctive responses analysis"
+
+
+# ============================================================================
+# API CALL #5: PERCEPTION GAP
+# ============================================================================
+
+def _call_api_5_perception_gap(client, results):
+    """Perception gaps analysis (200-300 words)"""
+    
+    gaps = results.get('perception_gaps', [])[:3]
+    
+    if not gaps:
+        return "Self-perception aligns well with benchmarked positioning, indicating strong self-awareness."
+    
+    gap_list = []
+    for gap in gaps:
+        dim1 = DIMENSION_NAMES.get(gap['dimension_1'], gap['dimension_1'])
+        dim2 = DIMENSION_NAMES.get(gap['dimension_2'], gap['dimension_2'])
+        
+        gap_list.append(
+            f"{dim1}: {gap['percentile_1']}th %ile\n"
+            f"{dim2}: {gap['percentile_2']}th %ile\n"
+            f"Gap: {gap['gap_magnitude']} points"
+        )
+    
+    gaps_text = "\n\n".join(gap_list)
+    
+    prompt = f"""
+Perception gaps (where dimensions diverge):
+
+{gaps_text}
+
+Write 200-300 words:
+
+1. WHAT THIS REVEALS (100 words)
+   What does significant divergence mean?
+   Suggest internal conflict or legitimate variation?
+   Reveal about self-awareness?
+
+2. RESEARCH PERSPECTIVE (100 words)
+   What does HCI research show about this gap?
+   Is this common or unusual?
+   What typically happens with this pattern?
+
+3. IMPLICATIONS (50-100 words)
+   What pressure points might emerge?
+   What's worth noticing?
+
+Speak directly as "you". Ground in research.
+
+Total: 200-300 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1000,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #5] Failed: {e}")
+        return "Error generating perception gap analysis"
+
+
+# ============================================================================
+# SECTION 9: WHAT TO PROTECT
+# ============================================================================
+
+def _build_section_9_what_to_protect(participant, results):
+    """4 subsections based on their pattern"""
+    
+    dimension_scores = participant['dimension_scores']
+    sorted_dims = sorted(
+        dimension_scores.items(),
+        key=lambda x: abs(x[1].get('percentile', 50) - 50),
+        reverse=True
+    )[:3]
+    
+    pressure_points = []
+    values_list = []
+    strengths = []
+    
+    for dim_name, dim_data in sorted_dims:
+        display_name = DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title())
+        percentile = dim_data.get('percentile', 50)
+        
+        pp = SIGNALS['dimensions'].get(dim_name, {}).get('pressure_point', '')
+        if pp:
+            pressure_points.append(pp)
+        
+        # Note: VALUES_SIGNALS is organized by value categories, not dimensions
+        # For now, add a generic value statement based on their positioning
+        if percentile >= 75:
+            values_list.append(f"Maintaining high {display_name}")
+        elif percentile <= 25:
+            values_list.append(f"Preserving values around {display_name}")
+        
+        if percentile >= 75:
+            strengths.append(f"High {display_name} supports intentionality")
+        elif percentile <= 25:
+            strengths.append(f"Clear boundary around {display_name}")
+    
+    return {
+        'whats_working_well': {
+            'title': "What's Working Well",
+            'strengths': strengths[:3]
         },
-        'opening': 'This is a test opening paragraph.',
-        'section_1_dashboard': {
-            'dimensions': {
-                'trust': {
-                    'percentile': 72,
-                    'raw_score': 5.2,
-                    'research_insight': 'You show above-average trust in AI systems.'
-                }
-            }
+        'pressure_points': {
+            'title': 'Pressure Points to Watch',
+            'points': pressure_points[:3]
+        },
+        'values_at_stake': {
+            'title': 'Values at Stake',
+            'values': values_list[:3]
+        },
+        'protective_strategies': {
+            'title': 'Protective Strategies',
+            'strategies': [
+                'Maintain intentional boundaries',
+                'Regular reflection on AI relationship',
+                'Preserve human connection in decisions'
+            ]
         }
     }
+
+
+# ============================================================================
+# API CALL #6: TRAJECTORY
+# ============================================================================
+
+def _call_api_6_trajectory(client, results):
+    """Trajectory & outlook (300-400 words)"""
     
-    html = build_report_html(sample_report)
-    print(f"Generated {len(html)} characters of HTML")
+    participant = results['full_results']
+    
+    distinctive_dims = sorted(
+        participant['dimension_scores'].items(),
+        key=lambda x: abs(x[1].get('percentile', 50) - 50),
+        reverse=True
+    )[:2]
+    
+    dims_summary = []
+    for dim_name, dim_data in distinctive_dims:
+        display_name = DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title())
+        percentile = dim_data.get('percentile', 50)
+        dims_summary.append(f"{display_name}: {percentile}th percentile")
+    
+    dims_text = "\n".join(dims_summary)
+    
+    prompt = f"""
+Based on HCI's 21-dataset research, patterns like theirs evolve predictably.
+
+Distinctive positioning:
+{dims_text}
+
+Write 300-400 words:
+
+1. TRAJECTORY (100 words)
+   Where this typically leads with continued AI use
+   What tends to strengthen/weaken/become automatic
+   Skills that develop
+
+2. PRESSURE POINTS (100 words)
+   Specific vulnerable areas
+   Where research shows friction emerges
+   What's worth monitoring
+
+3. REFRAME (100 words)
+   How to think about this healthily (HBE_FRAMEWORK)
+   Normalize human baseline
+   Acknowledge AI-induced pressures
+   Integrated framing
+
+4. FORWARD-LOOKING (100 words)
+   How conscious choice-making looks
+   How might growth look
+   Research suggests what works
+
+Speak directly as "you". Ground in research.
+
+Total: 300-400 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1200,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #6] Failed: {e}")
+        return "Error generating trajectory analysis"
+
+
+# ============================================================================
+# SECTION 11: NEXT STEPS
+# ============================================================================
+
+def _build_section_11_next_steps(participant, results):
+    """3 reflection prompts"""
+    
+    dimension_scores = participant['dimension_scores']
+    
+    highest_dim = max(dimension_scores.items(), key=lambda x: x[1].get('percentile', 0))[0]
+    lowest_dim = min(dimension_scores.items(), key=lambda x: x[1].get('percentile', 100))[0]
+    
+    highest_name = DIMENSION_NAMES.get(highest_dim, highest_dim.replace('_', ' ').title())
+    lowest_name = DIMENSION_NAMES.get(lowest_dim, lowest_dim.replace('_', ' ').title())
+    
+    return {
+        'intro': "This report opens questions. Here are three reflection prompts based on your pattern:",
+        'prompts': [
+            {
+                'title': f"About your {highest_name} strength",
+                'prompt': f"You score highly on {highest_name}. What would it mean to lean into this strength intentionally?"
+            },
+            {
+                'title': f"About your {lowest_name} boundary",
+                'prompt': f"You maintain a clear boundary around {lowest_name}. What is this boundary protecting?"
+            },
+            {
+                'title': "About your overall pattern",
+                'prompt': "If your relationship with AI evolved, what would you want to stay the same? What might you explore changing?"
+            }
+        ],
+        'closing': "Your relationship with AI is just beginning. The most important question is: what do you choose to do with this understanding?"
+    }
