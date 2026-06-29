@@ -803,7 +803,8 @@ def generate_how_typical(results: Dict) -> Dict:
     
     logger.info("[How Typical] Categorizing dimensions into Distinctive/Typical")
     
-    dimension_scores = results.get('dimension_scores', {})
+    # ✅ CORRECT: dimension_scores is nested in full_results
+    dimension_scores = results.get('full_results', {}).get('dimension_scores', {})
     
     # Dimension names mapping
     DIM_NAMES = {
