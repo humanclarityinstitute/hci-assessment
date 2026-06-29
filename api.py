@@ -784,6 +784,14 @@ def premium():
         responses = assessment.get('responses', {})
         percentiles = assessment.get('percentiles', {})
         
+        # CRITICAL: Restore data that was calculated in /score but stored in separate DB columns
+        # /score calculates these and returns them, but stores them as separate columns
+        # We need to put them BACK into full_results so report_generator can find them
+        if not full_results.get('perception_gaps'):
+            full_results['perception_gaps'] = assessment.get('perception_gaps', [])
+        if not full_results.get('rare_combinations'):
+            full_results['rare_combinations'] = assessment.get('patterns', [])
+        
         # Step 5: Mark as paid and store stripe_session_id (SAME ROW)
         from datetime import datetime
         db.update_assessment(
