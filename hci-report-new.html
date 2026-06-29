@@ -479,7 +479,33 @@
 </head>
 <body>
 
-<div class="report" id="hci-report">
+<!-- LOADING SCREEN -->
+<div id="hci-loading" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #fff; text-align: center;">
+  <div style="max-width: 400px;">
+    <h2 style="margin-bottom: 20px; color: #0066cc;">Generating Your Report...</h2>
+    <div style="width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top: 4px solid #0066cc; border-radius: 50%; margin: 0 auto 20px; animation: spin 1s linear infinite;"></div>
+    <p style="color: #666; margin-bottom: 15px; font-size: 14px;">This may take a minute or two as we generate your personalized report.</p>
+    <p style="color: #999; font-size: 12px;">You'll receive an email with a permanent link to your report once it's ready.</p>
+  </div>
+  <style>
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</div>
+
+<!-- ERROR SCREEN -->
+<div id="hci-error" style="display: none; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #fff; text-align: center;">
+  <div style="max-width: 400px;">
+    <h2 style="margin-bottom: 20px; color: #cc0000;">We Encountered An Issue</h2>
+    <p style="color: #666; margin-bottom: 15px; font-size: 14px;">We're sorry — your report couldn't be generated right now.</p>
+    <p style="color: #999; font-size: 12px; margin-bottom: 20px;">Please check your email (including spam folder) — our team is working on this, and your report should arrive within 48 hours.</p>
+    <p style="font-size: 12px;"><a href="mailto:support@humanclarityinstitute.com" style="color: #0066cc; text-decoration: none;">Contact support</a> if you need immediate assistance.</p>
+  </div>
+</div>
+
+<div class="report" id="hci-report" style="display: none;">
 
   <!-- REPORT HEADER -->
   <div class="report-header">
@@ -868,17 +894,122 @@ function renderReport(renderingDict) {
 }
 
 // ================================================================
+// LOADING/ERROR/SUCCESS SCREENS
+// ================================================================
+
+function showLoading() {
+  const loading = document.getElementById('hci-loading');
+  const report = document.getElementById('hci-report');
+  const error = document.getElementById('hci-error');
+  if (loading) loading.style.display = 'flex';
+  if (report) report.style.display = 'none';
+  if (error) error.style.display = 'none';
+}
+
+function showError() {
+  const loading = document.getElementById('hci-loading');
+  const report = document.getElementById('hci-report');
+  const error = document.getElementById('hci-error');
+  if (loading) loading.style.display = 'none';
+  if (report) report.style.display = 'none';
+  if (error) error.style.display = 'block';
+}
+
+function showReport() {
+  const loading = document.getElementById('hci-loading');
+  const report = document.getElementById('hci-report');
+  const error = document.getElementById('hci-error');
+  if (loading) loading.style.display = 'none';
+  if (report) report.style.display = 'block';
+  if (error) error.style.display = 'none';
+}
+
+// ================================================================
+// PREMIUM REPORT GENERATION
+// ================================================================
+
+const API = window.location.origin;
+
+async function fetchReport(sessionId, stripeSessionId) {
+  try {
+    console.log(`Calling /premium: session_id=${sessionId}, stripe_session_id=${stripeSessionId}`);
+    
+    const fullResults = JSON.parse(sessionStorage.getItem('hci_full_results') || '{}');
+    const reportEmail = sessionStorage.getItem('hci_report_email') || '';
+    
+    const res = await fetch(`${API}/premium`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        session_id: sessionId,
+        stripe_session_id: stripeSessionId,
+        full_results: fullResults,
+        report_email: reportEmail,
+      })
+    });
+
+    console.log(`/premium status: ${res.status}`);
+
+    if (!res.ok) {
+      console.error(`/premium failed: ${res.status}`);
+      showError();
+      return;
+    }
+
+    const data = await res.json();
+    console.log('/premium success:', data.success);
+
+    if (data.success && data.report) {
+      renderReport(data.report);
+      showReport();
+    } else {
+      console.error(`/premium: success=${data.success}, report=${!!data.report}`);
+      showError();
+    }
+  } catch (err) {
+    console.error('/premium error:', err);
+    showError();
+  }
+}
+
+function init() {
+  showLoading();
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session_id');
+  const stripeSessionId = urlParams.get('stripe_session_id');
+
+  console.log(`Init: session_id=${sessionId}, stripe_session_id=${stripeSessionId}`);
+
+  if (stripeSessionId) {
+    // stripe_session_id is required; session_id is optional (backend will recover it from Stripe)
+    const timeoutId = setTimeout(() => {
+      const loading = document.getElementById('hci-loading');
+      if (loading && loading.style.display === 'flex') {
+        console.error('Timeout after 120s');
+        showError();
+      }
+    }, 120000);
+
+    fetchReport(sessionId, stripeSessionId).finally(() => clearTimeout(timeoutId));
+  } else if (typeof window.hciRenderingData !== 'undefined') {
+    // If hciRenderingData is provided (e.g., for cached reports), render it directly
+    renderReport(window.hciRenderingData);
+    showReport();
+  } else {
+    console.error('Missing stripe_session_id and hciRenderingData');
+    showError();
+  }
+}
+
+// ================================================================
 // INITIALIZATION
 // ================================================================
 
-// Check if rendering data is provided
-if (typeof window.hciRenderingData !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', function() {
-    renderReport(window.hciRenderingData);
-  });
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
 } else {
-  console.warn('No hciRenderingData found. Report will not render.');
-  console.log('Expected: window.hciRenderingData = {...}');
+  init();
 }
 
 })();
