@@ -877,36 +877,6 @@ def generate_how_typical(results: Dict) -> Dict:
         'typical': typical,
         'moderate': moderate,
     }
-        
-        if pct > 75 or pct < 25:
-            distinctive.append({
-                'key': dim_key,
-                'name': dim_name,
-                'percentile': pct
-            })
-        elif 35 <= pct <= 65:
-            typical.append({
-                'key': dim_key,
-                'name': dim_name,
-                'percentile': pct
-            })
-        else:
-            moderate.append({
-                'key': dim_key,
-                'name': dim_name,
-                'percentile': pct
-            })
-    
-    # Sort distinctive by distance from 50 (most extreme first)
-    distinctive.sort(key=lambda x: abs(x['percentile'] - 50), reverse=True)
-    
-    logger.info(f"[How Typical] Distinctive: {len(distinctive)}, Typical: {len(typical)}, Moderate: {len(moderate)}")
-    
-    return {
-        'distinctive': distinctive,
-        'typical': typical,
-        'moderate': moderate,
-    }
 
 
 def generate_question_profile(results: Dict) -> Dict:
