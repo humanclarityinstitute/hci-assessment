@@ -16,8 +16,13 @@ v2.1 rules honoured here:
 ------------------------------------------------------------------------------
 FIELD MAP — CONFIRM AGAINST report_generator.py BEFORE DEPLOY
 ------------------------------------------------------------------------------
-This template reads the v2.1 report object. The exact key names below are the
-ONLY thing tying it to the generator, so they are isolated here on purpose.
+This template reads the v9.0 report object. The email now reads from
+section_1_dashboard['dimensions'] which contains:
+  - percentile (numeric)
+  - percentile_text (plain English string)
+  - raw_score (numeric)
+  - research_insight (string)
+
 Everything is read with a safe default: a missing key degrades to blank, never
 to a wrong number (that is what produced the old "0th percentile" bug).
 """
@@ -35,6 +40,41 @@ DIM_ORDER = [
     'thought_partnership', 'social_transparency',
 ]
 
+# Dimension definitions (LOCKED from spec)
+DIM_LABELS = {
+    'reliance': 'Reliance',
+    'trust': 'Trust',
+    'verification': 'Verification',
+    'decision_delegation': 'Decision Delegation',
+    'human_agency': 'Human Agency',
+    'disclosure': 'Disclosure',
+    'emotional_regulation': 'Emotional Regulation',
+    'thought_partnership': 'Thought Partnership',
+    'social_transparency': 'Social Transparency',
+}
+
+DIM_DEFINITIONS = {
+    'reliance': 'How much you depend on AI for thinking and functioning',
+    'trust': 'How much you believe AI outputs are accurate',
+    'verification': 'How often you check AI outputs before using them',
+    'decision_delegation': 'How much you hand over decisions to AI',
+    'human_agency': 'How much control you maintain over your decisions',
+    'disclosure': 'How much personal information you share with AI',
+    'emotional_regulation': 'Whether you turn to AI for emotional support',
+    'thought_partnership': 'How much you use AI as a thinking partner',
+    'social_transparency': 'How openly you discuss your AI use with others',
+}
+
+
+def _positional_label(percentile):
+    """Convert percentile to positional word"""
+    if percentile >= 71:
+        return "notably high"
+    elif percentile >= 41:
+        return "typical"
+    else:
+        return "notably low"
+
 
 def _first_paragraph(text):
     """Lightweight: show only the opening paragraph of a longer section."""
@@ -43,23 +83,27 @@ def _first_paragraph(text):
     return text.split('\n\n')[0].replace('\n', ' ').strip()
 
 
-def _dim_summary_row(dim):
+def _dim_summary_row(dim_key, dim_data):
     """
-    One compact dimension row: label + subtitle, positional word, plain-English.
+    One compact dimension row: label + definition, positional word, plain-English.
     No percentile number, no chart, no full narrative — those live in the
     PDF / web report.
 
-    Reads report_generator's dimension_profiles fields:
-      label, subtitle, position (the Section-3 positional word), plain_english.
-    We render the positional word + plain-English string only — never a bare
-    percentile (v2.1).
+    dim_key: 'reliance', 'trust', etc.
+    dim_data: dict with 'percentile', 'percentile_text', etc. from dashboard
     """
-    label = dim.get('label', '')
-    subtitle = dim.get('subtitle', '')
-    position = (dim.get('position') or '').strip()
-    if position:
-        position = position[0].upper() + position[1:]  # "notably high" -> "Notably high"
-    plain = dim.get('plain_english', '')
+    
+    # Get dimension label and definition
+    label = DIM_LABELS.get(dim_key, dim_key.title())
+    definition = DIM_DEFINITIONS.get(dim_key, '')
+    
+    # Extract percentile and calculate position
+    percentile = dim_data.get('percentile', 50)
+    position = _positional_label(percentile)
+    position = position[0].upper() + position[1:]  # "notably high" -> "Notably high"
+    
+    # Plain English description from generator
+    plain = dim_data.get('percentile_text', '')
 
     position_pill = (
         f'<span style="display:inline-block;background:#EDEBFB;color:#3D2B8C;'
@@ -76,7 +120,7 @@ def _dim_summary_row(dim):
             <tr>
               <td style="vertical-align:top;">
                 <p style="margin:0;color:#1B2A4A;font-size:15px;font-weight:700;">{label}</p>
-                <p style="margin:2px 0 0;color:#6B7280;font-size:12px;">{subtitle}</p>
+                <p style="margin:2px 0 0;color:#6B7280;font-size:12px;">{definition}</p>
               </td>
               <td align="right" style="vertical-align:top;">{position_pill}</td>
             </tr>
@@ -100,12 +144,9 @@ def generate_report_email(report, demographics, report_url='https://humanclarity
     date_str = datetime.utcnow().strftime('%d %B %Y')
 
     # Most surprising finding -> short opener. In report_generator this is the
-    # 'opening' field (generate_opening). 'overview' is the separate AI-Identity
-    # overview, used only as a fallback.
+    # 'opening' field (generate_opening).
     surprising = _first_paragraph(
-        report.get('opening')
-        or report.get('overview')
-        or ''
+        report.get('opening') or ''
     )
 
     # Methodology stays the fixed verbatim "10,000+" text from the generator.
@@ -115,8 +156,9 @@ def generate_report_email(report, demographics, report_url='https://humanclarity
     # Extract dimension data from dashboard section (report structure v9.0)
     dashboard = report.get('section_1_dashboard', {}) or {}
     profiles = dashboard.get('dimensions', {}) or {}
+    
     dim_rows = ''.join(
-        _dim_summary_row(profiles[k]) for k in DIM_ORDER if profiles.get(k)
+        _dim_summary_row(k, profiles.get(k, {})) for k in DIM_ORDER if profiles.get(k)
     )
 
     # Durable PDF download link (fallback if the attachment is stripped/lost).
