@@ -806,7 +806,7 @@ def generate_how_typical(results: Dict) -> Dict:
     
     logger.info("[How Typical] Categorizing dimensions into Distinctive/Typical")
     
-    # ✅ CORRECT: dimension_scores is nested in full_results, not at top level
+    # ✅ CORRECT: dimension_scores is nested in full_results
     dimension_scores = results.get('full_results', {}).get('dimension_scores', {})
     
     # Dimension names mapping
@@ -833,7 +833,7 @@ def generate_how_typical(results: Dict) -> Dict:
         pct = dim_data.get('percentile_overall', 50)
         dim_name = DIM_NAMES.get(dim_key, dim_key)
         
-        # ✅ PULL from SIGNALS (like generate_dashboard does)
+        # ✅ Pull pre-written interpretation from SIGNALS (like generate_dashboard does)
         signal = SIGNALS.get('dimensions', {}).get(dim_key, {})
         if pct > 75:
             interpretation = signal.get('high', f'You sit notably/exceptionally high on {dim_name}.')
