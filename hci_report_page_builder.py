@@ -95,11 +95,14 @@ def positional_label(p: Optional[int]) -> str:
 def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
     """Format Section 3: How Typical data into HTML.
     
+    Data already includes pre-written interpretation text from signals library
+    (pulled by generate_how_typical in report_generator.py).
+    
     Data structure:
     {
-        'distinctive': [{key, name, percentile}, ...],
-        'typical': [{key, name, percentile}, ...],
-        'moderate': [{key, name, percentile}, ...]
+        'distinctive': [{key, name, percentile, interpretation}, ...],
+        'typical': [{key, name, percentile, interpretation}, ...],
+        'moderate': [{key, name, percentile, interpretation}, ...]
     }
     """
     if not how_typical_data:
@@ -118,12 +121,7 @@ def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
             name = dim.get('name', 'Unknown')
             pct = dim.get('percentile', 50)
             label = positional_label(pct)
-            
-            # Interpretation based on percentile
-            if pct > 75:
-                interpretation = f"You sit notably/exceptionally high on {name}. This suggests your pattern in this area is more pronounced than most people."
-            else:  # pct < 25
-                interpretation = f"You sit notably/exceptionally low on {name}. This suggests you maintain a distinctive boundary in this area compared to most people."
+            interpretation = dim.get('interpretation', '')
             
             html += f'''<div class="how-typical-item">
     <div class="how-typical-label">{name} — {label} ({pct}th %ile)</div>
@@ -145,8 +143,7 @@ def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
             name = dim.get('name', 'Unknown')
             pct = dim.get('percentile', 50)
             label = positional_label(pct)
-            
-            interpretation = f"You sit in the middle range on {name}. This means you move through this area without standing out — neither notably cautious nor notably open."
+            interpretation = dim.get('interpretation', '')
             
             html += f'''<div class="how-typical-item">
     <div class="how-typical-label">{name} — {label} ({pct}th %ile)</div>
