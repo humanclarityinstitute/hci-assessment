@@ -247,59 +247,61 @@ SIGNALS = {
 
 DIMENSION_VARIABLES = {
     'reliance': [
-        'restless_without_ai',
-        'system_reliance_struggle_without',
-        'ai_reliance_decisions'
+        'rel_q1',
+        'rel_q2',
+        'rel_q3',
+        'rel_q4',
+        'rel_q5'
     ],
     'trust': [
-        'trust_ai_for_accuracy',
-        'confident_relying_on_ai_outputs',
-        'trust_q3'
+        'trust_q1',
+        'trust_q2',
+        'trust_q3',
+        'trust_q4'
     ],
     'verification': [
-        'double_check_ai_info',
+        'ver_q1',
         'ver_q2',
         'ver_q3',
-        'verify_use_external_sources'
+        'ver_q4'
     ],
     'decision_delegation': [
-        'ai_decision_reliance_when_difficult',
-        'delegation_rely_even_if_possible',
-        'delegation_skill_decline',
-        'delegation_regular_handover',
-        'accept_ai_output_without_change'
+        'del_q1',
+        'del_q2',
+        'del_q3',
+        'del_q4',
+        'del_q5'
     ],
     'human_agency': [
-        'self_directed_action_feeling',
-        'agency_control_feel_in_control',
-        'agency_trust_own_judgement',
+        'agency_q1',
+        'agency_q2',
+        'agency_q3',
         'agency_q4',
-        'ai_identity_mine_vs_ai',
-        'override_follow_despite_discomfort'
+        'agency_q5'
     ],
     'emotional_regulation': [
-        'ai_emotional_support_extent',
-        'ai_emotion_relief_support',
-        'ai_emotional_safety_vs_humans',
-        'emotional_regulation_coping',
-        'ai_boundaries_change_over_time'
+        'emot_q1',
+        'emot_q2',
+        'emot_q3',
+        'emot_q4'
     ],
     'disclosure': [
-        'ai_personal_sharing_comfort',
-        'disclosure_untold_things',
-        'disclosure_comparative_openness'
+        'disc_q1',
+        'disc_q2',
+        'disc_q3',
+        'disc_q4'
     ],
     'thought_partnership': [
-        'thought_partnership_sounding_board',
-        'thought_partnership_belief_challenge',
-        'ai_thinking_depth_engagement',
+        'thought_q1',
+        'thought_q2',
+        'thought_q3',
         'thought_q4'
     ],
     'social_transparency': [
-        'social_transparency_professional',
+        'soc_q1',
         'soc_q2',
-        'social_transparency_comfort',
-        'social_transparency_gap'
+        'soc_q3',
+        'soc_q4'
     ]
 }
 
