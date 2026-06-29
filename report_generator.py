@@ -799,29 +799,64 @@ def generate_dashboard(results: Dict) -> Dict:
 
 
 def generate_how_typical(results: Dict) -> Dict:
-    """DATA-ONLY: How typical vs distinctive"""
+    """DATA-ONLY: Categorizes all 9 dimensions into Distinctive/Typical per spec"""
     
-    logger.info("[How Typical] Analyzing distinctive variables")
+    logger.info("[How Typical] Categorizing dimensions into Distinctive/Typical")
     
-    percentiles = results.get('percentiles', {})
+    dimension_scores = results.get('dimension_scores', {})
     
-    distinctive = []
-    typical = []
+    # Dimension names mapping
+    DIM_NAMES = {
+        'reliance': 'Reliance',
+        'trust': 'Trust',
+        'verification': 'Verification',
+        'decision_delegation': 'Decision Delegation',
+        'human_agency': 'Human Agency',
+        'emotional_regulation': 'Emotional Regulation',
+        'disclosure': 'Disclosure',
+        'thought_partnership': 'Thought Partnership',
+        'social_transparency': 'Social Transparency',
+    }
     
-    for q_key, p_data in percentiles.items():
-        percentile = p_data.get('percentile_overall', 50) if isinstance(p_data, dict) else p_data
+    distinctive = []  # percentile > 75 or < 25
+    typical = []      # percentile 35-65
+    moderate = []     # percentile 26-34 or 66-74
+    
+    for dim_key, dim_data in dimension_scores.items():
+        if not isinstance(dim_data, dict):
+            continue
         
-        if abs(percentile - 50) > 25:
-            distinctive.append((q_key, percentile))
-        elif abs(percentile - 50) < 10:
-            typical.append((q_key, percentile))
+        pct = dim_data.get('percentile_overall', 50)
+        dim_name = DIM_NAMES.get(dim_key, dim_key)
+        
+        if pct > 75 or pct < 25:
+            distinctive.append({
+                'key': dim_key,
+                'name': dim_name,
+                'percentile': pct
+            })
+        elif 35 <= pct <= 65:
+            typical.append({
+                'key': dim_key,
+                'name': dim_name,
+                'percentile': pct
+            })
+        else:
+            moderate.append({
+                'key': dim_key,
+                'name': dim_name,
+                'percentile': pct
+            })
+    
+    # Sort distinctive by distance from 50 (most extreme first)
+    distinctive.sort(key=lambda x: abs(x['percentile'] - 50), reverse=True)
+    
+    logger.info(f"[How Typical] Distinctive: {len(distinctive)}, Typical: {len(typical)}, Moderate: {len(moderate)}")
     
     return {
-        'title': 'Distinctive vs Typical',
-        'distinctive_count': len(distinctive),
-        'typical_count': len(typical),
-        'distinctive_questions': distinctive[:5],
-        'typical_questions': typical[:5]
+        'distinctive': distinctive,
+        'typical': typical,
+        'moderate': moderate,
     }
 
 
