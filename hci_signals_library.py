@@ -334,4 +334,37 @@ RESEARCH_NUMBERS = {
     'rest_critically_low': (0.35, 0.42),  # 35-42% critically low on rest
     'concealment_young': 2.89,  # 18-24 mean on concealment
     'concealment_old': 1.36,  # 65+ mean on concealment
+    
+    # ========== OPENING SECTION ==========
+    # Pre-written static opening statement + instructions
+    
+    'opening': {
+        'prewritten_statement': """You are uniquely positioned in how you relate to AI. Your profile reflects how you currently engage with AI systems — based on your responses benchmarked against 10,500 participants across 21 research studies.
+
+Use this report to understand your pattern:
+• Understand what's distinctive about how you work with AI
+• Notice where you're typical and where you stand out
+• Explore what's worth protecting as your use evolves
+• Make conscious choices about your relationship with AI going forward""",
+        
+        'findings_prompt_template': """This person's profile has three striking features:
+
+DATA POINT 1 — MOST DISTINCTIVE VARIABLE:
+{most_distinctive_variable_text}
+
+DATA POINT 2 — PERCEPTION GAP:
+{perception_gap_text}
+
+DATA POINT 3 — RARE COMBINATION:
+{rare_combination_text}
+
+Write three paragraphs (50-75 words each) that:
+1. Open with what's striking about their most distinctive dimension
+2. Observe their perception gap (if exists)
+3. Highlight their rare combination (if exists)
+
+Frame as findings, not questions. Use plain language. Speak directly as "you".
+Tone: "Here's what stands out about you."
+""",
+    }
 }
