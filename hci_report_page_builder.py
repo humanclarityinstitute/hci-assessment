@@ -105,34 +105,23 @@ def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
         'moderate': [{key, name, percentile, interpretation}, ...]
     }
     """
-    print(f"[DEBUG] format_how_typical received: {type(how_typical_data)}")
-    print(f"[DEBUG] format_how_typical data keys: {list(how_typical_data.keys()) if isinstance(how_typical_data, dict) else 'NOT A DICT'}")
-    
     if not how_typical_data:
-        print(f"[DEBUG] format_how_typical: data is empty")
         return ""
     
     html = ""
     
     # PART 1: DISTINCTIVE AREAS
     distinctive = how_typical_data.get('distinctive', [])
-    print(f"[DEBUG] format_how_typical: distinctive has {len(distinctive)} items")
-    if distinctive and len(distinctive) > 0:
-        print(f"[DEBUG] First distinctive item: {distinctive[0]}")
-    
     if distinctive:
         html += '<div class="how-typical-section">\n'
         html += '<h3 class="how-typical-heading">Where You\'re Distinctive</h3>\n'
         html += '<div class="how-typical-items">\n'
         
-        for i, dim in enumerate(distinctive):
+        for dim in distinctive:
             name = dim.get('name', 'Unknown')
             pct = dim.get('percentile', 50)
             label = positional_label(pct)
             interpretation = dim.get('interpretation', '')
-            
-            if i == 0:
-                print(f"[DEBUG] First item rendering: name={name}, pct={pct}, has_interpretation={bool(interpretation)}")
             
             html += f'''<div class="how-typical-item">
     <div class="how-typical-label">{name} — {label} ({pct}th %ile)</div>
@@ -637,7 +626,7 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
 </body>
 </html>'''
     
-    # ✅ Apply dynamic content substitutions (because template is raw string, not f-string)
+    # ✅ Apply dynamic content substitutions (template is raw string, not f-string)
     html = html.replace('{format_how_typical(section_3_how_typical)}', format_how_typical(section_3_how_typical))
     html = html.replace('{format_prose(section_7_distinctive_responses)}', format_prose(section_7_distinctive_responses))
     html = html.replace('{format_prose(section_5_behaviour_story)}', format_prose(section_5_behaviour_story))
