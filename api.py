@@ -1429,11 +1429,13 @@ def recover_report_action():
         
         # Send email
         print(f'[RECOVER] Sending email...')
+        resend_api_key = os.environ.get('RESEND_API_KEY')
         send_report_email(
-            email=demographics.get('email', ''),
-            report_html=report_html_str,
-            pdf_bytes=pdf_bytes,
-            session_id=session_id
+            to_email=demographics.get('email', ''),
+            report=report_html_str,
+            demographics=demographics,
+            resend_api_key=resend_api_key,
+            pdf_bytes=pdf_bytes
         )
         
         print(f'[RECOVER] ✓ Report recovery complete for {session_id}')
