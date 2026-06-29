@@ -615,7 +615,130 @@ Tone: Forward-positive, curious about possibilities.
     )
 
 
-def generate_deep_dive_1(results: Dict, client, session_id: str) -> str:
+def generate_what_to_protect(results: Dict) -> Dict:
+    """
+    SECTION 9: What to Protect
+    
+    Four pre-written subsections with data insertion.
+    No API calls - entirely template-based.
+    """
+    
+    dimension_scores = results.get('full_results', {}).get('dimension_scores', {})
+    
+    # Get the 4 key dimension percentiles
+    verification_pct = dimension_scores.get('verification', {}).get('percentile_overall', 50)
+    agency_pct = dimension_scores.get('human_agency', {}).get('percentile_overall', 50)
+    emotional_pct = dimension_scores.get('emotional_regulation', {}).get('percentile_overall', 50)
+    thought_pct = dimension_scores.get('thought_partnership', {}).get('percentile_overall', 50)
+    
+    def get_positioning(pct):
+        """Convert percentile to positioning language"""
+        if pct >= 71:
+            return "at the high end"
+        elif pct >= 41:
+            return "in the middle"
+        else:
+            return "at the low end"
+    
+    # Build all 4 subsections
+    subsections = {
+        'verification': {
+            'title': 'WHAT TO NOTICE: WHEN VERIFICATION BECOMES TIRING',
+            'positioning': get_positioning(verification_pct),
+            'content': f"""Most people verify AI outputs (84-99% do before acting). 
+But the research reveals something important: 43% find constant verification cognitively 
+costly, and 54% now verify selectively — checking only what feels high-risk or important.
+
+If your Verification score places you {get_positioning(verification_pct)}, here's what to watch for:
+
+→ Noticing yourself checking less than usual
+→ Feeling relief or efficiency when you skip verification
+→ Finding it hard to care whether an output is accurate
+→ Moving from "verify everything" to "verify selectively" without realizing it
+
+What HCI's research shows: Verification fatigue is real and common. It's not laziness — 
+it's the cost of constant cognitive effort. The question worth noticing is whether your 
+verification rhythm serves your needs, or whether you're rationing it because it's exhausting.
+
+You decide what level of verification matters to you."""
+        },
+        'agency': {
+            'title': 'WHAT TO NOTICE: WHEN DRIFT HAPPENS WITHOUT YOU CHOOSING IT',
+            'positioning': get_positioning(agency_pct),
+            'content': f"""Research shows an interesting contrast: At the identity level, agency is strong — 91% of people 
+retain a clear sense of responsibility for their decisions. But at the process level, something 
+else is happening. 59% report feeling subtly steered by AI suggestions without fully choosing it.
+
+If your Agency score places you {get_positioning(agency_pct)}, here's what to watch for:
+
+→ Accepting AI suggestions without thinking them through first
+→ Using AI defaults instead of customizing your approach
+→ Realizing you haven't actually made a decision yourself in days
+→ Noticing AI's framing has become your first instinct
+→ Finding it harder to develop your own position before consulting AI
+
+What HCI's research shows: Drift happens through convenience, not collapse. You're not 
+losing agency overnight — you're losing it incrementally through small moments where the 
+path of least resistance happens to align with what AI suggests.
+
+You decide if this matters to you."""
+        },
+        'emotional': {
+            'title': 'WHAT TO NOTICE: IF EMOTIONAL RELIANCE BECOMES SUBSTITUTION',
+            'positioning': get_positioning(emotional_pct),
+            'content': f"""This one is the most live tension in HCI's research. 87% of people still believe — deeply — 
+that only humans can truly meet emotional needs. Yet 18% are already using AI for emotional 
+support, and that number is growing. 27% report getting some emotional support from AI.
+
+If your Emotional Regulation score places you {get_positioning(emotional_pct)}, here's what to watch for:
+
+→ Turning to AI before turning to people when you're struggling
+→ Preferring AI conversations to human ones for processing difficult feelings
+→ Finding it harder to sit with discomfort without AI input
+→ Noticing you're more open with AI about emotions than with people you trust
+→ Realizing emotional support from AI feels more available than human support
+
+What HCI's research shows: This isn't inherently a problem. For some people, AI offers a 
+genuinely safe space that human relationships don't. But it's worth noticing the difference 
+between AI as a supplement to human connection and AI as a replacement for it.
+
+You decide if emotional support from AI is right for you."""
+        },
+        'thought_partnership': {
+            'title': 'WHAT TO NOTICE: WHEN THINKING WITH AI BECOMES THINKING FOR YOU',
+            'positioning': get_positioning(thought_pct),
+            'content': f"""AI works best as a thinking partner — someone (or something) to develop ideas with, not 
+instead of your own thinking. But research shows 34-38% of people question whether their 
+AI-assisted decisions are genuinely theirs. The difference? A clear values anchor.
+
+If your Thought Partnership score places you {get_positioning(thought_pct)}, here's what to watch for:
+
+→ Defaulting to AI's framing instead of developing your own position first
+→ Struggling to think independently when AI isn't available
+→ Realizing AI's suggestions have become your first instinct (not your second opinion)
+→ Finding it hard to disagree with AI once it's stated a position
+→ Noticing you use AI to avoid the discomfort of thinking through hard problems alone
+
+What HCI's research shows: Genuine partnership requires you to know what you think before 
+you ask AI. The people who maintain clear authorship are the ones who use AI to challenge 
+their thinking, not replace it. Values clarity is what keeps that distinction alive.
+
+You decide if this matters to you."""
+        }
+    }
+    
+    return {
+        'subsections': subsections,
+        'dimensions_used': {
+            'verification': verification_pct,
+            'agency': agency_pct,
+            'emotional_regulation': emotional_pct,
+            'thought_partnership': thought_pct
+        }
+    }
+
+
+
     """API CALL #7: Deep Dive Part 1 — Research Lenses"""
     
     logger.info("[7/9] Deep Dive Part 1 — Research Lenses")
@@ -1047,6 +1170,9 @@ def generate_premium_report(
         # ── API CALL #6: Trajectory & Outlook ─────────────────────────────────
         trajectory = generate_trajectory(results, client, session_id)
         
+        # ── SECTION 9: What to Protect (no API call) ──────────────────────────
+        what_to_protect = generate_what_to_protect(results)
+        
         # ── DEEP DIVE OPENING ─────────────────────────────────────────────────
         deep_dive_opening = """
 Your pattern is complete on its own. This deep dive goes deeper, examining your profile 
@@ -1084,6 +1210,7 @@ your relationship with AI.
             'section_6_question_profile': question_profile,
             'section_7_distinctive_responses': distinctive_responses,
             'section_8_perception_gap': perception_gap,
+            'section_9_what_to_protect': what_to_protect,
             'section_10_trajectory': trajectory,
             'deep_dive': {
                 'opening': deep_dive_opening,
