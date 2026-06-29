@@ -440,7 +440,7 @@ class ScoringEngine:
             perceived_percentile = perceived_percentiles.get(str(perceived_answer), 50)
             gap_magnitude = abs(perceived_percentile - actual_percentile)
             
-            if gap_magnitude > 15:  # Only include significant gaps
+            if gap_magnitude > 8:  # Only include significant gaps
                 gaps.append({
                     'question': perception_key,
                     'perceived_answer': str(perceived_answer),
