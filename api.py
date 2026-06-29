@@ -820,20 +820,20 @@ def premium():
             
             # Convert report_dict to professional HTML for PDF
             print(f'Building HTML for session {session_id}')
-            report_html_str = build_report_html(report_dict)
+
             # DEBUG: Check HTML content
-        if '<h3>TRUST</h3>' in report_html_str or '<h3>RELIANCE</h3>' in report_html_str:
-            print(f"[DEBUG] HTML HAS dimension headers ✅")
-        elif '<h3>UNDEFINED</h3>' in report_html_str:
-            print(f"[DEBUG] HTML has UNDEFINED headers ❌")
-        else:
-            print(f"[DEBUG] HTML might have uppercase dimensions, checking...")
-            for dim in ['HUMAN_AGENCY', 'DISCLOSURE', 'VERIFICATION']:
-                if f'<h3>{dim}</h3>' in report_html_str:
-                    print(f"  ✅ Found {dim}")
-                    break
+            if '<h3>TRUST</h3>' in report_html_str or '<h3>RELIANCE</h3>' in report_html_str:
+                print(f"[DEBUG] HTML HAS dimension headers ✅")
+            elif '<h3>UNDEFINED</h3>' in report_html_str:
+                print(f"[DEBUG] HTML has UNDEFINED headers ❌")
             else:
-                print(f"[DEBUG] HTML has NO dimension headers at all ❌")
+                print(f"[DEBUG] HTML might have uppercase dimensions, checking...")
+                for dim in ['HUMAN_AGENCY', 'DISCLOSURE', 'VERIFICATION']:
+                    if f'<h3>{dim}</h3>' in report_html_str:
+                        print(f"  ✅ Found {dim}")
+                        break
+                else:
+                    print(f"[DEBUG] HTML has NO dimension headers at all ❌")
             
             if not report_html_str:
                 print(f'HTML builder returned empty string for session {session_id}')
