@@ -384,35 +384,38 @@ def generate_rare_combinations(results: Dict, client, session_id: str) -> str:
     if not rare_combos:
         return "No rare combinations detected in this profile."
     
-    combo = rare_combos[0]
-    dim1 = combo.get('dimension_1', 'unknown')
-    dim2 = combo.get('dimension_2', 'unknown')
+    # Show top 2 rare combinations (if available)
+    combos_to_analyze = rare_combos[:2]  # Get top 2
     
-    combo_key = f"{dim1}_{dim2}"
-    combo_signal = SIGNALS.get('combinations', {}).get(combo_key, {})
+    combos_text = ""
+    for i, combo in enumerate(combos_to_analyze, 1):
+        dim1 = combo.get('dimension_1', 'unknown')
+        dim2 = combo.get('dimension_2', 'unknown')
+        
+        combos_text += f"\nCOMBINATION {i}:\n"
+        combos_text += f"{dim1.title()}: {combo.get('percentile_dim1')}th percentile\n"
+        combos_text += f"{dim2.title()}: {combo.get('percentile_dim2')}th percentile\n"
+        combos_text += f"Rarity: ~{combo.get('rarity_percent', 5)}% of participants\n"
     
     prompt = f"""
-This person has a distinctive combination:
+This person has rare dimensional combinations:
 
-{dim1.title()}: {combo.get('percentile_dim1')}th percentile
-{dim2.title()}: {combo.get('percentile_dim2')}th percentile
+{combos_text}
 
-This combination appears in approximately {combo.get('rarity_percent', 5)}% of HCI's research.
+Analyze these combinations:
+1. What makes each combination unusual?
+2. How do they reinforce or complicate each other?
+3. What do they reveal about this person's distinctive approach to AI?
+4. What research shows about people with similar combinations?
 
-Research shows this combination is interesting because:
-{combo_signal.get('why_unusual', 'This reveals a distinctive pattern.')}
-
-What it reveals about their relationship with AI:
-{combo_signal.get('what_it_reveals', 'Worth exploring further.')}
-
-Write 150-200 words analyzing what this rare combination suggests about their 
-engagement with AI. Ground in research. Speak directly to them.
+Write 250-300 words exploring what these rare combinations suggest about their
+engagement with AI. Ground in research patterns. Speak directly to them.
     """
     
     return call_claude_with_resilience(
         client,
         model=MODEL,
-        max_tokens=800,
+        max_tokens=1000,
         system=GLOBAL_SYSTEM_PROMPT,
         messages=[{'role': 'user', 'content': prompt}],
         call_name='Rare Combinations',
@@ -471,29 +474,38 @@ def generate_distinctive_responses(results: Dict, client, session_id: str) -> st
     logger.info("[4/9] Distinctive Responses")
     
     percentiles = results.get('percentiles', {})
+    responses = results.get('responses', {})
     
-    # Find most distinctive responses (furthest from 50th percentile)
+    # Find most distinctive responses (extremes: percentile 0-10 or 90-100)
+    # These are truly distinctive, not just "divergent from 50"
     distinctive = []
     for q_key, p_data in percentiles.items():
         if isinstance(p_data, dict):
             percentile = p_data.get('percentile_overall', 50)
+            question_text = p_data.get('question_text', q_key)
         else:
             percentile = p_data
+            question_text = q_key
         
-        divergence = abs(percentile - 50)
-        if divergence > 20:
-            distinctive.append((q_key, percentile, divergence))
+        # Spec: 3-5 responses at extremes (percentile 0-10 or 90-100)
+        is_extreme = (percentile <= 10 or percentile >= 90)
+        
+        if is_extreme:
+            answer = responses.get(q_key, 4)
+            distinctive.append((q_key, question_text, answer, percentile))
     
-    distinctive.sort(key=lambda x: x[2], reverse=True)
-    top_distinctive = distinctive[:3]
+    # Sort by extremeness (distance from 50), take top 3-5
+    distinctive.sort(key=lambda x: abs(x[3] - 50), reverse=True)
+    top_distinctive = distinctive[:5]  # Up to 5 responses
     
+    # Build text showing question, answer, and percentile
     distinctive_text = "\n".join([
-        f"- {q_key}: {p}th percentile"
-        for q_key, p, _ in top_distinctive
+        f"Q: {q_text}\nAnswer: {answer}/7 (Percentile: {pct}th)\n"
+        for _, q_text, answer, pct in top_distinctive
     ])
     
     prompt = f"""
-This person has these distinctive question-level responses:
+This person has these truly distinctive question-level responses (at the extremes):
 
 {distinctive_text}
 
@@ -501,9 +513,10 @@ Analyze what these distinctive responses reveal:
 1. What pattern emerges across these responses?
 2. Do they cluster around a theme or dimension?
 3. What do they suggest about this person's approach to AI?
+4. What coherence or intentionality do you see?
 
 Write 200-250 words that illuminate what these specific responses reveal
-about their pattern. Ground in the data. Make it personal.
+about their pattern. Ground in the data. Make it personal and specific.
     """
     
     return call_claude_with_resilience(
@@ -738,6 +751,63 @@ You decide if this matters to you."""
     }
 
 
+def generate_next_steps(results: Dict) -> Dict:
+    """
+    DATA-ONLY: SECTION 11 — Action-oriented closing with concrete next-step prompts.
+    
+    Provides three concrete reflection prompts grounded in participant's specific pattern.
+    No prescriptive "you should" language — only curious, forward-oriented questions.
+    """
+    
+    logger.info("[11/11] Next Steps — Generating action-oriented closing")
+    
+    dimensions = results.get('full_results', {}).get('dimension_scores', {})
+    
+    # Identify highest and lowest dimensions for personalization
+    highest_dim = max(
+        dimensions.items(),
+        key=lambda x: x[1].get('percentile_overall', 50)
+    ) if dimensions else ('reliance', {})
+    
+    lowest_dim = min(
+        dimensions.items(),
+        key=lambda x: x[1].get('percentile_overall', 50)
+    ) if dimensions else ('verification', {})
+    
+    highest_name = highest_dim[0].replace('_', ' ').title()
+    lowest_name = lowest_dim[0].replace('_', ' ').title()
+    
+    # Three personalized reflection prompts
+    next_steps = {
+        'title': 'Your Next Steps',
+        'tagline': 'Three reflections to guide your relationship with AI going forward',
+        'prompts': [
+            {
+                'number': 1,
+                'title': 'On Your Strongest Pattern',
+                'prompt': f'You score notably high on {highest_name}. What role do you want this dimension to play in your thinking and work? Is its current place intentional?'
+            },
+            {
+                'number': 2,
+                'title': 'On What You Might Explore',
+                'prompt': f'You score lower on {lowest_name}. Rather than viewing this as a weakness, what might it reveal about your deliberate choices? What would change if you engaged differently here?'
+            },
+            {
+                'number': 3,
+                'title': 'On Your Relationship with AI',
+                'prompt': 'Looking at your complete profile, what has surprised you most about how you actually engage with AI? What question about your pattern feels most worth sitting with?'
+            }
+        ],
+        'closing': {
+            'title': 'Resources',
+            'text': 'Your complete report is yours to keep. Return to it when your AI use evolves, or when you want to revisit what your pattern revealed.',
+            'link': 'Learn more at humanclarityinstitute.com'
+        }
+    }
+    
+    return next_steps
+
+
 def generate_deep_dive_1(results: Dict, client, session_id: str) -> str:
     """API CALL #7: Deep Dive Part 1 — Research Lenses"""
     
@@ -894,6 +964,19 @@ def generate_dashboard(results: Dict) -> Dict:
     
     dimensions = results.get('full_results', {}).get('dimension_scores', {})
     
+    # Locked dimension definitions (from spec)
+    DIMENSION_DEFINITIONS = {
+        'reliance': 'How much you depend on AI for thinking and functioning',
+        'trust': 'How much you believe AI outputs are accurate',
+        'verification': 'How often you check AI outputs before using them',
+        'decision_delegation': 'How much you hand over decisions to AI',
+        'human_agency': 'How much control you maintain over your decisions',
+        'emotional_regulation': 'Whether you turn to AI for emotional support',
+        'disclosure': 'How much personal information you share with AI',
+        'thought_partnership': 'How much you use AI as a thinking partner',
+        'social_transparency': 'How openly you discuss your AI use with others',
+    }
+    
     dashboard = {
         'title': 'Benchmark Dashboard',
         'dimensions': {}
@@ -915,6 +998,7 @@ def generate_dashboard(results: Dict) -> Dict:
             'percentile': percentile,
             'percentile_text': plain_english_percentile(percentile),
             'raw_score': dim_data.get('raw_score', 3.5),
+            'definition': DIMENSION_DEFINITIONS.get(dim_name, 'Dimension details'),
             'research_insight': insight
         }
     
@@ -1192,6 +1276,9 @@ your relationship with AI.
         # ── API CALL #9: Deep Dive Part 5 ────────────────────────────────────
         deep_dive_part_5 = generate_deep_dive_5(results, client, session_id)
         
+        # ── SECTION 11: Next Steps (no API call) ──────────────────────────────
+        next_steps = generate_next_steps(results)
+        
         # ── Assemble Report ───────────────────────────────────────────────────
         logger.info("[REPORT] Assembling final report...")
         
@@ -1212,6 +1299,7 @@ your relationship with AI.
             'section_8_perception_gap': perception_gap,
             'section_9_what_to_protect': what_to_protect,
             'section_10_trajectory': trajectory,
+            'section_11_next_steps': next_steps,
             'deep_dive': {
                 'opening': deep_dive_opening,
                 'part_1_research_lenses': deep_dive_part_1,
