@@ -1,121 +1,122 @@
 """
-report_page_builder.py — HCI Premium Report HTML Builder
+report_page_builder.py — Premium Report Page Builder
 
-Transforms report_dict from report_generator into final HTML
-by injecting data into the hci-report-page.html template.
+Transforms report_dict from report_generator into rendering-ready data
+with full validation against Section_Details_Complete.txt specification.
+
+Does NOT assume any HTML structure - returns clean data ready for
+any HTML template to consume.
 
 Main entry point: build_report_html(report_dict)
 
 Input: report_dict from report_generator.py
-Output: Complete HTML string ready for rendering/PDF/email
+Output: rendering_dict (validated, transformation-ready data)
 """
 
-import json
 import logging
-import os
-from typing import Dict, Any, Optional
-from pathlib import Path
+from typing import Dict, Any, Optional, List
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# CONFIGURATION
+# CONFIGURATION & CONSTANTS
 # ============================================================
 
-# Path to HTML template
-TEMPLATE_PATH = Path(__file__).parent / 'hci-report-page.html'
+# Dimension order and definitions (locked from Section_Details_Complete.txt)
+DIMENSION_ORDER = [
+    'reliance',
+    'trust',
+    'verification',
+    'decision_delegation',
+    'human_agency',
+    'emotional_regulation',
+    'disclosure',
+    'thought_partnership',
+    'social_transparency'
+]
 
-# Dimension definitions (locked, from SIGNALS)
-DIMENSION_LABELS = {
-    'reliance': 'Reliance',
-    'trust': 'Trust',
-    'verification': 'Verification',
-    'decision_delegation': 'Decision Delegation',
-    'human_agency': 'Human Agency',
-    'emotional_regulation': 'Emotional Regulation',
-    'disclosure': 'Disclosure',
-    'thought_partnership': 'Thought Partnership',
-    'social_transparency': 'Social Transparency'
+DIMENSION_DEFINITIONS = {
+    'reliance': 'How much you depend on AI for thinking and functioning',
+    'trust': 'How much you believe AI outputs are accurate',
+    'verification': 'How often you check AI outputs before using them',
+    'decision_delegation': 'How much you hand over decisions to AI',
+    'human_agency': 'How much control you maintain over your decisions',
+    'emotional_regulation': 'Whether you turn to AI for emotional support',
+    'disclosure': 'How much personal information you share with AI',
+    'thought_partnership': 'How much you use AI as a thinking partner',
+    'social_transparency': 'How openly you discuss your AI use with others'
 }
 
+MIN_SAMPLE_SIZE = 30  # Minimum responses to show demographic comparison
+
 # ============================================================
-# HELPER: Transform report_dict for HTML
+# VALIDATION FUNCTIONS
 # ============================================================
 
-def transform_report_for_html(report_dict: Dict[str, Any]) -> Dict[str, Any]:
+def validate_report_dict(report_dict: Dict[str, Any]) -> tuple[bool, List[str]]:
     """
-    Transform report_dict from report_generator to match HTML expectations.
-    
-    Fixes structural mismatches:
-    1. Combine opening_statement + top_3_findings → single 'opening' field
-    2. Wrap dashboard: section_1_dashboard → {'dimensions': {...}}
-    3. Add 'label' field to each dimension card
-    4. Ensure all prose has \n\n paragraph separators
-    5. Standardize dimension names to lowercase
+    Validate report_dict against Section_Details_Complete.txt specification.
     
     Args:
         report_dict: Raw dict from report_generator.py
     
     Returns:
-        Dict formatted for HTML template
+        tuple: (is_valid: bool, errors: list of error messages)
     """
     
-    logger.info("[Transform] Starting report_dict transformation...")
+    logger.info("[VALIDATE] Starting validation...")
     
-    transformed = report_dict.copy()
+    errors = []
     
-    # ── Fix 1: Combine opening fields ──────────────────────────────
-    logger.info("[Transform] Fixing opening section...")
+    # Check metadata
+    if 'metadata' not in report_dict:
+        errors.append("Missing 'metadata'")
+    else:
+        meta = report_dict['metadata']
+        if 'session_id' not in meta:
+            errors.append("Missing metadata.session_id")
+        if 'demographics' not in meta:
+            errors.append("Missing metadata.demographics")
+        if 'generated_at' not in meta:
+            errors.append("Missing metadata.generated_at")
     
-    opening_statement = report_dict.get('opening_statement', '')
-    top_3_findings = report_dict.get('top_3_findings', '')
+    # Check opening
+    if 'opening_statement' not in report_dict:
+        errors.append("Missing 'opening_statement'")
+    if 'top_3_findings' not in report_dict:
+        errors.append("Missing 'top_3_findings'")
     
-    # Combine with \n\n separator
-    combined_opening = opening_statement
-    if top_3_findings:
-        combined_opening = f"{opening_statement}\n\n{top_3_findings}"
+    # Check Section 1: Dashboard
+    if 'section_1_dashboard' not in report_dict:
+        errors.append("Missing 'section_1_dashboard'")
+    else:
+        dashboard = report_dict['section_1_dashboard']
+        if not isinstance(dashboard, dict):
+            errors.append("section_1_dashboard is not a dict")
+        else:
+            for dim in DIMENSION_ORDER:
+                if dim not in dashboard:
+                    errors.append(f"Dashboard missing dimension: {dim}")
+                else:
+                    card = dashboard[dim]
+                    if 'percentile' not in card:
+                        errors.append(f"Dashboard.{dim} missing 'percentile'")
+                    if 'definition' not in card:
+                        errors.append(f"Dashboard.{dim} missing 'definition'")
+                    if 'insight' not in card:
+                        errors.append(f"Dashboard.{dim} missing 'insight'")
     
-    transformed['opening'] = combined_opening
-    # Remove old fields
-    transformed.pop('opening_statement', None)
-    transformed.pop('top_3_findings', None)
+    # Check Section 3: How Typical
+    if 'section_3_how_typical' not in report_dict:
+        errors.append("Missing 'section_3_how_typical'")
+    else:
+        for dim in DIMENSION_ORDER:
+            if dim not in report_dict['section_3_how_typical']:
+                errors.append(f"How Typical missing dimension: {dim}")
     
-    logger.info("[Transform] ✓ Opening combined")
-    
-    # ── Fix 2 & 3: Transform dashboard section ─────────────────────
-    logger.info("[Transform] Fixing dashboard section...")
-    
-    dashboard = report_dict.get('section_1_dashboard', {})
-    
-    if dashboard:
-        # Add 'label' field to each dimension and wrap in 'dimensions' key
-        dimensions_with_labels = {}
-        
-        for dim_name, dim_data in dashboard.items():
-            # Standardize dimension name to lowercase
-            dim_key = dim_name.lower()
-            
-            # Add label if not present
-            if isinstance(dim_data, dict):
-                dim_data_copy = dim_data.copy()
-                if 'label' not in dim_data_copy:
-                    dim_data_copy['label'] = DIMENSION_LABELS.get(dim_key, dim_key.title())
-                dimensions_with_labels[dim_key] = dim_data_copy
-            else:
-                logger.warning(f"[Transform] Dashboard data for {dim_name} is not a dict")
-                dimensions_with_labels[dim_key] = dim_data
-        
-        # Wrap in 'dimensions' key for HTML
-        transformed['section_1_dashboard'] = {
-            'dimensions': dimensions_with_labels
-        }
-        
-        logger.info(f"[Transform] ✓ Dashboard wrapped with {len(dimensions_with_labels)} dimensions")
-    
-    # ── Fix 4: Ensure prose has \n\n separators ────────────────────
-    logger.info("[Transform] Ensuring prose formatting...")
-    
-    prose_fields = [
+    # Check prose sections (allow None/empty, but must exist)
+    prose_sections = [
         'section_4_rare_combos',
         'section_5_behaviour_story',
         'section_7_distinctive',
@@ -123,152 +124,343 @@ def transform_report_for_html(report_dict: Dict[str, Any]) -> Dict[str, Any]:
         'section_10_trajectory'
     ]
     
-    for field_name in prose_fields:
-        if field_name in transformed and isinstance(transformed[field_name], str):
-            prose = transformed[field_name].strip()
+    for section in prose_sections:
+        if section not in report_dict:
+            errors.append(f"Missing '{section}'")
+    
+    # Check Section 6: Question Profile
+    if 'section_6_question_profile' not in report_dict:
+        errors.append("Missing 'section_6_question_profile'")
+    else:
+        qs = report_dict['section_6_question_profile']
+        if not isinstance(qs, dict) or len(qs) != 39:
+            errors.append(f"Question profile has {len(qs)} questions, expected 39")
+    
+    # Check Section 9: What to Protect
+    if 'section_9_what_to_protect' not in report_dict:
+        errors.append("Missing 'section_9_what_to_protect'")
+    else:
+        wtp = report_dict['section_9_what_to_protect']
+        if 'subsections' not in wtp:
+            errors.append("What to Protect missing 'subsections'")
+        else:
+            subsections = wtp['subsections']
+            if len(subsections) != 3:
+                errors.append(f"What to Protect has {len(subsections)} subsections, expected 3")
+    
+    # Check Section 11: Next Steps
+    if 'section_11_next_steps' not in report_dict:
+        errors.append("Missing 'section_11_next_steps'")
+    else:
+        ns = report_dict['section_11_next_steps']
+        if 'intro' not in ns:
+            errors.append("Next Steps missing 'intro'")
+        if 'prompts' not in ns:
+            errors.append("Next Steps missing 'prompts'")
+        if 'closing' not in ns:
+            errors.append("Next Steps missing 'closing'")
+    
+    if errors:
+        logger.error(f"[VALIDATE] Found {len(errors)} errors:")
+        for err in errors:
+            logger.error(f"  - {err}")
+        return False, errors
+    
+    logger.info("[VALIDATE] ✓ All validations passed")
+    return True, []
+
+
+# ============================================================
+# TRANSFORMATION FUNCTIONS
+# ============================================================
+
+def prepare_opening_section(report_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepare opening section.
+    
+    Combines opening_statement + top_3_findings into single 'opening' field
+    for template consumption.
+    """
+    
+    logger.info("[Opening] Preparing opening section...")
+    
+    opening_statement = report_dict.get('opening_statement', '')
+    top_3_findings = report_dict.get('top_3_findings', '')
+    
+    # Combine with \n\n separator
+    combined = opening_statement
+    if top_3_findings:
+        combined = f"{opening_statement}\n\n{top_3_findings}"
+    
+    logger.info("[Opening] ✓ Combined opening and findings")
+    
+    return {
+        'opening': combined,
+        'opening_statement': opening_statement,
+        'top_3_findings': top_3_findings
+    }
+
+
+def prepare_dashboard_section(report_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepare Section 1: Dashboard.
+    
+    Validates and structures dashboard data for HTML rendering.
+    Ensures all 9 dimensions have required fields.
+    """
+    
+    logger.info("[Dashboard] Preparing 9 dimension cards...")
+    
+    dashboard = report_dict.get('section_1_dashboard', {})
+    
+    prepared_dashboard = {}
+    
+    for dim_name in DIMENSION_ORDER:
+        if dim_name not in dashboard:
+            logger.warning(f"[Dashboard] Missing dimension: {dim_name}")
+            continue
+        
+        dim_data = dashboard[dim_name]
+        
+        # Validate required fields
+        if not isinstance(dim_data, dict):
+            logger.warning(f"[Dashboard] {dim_name} is not a dict")
+            continue
+        
+        percentile = dim_data.get('percentile', 50)
+        raw_score = dim_data.get('raw_score', 0)
+        definition = dim_data.get('definition', DIMENSION_DEFINITIONS.get(dim_name, ''))
+        insight = dim_data.get('insight', '')
+        
+        # Get comparisons (only if sample size adequate)
+        percentile_frequency = dim_data.get('percentile_by_frequency')
+        percentile_age_group = dim_data.get('percentile_by_age_group')
+        n_frequency = dim_data.get('sample_size_frequency', 0)
+        n_age_group = dim_data.get('sample_size_age_group', 0)
+        
+        # Build comparison display
+        comparisons = []
+        
+        if percentile_frequency is not None and n_frequency >= MIN_SAMPLE_SIZE:
+            comparisons.append({
+                'label': 'Daily AI users',
+                'percentile': percentile_frequency
+            })
+        
+        if percentile_age_group is not None and n_age_group >= MIN_SAMPLE_SIZE:
+            comparisons.append({
+                'label': 'Your age group',
+                'percentile': percentile_age_group
+            })
+        
+        # Prepare card
+        prepared_dashboard[dim_name] = {
+            'dimension': dim_name,
+            'display_name': dim_name.replace('_', ' ').title(),
+            'percentile': int(percentile),
+            'raw_score': round(float(raw_score), 2),
+            'definition': definition,
+            'insight': insight,
+            'comparisons': comparisons,
+            'sample_size_frequency': n_frequency,
+            'sample_size_age_group': n_age_group
+        }
+    
+    logger.info(f"[Dashboard] ✓ Prepared {len(prepared_dashboard)}/9 cards")
+    
+    return {
+        'section_1_dashboard': prepared_dashboard
+    }
+
+
+def prepare_question_profile(report_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepare Section 6: Question Profile.
+    
+    Organizes 39 questions by dimension for template rendering.
+    """
+    
+    logger.info("[Questions] Preparing 39-question profile...")
+    
+    questions = report_dict.get('section_6_question_profile', {})
+    
+    # Group by dimension
+    by_dimension = {dim: [] for dim in DIMENSION_ORDER}
+    
+    for q_key, q_data in questions.items():
+        dim = q_data.get('dimension', 'unknown')
+        if dim in by_dimension:
+            by_dimension[dim].append({
+                'key': q_key,
+                'question_text': q_data.get('question_text', ''),
+                'response_value': q_data.get('response_value', 0),
+                'percentile': q_data.get('percentile', 50),
+                'percentile_frequency': q_data.get('percentile_frequency'),
+                'percentile_age_group': q_data.get('percentile_age_group'),
+                'distribution': q_data.get('population_distribution', [])
+            })
+    
+    logger.info(f"[Questions] ✓ Organized {len(questions)} questions by dimension")
+    
+    return {
+        'section_6_question_profile': by_dimension
+    }
+
+
+def prepare_what_to_protect(report_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepare Section 9: What to Protect.
+    
+    Structures protective guidance for 3 lowest dimensions.
+    """
+    
+    logger.info("[What to Protect] Preparing protective guidance...")
+    
+    wtp = report_dict.get('section_9_what_to_protect', {})
+    subsections = wtp.get('subsections', {})
+    
+    prepared_subsections = {}
+    
+    for dim_name, sub_data in subsections.items():
+        prepared_subsections[dim_name] = {
+            'dimension': dim_name,
+            'display_name': dim_name.replace('_', ' ').title(),
+            'title': sub_data.get('title', f'Protect Your {dim_name.replace("_", " ").title()}'),
+            'definition': sub_data.get('definition', ''),
+            'percentile': sub_data.get('percentile', 50),
+            'content': sub_data.get('content', '')
+        }
+    
+    logger.info(f"[What to Protect] ✓ Prepared {len(prepared_subsections)} subsections")
+    
+    return {
+        'section_9_what_to_protect': prepared_subsections
+    }
+
+
+def prepare_prose_sections(report_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepare prose sections (4, 5, 7, 8, 10).
+    
+    Ensures all prose has \n\n paragraph separators.
+    """
+    
+    logger.info("[Prose] Formatting prose sections...")
+    
+    prose_fields = {
+        'section_4_rare_combos': report_dict.get('section_4_rare_combos', ''),
+        'section_5_behaviour_story': report_dict.get('section_5_behaviour_story', ''),
+        'section_7_distinctive': report_dict.get('section_7_distinctive', ''),
+        'section_8_perception_gap': report_dict.get('section_8_perception_gap', ''),
+        'section_10_trajectory': report_dict.get('section_10_trajectory', '')
+    }
+    
+    prepared_prose = {}
+    
+    for field_name, prose in prose_fields.items():
+        if prose:
             # Ensure paragraphs are separated by \n\n (not just \n)
-            prose = '\n\n'.join([p.strip() for p in prose.split('\n') if p.strip()])
-            transformed[field_name] = prose
+            paragraphs = [p.strip() for p in prose.split('\n') if p.strip()]
+            normalized = '\n\n'.join(paragraphs)
+            prepared_prose[field_name] = normalized
+        else:
+            prepared_prose[field_name] = ''
     
-    logger.info("[Transform] ✓ Prose formatting verified")
+    logger.info("[Prose] ✓ Prose sections formatted")
     
-    logger.info("[Transform] ✓ Report transformation complete")
-    
-    return transformed
-
-
-# ============================================================
-# HELPER: Inject data into HTML template
-# ============================================================
-
-def inject_data_into_html(template_html: str, report_dict: Dict[str, Any]) -> str:
-    """
-    Inject report_dict data into hci-report-page.html template via JavaScript.
-    
-    The template has placeholders that are filled by JavaScript:
-    - hci-report-meta, hci-opening, hci-dimension-grid, etc.
-    
-    We inject the report_dict as a JavaScript variable that the template's
-    existing JavaScript uses to populate these placeholders.
-    
-    Args:
-        template_html: Raw HTML template string
-        report_dict: Transformed report_dict with data
-    
-    Returns:
-        HTML string with report_dict injected
-    """
-    
-    logger.info("[Inject] Starting data injection into template...")
-    
-    # Serialize report_dict as JSON
-    # Use json.dumps with ensure_ascii=False to handle special characters
-    report_json = json.dumps(report_dict, ensure_ascii=False, default=str)
-    
-    # Inject as window variable before existing script
-    injection_script = f"""
-<script>
-// HCI Report Data (injected by report_page_builder.py)
-window.hciReportData = {report_json};
-</script>
-"""
-    
-    # Find the start of the existing script tag and inject before it
-    # Look for: <script>
-    # (function() {
-    
-    script_start = template_html.find('<script>')
-    if script_start == -1:
-        logger.error("[Inject] Could not find <script> tag in template")
-        raise Exception("Template does not contain <script> tag")
-    
-    # Insert injection script before the first script tag
-    injected_html = template_html[:script_start] + injection_script + template_html[script_start:]
-    
-    logger.info(f"[Inject] ✓ Data injected ({len(report_json)} bytes)")
-    
-    return injected_html
+    return prepared_prose
 
 
 # ============================================================
 # MAIN ENTRY POINT
 # ============================================================
 
-def build_report_html(report_dict: Dict[str, Any]) -> str:
+def build_report_html(report_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Build complete HTML report from report_dict.
+    Transform report_dict into rendering-ready data.
     
-    This is the main entry point called by api.py:
+    This function:
+    1. Validates report_dict against specification
+    2. Transforms all sections
+    3. Returns clean, validation data ready for HTML template
     
-        report_response = report_generator.generate_premium_report(...)
-        if report_response['success']:
-            html = report_page_builder.build_report_html(
-                report_response['report']
-            )
-            # html is ready for PDF rendering or email
+    Does NOT assume any HTML structure - returns data only.
     
     Args:
         report_dict: Dict from report_generator.py['report']
     
     Returns:
-        str: Complete HTML string
-    
+        Dict: Rendering-ready data with all sections transformed
+        
     Raises:
-        Exception: If template not found or transformation fails
+        ValueError: If validation fails
+        KeyError: If required fields missing
     """
     
     try:
-        logger.info(f"[BUILDER] Building HTML report...")
+        logger.info(f"[BUILDER] Starting report HTML preparation...")
         
-        # Verify report_dict has required fields
-        if not report_dict:
-            raise ValueError("report_dict is empty")
+        # Step 1: Validate
+        logger.info("[BUILDER] Step 1: Validating report_dict...")
+        is_valid, errors = validate_report_dict(report_dict)
         
-        if 'metadata' not in report_dict:
-            raise ValueError("report_dict missing 'metadata'")
+        if not is_valid:
+            error_msg = f"Validation failed with {len(errors)} errors:\n" + '\n'.join(errors)
+            logger.error(f"[BUILDER] {error_msg}")
+            raise ValueError(error_msg)
         
-        session_id = report_dict.get('metadata', {}).get('session_id', 'unknown')
-        logger.info(f"[BUILDER] Session: {session_id}")
+        logger.info("[BUILDER] ✓ Validation passed")
         
-        # Step 1: Load template
-        logger.info("[BUILDER] Loading template...")
+        # Step 2: Prepare metadata
+        logger.info("[BUILDER] Step 2: Preparing metadata...")
         
-        if not TEMPLATE_PATH.exists():
-            raise FileNotFoundError(f"Template not found: {TEMPLATE_PATH}")
+        metadata = report_dict.get('metadata', {})
+        prepared_metadata = {
+            'session_id': metadata.get('session_id', 'unknown'),
+            'email': metadata.get('email', ''),
+            'demographics': metadata.get('demographics', {}),
+            'generated_at': metadata.get('generated_at', datetime.utcnow().isoformat()),
+            'version': metadata.get('version', '3.0')
+        }
         
-        with open(TEMPLATE_PATH, 'r', encoding='utf-8') as f:
-            template_html = f.read()
+        logger.info("[BUILDER] ✓ Metadata prepared")
         
-        logger.info(f"[BUILDER] ✓ Template loaded ({len(template_html)} bytes)")
+        # Step 3: Prepare all sections
+        logger.info("[BUILDER] Step 3: Preparing all sections...")
         
-        # Step 2: Transform report_dict
-        logger.info("[BUILDER] Transforming report...")
+        rendered = {
+            'metadata': prepared_metadata,
+            **prepare_opening_section(report_dict),
+            **prepare_dashboard_section(report_dict),
+            'section_3_how_typical': report_dict.get('section_3_how_typical', {}),
+            **prepare_prose_sections(report_dict),
+            **prepare_question_profile(report_dict),
+            **prepare_what_to_protect(report_dict),
+            'section_11_next_steps': report_dict.get('section_11_next_steps', {})
+        }
         
-        transformed_dict = transform_report_for_html(report_dict)
+        logger.info("[BUILDER] ✓ All sections prepared")
         
-        logger.info("[BUILDER] ✓ Report transformed")
+        # Step 4: Final verification
+        logger.info("[BUILDER] Step 4: Final verification...")
         
-        # Step 3: Inject data into template
-        logger.info("[BUILDER] Injecting data...")
+        # Verify all sections present in output
+        required_sections = [
+            'metadata', 'opening', 'section_1_dashboard', 'section_3_how_typical',
+            'section_4_rare_combos', 'section_5_behaviour_story', 'section_6_question_profile',
+            'section_7_distinctive', 'section_8_perception_gap', 'section_9_what_to_protect',
+            'section_10_trajectory', 'section_11_next_steps'
+        ]
         
-        html = inject_data_into_html(template_html, transformed_dict)
+        missing = [s for s in required_sections if s not in rendered]
+        if missing:
+            raise ValueError(f"Missing sections in output: {missing}")
         
-        logger.info(f"[BUILDER] ✓ Data injected")
+        logger.info("[BUILDER] ✓ Final verification passed")
         
-        # Step 4: Verify output
-        logger.info("[BUILDER] Verifying output...")
+        logger.info("[BUILDER] ✓ Report HTML preparation complete")
         
-        if '<html' not in html or '</html>' not in html:
-            raise Exception("Output HTML is malformed")
-        
-        if 'window.hciReportData' not in html:
-            raise Exception("Data injection failed")
-        
-        logger.info(f"[BUILDER] ✓ Output verified ({len(html)} bytes)")
-        
-        logger.info("[BUILDER] ✓ HTML report complete")
-        
-        return html
+        return rendered
     
     except Exception as e:
         logger.error(f"[BUILDER] Error: {e}")
@@ -284,10 +476,12 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
 if __name__ == '__main__':
     print("report_page_builder.py loaded successfully")
     print("Entry point: build_report_html(report_dict)")
-    print("\nTransformations applied:")
-    print("  ✓ Combine opening_statement + top_3_findings → 'opening'")
-    print("  ✓ Wrap dashboard in {'dimensions': {...}}")
-    print("  ✓ Add 'label' field to each dimension")
-    print("  ✓ Ensure prose has \\n\\n separators")
-    print("  ✓ Inject data as window.hciReportData into template")
-    print("\nOutput: Complete HTML string ready for PDF/email")
+    print("\nFunctions:")
+    print("  ✓ validate_report_dict() - Full validation against specification")
+    print("  ✓ prepare_opening_section() - Combines statement + findings")
+    print("  ✓ prepare_dashboard_section() - 9 dimension cards")
+    print("  ✓ prepare_question_profile() - 39 questions grouped by dimension")
+    print("  ✓ prepare_what_to_protect() - 3 protective guidance cards")
+    print("  ✓ prepare_prose_sections() - Normalizes all narrative text")
+    print("\nOutput: rendering_dict (clean data, no HTML assumptions)")
+    print("Next step: Build new HTML template to consume this data")
