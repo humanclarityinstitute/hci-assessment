@@ -20,7 +20,7 @@ from anthropic import Anthropic, APITimeoutError
 # Import research data
 from hci_signals_library import SIGNALS
 from human_reference_layer import HBE_FRAMEWORK, VALUES_SIGNALS
-from question_metadata import DIMENSIONS
+from question_metadata import DIMENSION_NAMES, DIMENSIONS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,19 +29,6 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # CONSTANTS
 # ============================================================================
-
-# Map dimension keys to display names
-DIMENSION_NAMES = {
-    'reliance': 'Reliance',
-    'trust': 'Trust',
-    'verification': 'Verification',
-    'decision_delegation': 'Decision Delegation',
-    'human_agency': 'Human Agency',
-    'emotional_regulation': 'Emotional Regulation',
-    'disclosure': 'Disclosure',
-    'thought_partnership': 'Thought Partnership',
-    'social_transparency': 'Social Transparency',
-}
 
 DIMENSION_DEFINITIONS = {
     'reliance': 'How much you depend on AI for thinking and functioning',
@@ -647,12 +634,9 @@ def _build_section_9_what_to_protect(participant, results):
         if pp:
             pressure_points.append(pp)
         
-        # Note: VALUES_SIGNALS is organized by value categories, not dimensions
-        # For now, add a generic value statement based on their positioning
-        if percentile >= 75:
-            values_list.append(f"Maintaining high {display_name}")
-        elif percentile <= 25:
-            values_list.append(f"Preserving values around {display_name}")
+        val = VALUES_SIGNALS.get(dim_name, '')
+        if val:
+            values_list.append(val)
         
         if percentile >= 75:
             strengths.append(f"High {display_name} supports intentionality")
