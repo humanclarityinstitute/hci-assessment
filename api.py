@@ -1040,7 +1040,7 @@ def premium():
         
         return jsonify({
             'success': True,
-            'report': report_dict
+            'report': rendering_dict
         }), 200
     
     except Exception as e:
