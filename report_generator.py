@@ -830,24 +830,28 @@ def generate_how_typical(results: Dict) -> Dict:
         pct = dim_data.get('percentile_overall', 50)
         dim_name = DIM_NAMES.get(dim_key, dim_key)
         
-        if pct > 75 or pct < 25:
-            distinctive.append({
-                'key': dim_key,
-                'name': dim_name,
-                'percentile': pct
-            })
-        elif 35 <= pct <= 65:
-            typical.append({
-                'key': dim_key,
-                'name': dim_name,
-                'percentile': pct
-            })
+        # ✅ Pull interpretation from SIGNALS library
+        signal = SIGNALS.get('dimensions', {}).get(dim_key, {})
+        if pct > 75:
+            interpretation = signal.get('high', f'You sit notably/exceptionally high on {dim_name}.')
+        elif pct < 25:
+            interpretation = signal.get('low', f'You sit notably/exceptionally low on {dim_name}.')
         else:
-            moderate.append({
-                'key': dim_key,
-                'name': dim_name,
-                'percentile': pct
-            })
+            interpretation = signal.get('typical', f'You sit in the middle range on {dim_name}.')
+        
+        dimension_item = {
+            'key': dim_key,
+            'name': dim_name,
+            'percentile': pct,
+            'interpretation': interpretation
+        }
+        
+        if pct > 75 or pct < 25:
+            distinctive.append(dimension_item)
+        elif 35 <= pct <= 65:
+            typical.append(dimension_item)
+        else:
+            moderate.append(dimension_item)
     
     # Sort distinctive by distance from 50 (most extreme first)
     distinctive.sort(key=lambda x: abs(x['percentile'] - 50), reverse=True)
@@ -876,7 +880,8 @@ def generate_question_profile(results: Dict) -> Dict:
     
     logger.info("[Question Profile] Compiling all 39 assessment questions (excluding 3 perception questions)")
     
-    percentiles = results.get('percentiles', {})
+    # ✅ CORRECT: percentiles is nested in full_results
+    percentiles = results.get('full_results', {}).get('percentiles', {})
     responses = results.get('responses', {})
     demographics = results.get('demographics', {})
     
