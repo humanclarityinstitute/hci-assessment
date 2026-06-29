@@ -245,17 +245,17 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
     section_5_behaviour_story = report_dict.get('section_5_behaviour_story', '')
     section_6_question_profile = report_dict.get('section_6_question_profile', {})
     # DEBUG: Check what page builder received
-if section_6_question_profile and section_6_question_profile.get('questions'):
-    q_list = section_6_question_profile['questions']
-    print(f"[DEBUG] Page builder received section_6 with {len(q_list)} questions")
-    if q_list:
-        first_q = q_list[0]
-        print(f"[DEBUG] First question has dimension? {'dimension' in first_q}")
-        if 'dimension' in first_q:
-            print(f"[DEBUG] First question dimension value: {first_q.get('dimension')}")
-        print(f"[DEBUG] First question keys: {list(first_q.keys())}")
-else:
-    print(f"[DEBUG] Page builder received NO section_6_question_profile or empty questions")
+    if section_6_question_profile and section_6_question_profile.get('questions'):
+        q_list = section_6_question_profile['questions']
+        print(f"[DEBUG] Page builder received section_6 with {len(q_list)} questions")
+        if q_list:
+            first_q = q_list[0]
+            print(f"[DEBUG] First question has dimension? {'dimension' in first_q}")
+            if 'dimension' in first_q:
+                print(f"[DEBUG] First question dimension value: {first_q.get('dimension')}")
+            print(f"[DEBUG] First question keys: {list(first_q.keys())}")
+    else:
+        print(f"[DEBUG] Page builder received NO section_6_question_profile or empty questions")
     section_7_distinctive_responses = report_dict.get('section_7_distinctive_responses', '')
     section_8_perception_gap = report_dict.get('section_8_perception_gap', '')
     section_10_trajectory = report_dict.get('section_10_trajectory', '')
