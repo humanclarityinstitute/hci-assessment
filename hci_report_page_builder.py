@@ -165,6 +165,8 @@ def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
         html += '<div class="how-typical-summary">You sit in the middle range on these dimensions, meaning you move through these areas without distinctive patterning.</div>\n'
         html += '</div>\n'
     
+    print(f"[DEBUG format_how_typical] RETURNING HTML LENGTH: {len(html)} characters")
+    print(f"[DEBUG format_how_typical] HTML snippet (first 200 chars): {html[:200]}")
     return html
 
 
@@ -638,7 +640,19 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
 </html>'''
     
     # ✅ Apply dynamic content substitutions (template is raw string, not f-string)
-    html = html.replace('{format_how_typical(section_3_how_typical)}', format_how_typical(section_3_how_typical))
+    print(f"[DEBUG build_report_html] BEFORE replacements, looking for: '{{format_how_typical(section_3_how_typical)}}'")
+    print(f"[DEBUG build_report_html] Found in template? {'{format_how_typical(section_3_how_typical)}' in html}")
+    
+    how_typical_html = format_how_typical(section_3_how_typical)
+    print(f"[DEBUG build_report_html] format_how_typical returned: {len(how_typical_html)} characters")
+    
+    html = html.replace('{format_how_typical(section_3_how_typical)}', how_typical_html)
+    print(f"[DEBUG build_report_html] AFTER replacement, checking if HTML is there...")
+    if '<div class="how-typical-section">' in html:
+        print(f"[DEBUG build_report_html] ✅ HTML WAS INSERTED - found 'how-typical-section' div")
+    else:
+        print(f"[DEBUG build_report_html] ❌ HTML NOT INSERTED - 'how-typical-section' div NOT found")
+    
     html = html.replace('{format_prose(section_7_distinctive_responses)}', format_prose(section_7_distinctive_responses))
     html = html.replace('{format_prose(section_5_behaviour_story)}', format_prose(section_5_behaviour_story))
     html = html.replace('{format_prose(section_8_perception_gap)}', format_prose(section_8_perception_gap))
