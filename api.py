@@ -47,8 +47,16 @@ from report_generator import generate_premium_report
 from hci_report_page_builder import build_report_html
 from email_template import send_report_email
 
-# Import Phase 1: Data enrichment
-from data_enrichment import enrich_results_for_report
+# Import Phase 1: Data enrichment (optional, with fallback)
+try:
+    from data_enrichment import enrich_results_for_report
+    HAS_DATA_ENRICHMENT = True
+except ImportError:
+    HAS_DATA_ENRICHMENT = False
+    print('WARNING: data_enrichment module not found. Phase 1 features will not work.')
+    def enrich_results_for_report(full_results, demographics, benchmark_path):
+        """Fallback: return results as-is without enrichment"""
+        return full_results
 
 # Create Flask app
 # Report storage configuration
