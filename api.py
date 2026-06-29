@@ -1515,9 +1515,10 @@ def recover_report_action():
         resend_api_key = os.environ.get('RESEND_API_KEY')
         send_report_email(
             to_email=demographics.get('email', ''),
-            report=report_html_str,
+            report_html=report_html_str,
             demographics=demographics,
             resend_api_key=resend_api_key,
+            session_id=session_id,
             pdf_bytes=pdf_bytes
         )
         
