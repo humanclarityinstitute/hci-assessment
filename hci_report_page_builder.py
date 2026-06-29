@@ -98,11 +98,11 @@ def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
     Data already includes pre-written interpretation text from signals library
     (pulled by generate_how_typical in report_generator.py).
     
-    Data structure:
+    Data structure (now dicts indexed by position):
     {
-        'distinctive': [{key, name, percentile, interpretation}, ...],
-        'typical': [{key, name, percentile, interpretation}, ...],
-        'moderate': [{key, name, percentile, interpretation}, ...]
+        'distinctive': {'0': {key, name, percentile, interpretation}, '1': {...}},
+        'typical': {'0': {...}, '1': {...}},
+        'moderate': {'0': {...}, '1': {...}}
     }
     """
     if not how_typical_data:
@@ -111,13 +111,13 @@ def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
     html = ""
     
     # PART 1: DISTINCTIVE AREAS
-    distinctive = how_typical_data.get('distinctive', [])
+    distinctive = how_typical_data.get('distinctive', {})
     if distinctive:
         html += '<div class="how-typical-section">\n'
         html += '<h3 class="how-typical-heading">Where You\'re Distinctive</h3>\n'
         html += '<div class="how-typical-items">\n'
         
-        for dim in distinctive:
+        for dim in distinctive.values():
             name = dim.get('name', 'Unknown')
             pct = dim.get('percentile', 50)
             label = positional_label(pct)
@@ -133,13 +133,13 @@ def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
         html += '</div>\n'
     
     # PART 2: TYPICAL AREAS
-    typical = how_typical_data.get('typical', [])
+    typical = how_typical_data.get('typical', {})
     if typical:
         html += '<div class="how-typical-section">\n'
         html += '<h3 class="how-typical-heading">Where You\'re Typical</h3>\n'
         html += '<div class="how-typical-items">\n'
         
-        for dim in typical:
+        for dim in typical.values():
             name = dim.get('name', 'Unknown')
             pct = dim.get('percentile', 50)
             label = positional_label(pct)
