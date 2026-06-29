@@ -295,7 +295,7 @@ def generate_opening(results: Dict, client, session_id: str) -> str:
     demographics = results.get('demographics', {})
     perception_gaps = get_perception_gaps(results)
     rare_combos = get_rare_combinations(results)
-    percentiles = results.get('full_results', {}).get('percentiles', {})
+    percentiles = results.get('percentiles', {})
     
     # Get signal context for most distinctive dimension
     top_dim_name = max(
@@ -470,7 +470,7 @@ def generate_distinctive_responses(results: Dict, client, session_id: str) -> st
     
     logger.info("[4/9] Distinctive Responses")
     
-    percentiles = results.get('full_results', {}).get('percentiles', {})
+    percentiles = results.get('percentiles', {})
     
     # Find most distinctive responses (furthest from 50th percentile)
     distinctive = []
@@ -806,23 +806,11 @@ def generate_how_typical(results: Dict) -> Dict:
     
     logger.info("[How Typical] Categorizing dimensions into Distinctive/Typical")
     
-    # ✅ CORRECT: dimension_scores is nested in full_results
+    # ✅ CORRECT: dimension_scores is nested in full_results, not at top level
     dimension_scores = results.get('full_results', {}).get('dimension_scores', {})
     
     # Dimension names mapping
     DIM_NAMES = {
-        'reliance': 'reliance',
-        'trust': 'trust',
-        'verification': 'verification',
-        'decision_delegation': 'decision_delegation',
-        'human_agency': 'human_agency',
-        'emotional_regulation': 'emotional_regulation',
-        'disclosure': 'disclosure',
-        'thought_partnership': 'thought_partnership',
-        'social_transparency': 'social_transparency',
-    }
-    
-    DIM_DISPLAY_NAMES = {
         'reliance': 'Reliance',
         'trust': 'Trust',
         'verification': 'Verification',
@@ -843,9 +831,9 @@ def generate_how_typical(results: Dict) -> Dict:
             continue
         
         pct = dim_data.get('percentile_overall', 50)
-        dim_name = DIM_DISPLAY_NAMES.get(dim_key, dim_key)
+        dim_name = DIM_NAMES.get(dim_key, dim_key)
         
-        # Get pre-written interpretation from SIGNALS (like generate_dashboard does)
+        # ✅ PULL from SIGNALS (like generate_dashboard does)
         signal = SIGNALS.get('dimensions', {}).get(dim_key, {})
         if pct > 75:
             interpretation = signal.get('high', f'You sit notably/exceptionally high on {dim_name}.')
@@ -858,7 +846,7 @@ def generate_how_typical(results: Dict) -> Dict:
             'key': dim_key,
             'name': dim_name,
             'percentile': pct,
-            'interpretation': interpretation
+            'interpretation': interpretation  # ✅ INCLUDE in data dict
         }
         
         if pct > 75 or pct < 25:
@@ -894,8 +882,8 @@ def generate_question_profile(results: Dict) -> Dict:
     
     logger.info("[Question Profile] Compiling all 39 assessment questions (excluding 3 perception questions)")
     
-    percentiles = results.get('full_results', {}).get('percentiles', {})
-    responses = results.get('full_results', {}).get('responses', {})
+    percentiles = results.get('percentiles', {})
+    responses = results.get('responses', {})
     demographics = results.get('demographics', {})
     
     profile = {
