@@ -382,6 +382,8 @@ def score():
             'percentiles': percentiles,          # ← Question-level percentiles
             'perception_gaps': scoring_results.get('perception_gaps', []),
             'rare_combinations': scoring_results.get('rare_combinations', []),
+            'demographics': demographics,        # ← ADD
+            'responses': responses,              # ← ADD
             'full_results': scoring_results
         }), 200
     
