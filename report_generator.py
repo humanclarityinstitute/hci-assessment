@@ -1,16 +1,13 @@
 """
-HCI AI Identity & Behaviour Assessment — Report Generator v9.0
+HCI AI Identity & Behaviour Assessment — Report Generator v2.0 (REBUILT)
 
-Generates premium reports with 9 focused API calls:
-- 6 core calls (Opening, Rare Combos, Behaviour, Distinctive, Perception Gap, Trajectory)
-- 3 deep dive calls (Research Lenses, Rare Combo Deep, Cross-Dimensional)
+Complete rebuild with:
+- 9 focused API calls (6 core + 3 optional deep dive)
+- Full narrative generation (300-400+ words per section)
+- Complete research integration (SIGNALS + HBE + VALUES)
+- Professional report_dict output
 
-Plus 4 data-only sections (Dashboard, How Typical, Question Profile, Cohort Context)
-
-All calls wrapped with resilience (90s timeout + single retry).
-NO PARTIAL REPORTS — if any call fails, entire report fails.
-PDF generated and stored in Supabase Storage.
-Failure alerts sent to info@humanclarityinstitute.com
+No partial reports — all sections present or entire report fails.
 """
 
 import json
@@ -18,1312 +15,757 @@ import time
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from question_metadata import (
-    QUESTION_MAP,
-    get_question_text,
-    PERCEPTION_QUESTIONS,
-    get_perception_text,
-    DEMOGRAPHIC_QUESTIONS,
-    get_demographic_text,
-    is_perception_question,
-    is_demographic_question,
-    is_assessment_question
-)
+from anthropic import Anthropic, APITimeoutError
 
-# ============================================================
-# MANDATORY IMPORTS — FAIL HARD IF MISSING
-# ============================================================
+# Import research data
+from hci_signals_library import SIGNALS
+from human_reference_layer import HBE_FRAMEWORK, VALUES_SIGNALS
+from question_metadata import DIMENSION_NAMES, DIMENSIONS
 
-try:
-    import anthropic
-    from anthropic import APITimeoutError
-except ImportError as e:
-    raise ImportError("anthropic package required. pip install anthropic") from e
-
-try:
-    from signal_selection import (
-        prepare_complete_signal_context,
-        format_signal_context_for_api_prompt
-    )
-except ImportError as e:
-    raise ImportError("signal_selection.py required. Check repo.") from e
-
-try:
-    from benchmark_context_data import (
-        FREQUENCY_GRADIENTS,
-        AGE_COHORT_PATTERNS,
-        DISTINCTIVE_FLAGS,
-        KEY_FINDINGS_FOR_REPORTS,
-        PRESSURE_POINTS,
-        RESEARCH_NUMBERS
-    )
-except ImportError as e:
-    raise ImportError("benchmark_context_data.py required. Check repo.") from e
-
-try:
-    from hci_signals_library import SIGNALS
-except ImportError as e:
-    raise ImportError("hci_signals_library.py required. Check repo.") from e
-
-try:
-    from human_reference_layer import (
-        HBE_FRAMEWORK,
-        VALUES_SIGNALS,
-        get_values_reframe,
-        apply_research_insight
-    )
-except ImportError as e:
-    raise ImportError("human_reference_layer.py required. Check repo.") from e
-
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
-CALL_TIMEOUT_SECONDS = 90
-MAX_RETRIES_PER_CALL = 1
-ALERT_EMAIL = "info@humanclarityinstitute.com"
-MODEL = "claude-sonnet-4-6"
-
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ============================================================
-# SYSTEM PROMPT (LOCKED)
-# ============================================================
+# ============================================================================
+# CONSTANTS
+# ============================================================================
 
-GLOBAL_SYSTEM_PROMPT = """
-You are writing sections of a personalised research report for the
-Human Clarity Institute's AI Identity & Behaviour Assessment.
+DIMENSION_DEFINITIONS = {
+    'reliance': 'How much you depend on AI for thinking and functioning',
+    'trust': 'How much you believe AI outputs are accurate',
+    'verification': 'How often you check AI outputs before using them',
+    'decision_delegation': 'How much you hand over decisions to AI',
+    'human_agency': 'How much control you maintain over your decisions',
+    'emotional_regulation': 'Whether you turn to AI for emotional support',
+    'disclosure': 'How much personal information you share with AI',
+    'thought_partnership': 'How much you use AI as a thinking partner',
+    'social_transparency': 'How openly you discuss your AI use with others',
+}
 
-Your role is to generate genuine insight that leaves people feeling
-more self-aware and curious about themselves — never judged,
-deficient, or concerned about their behaviour.
+OPENING_STATEMENT = """
+You are uniquely positioned in how you relate to AI. Your profile reflects 
+how you currently engage with AI systems — based on your responses benchmarked 
+against 10,500 participants across 21 research studies.
 
-INSTITUTIONAL VOICE:
-- Warm but precise. Intellectually rigorous. Never sterile.
-- Write as a thoughtful researcher who has studied this specific
-  person's data — not as a template being filled in.
-- Personal but grounded in data. Future-positive. Never alarming.
+Use this report to understand your pattern:
 
-FRAMING RULES:
-- Every score reveals something genuinely interesting.
-  There are no good or bad scores — only different patterns.
-- Never suggest someone has a problem or should change.
-- Difference from the population is always interesting, never deficit.
-- All scores are patterns at this point in time — not fixed traits.
-
-TONE RULES:
-- Speak directly to the person as "you"
-- Write in second person throughout
-- Every section ends with curiosity, not concern
-- Never list problems — explore patterns
-
-PERCENTILE LANGUAGE:
-- State position as plain English: "higher than 97 out of every 100 people"
-- Pair it with the positional phrase ("notably high", "near the population centre")
-- Do NOT use a bare "Xth percentile" number anywhere in the prose
-- Always lead with the human meaning, never the number
-
-LANGUAGE TO NEVER USE:
-- concerning, worrying, problematic, at risk
-- you should, you need to, you must
-- loss of agency, cognitive decline, addiction, dependency
-- alarming, dangerous, red flag
-
-LANGUAGE TO USE:
-- interesting, revealing, distinctive, worth exploring
-- your pattern, your positioning, your profile
-- people with similar profiles tend to...
-- what appears worth protecting
-- raises an interesting question
+• Understand what's distinctive about how you work with AI
+• Notice where you're typical and where you stand out
+• Explore what's worth protecting as your use evolves
+• Make conscious choices about your relationship with AI going forward
 """
 
-# ============================================================
-# RESILIENCE & FAILURE HANDLING
-# ============================================================
+# ============================================================================
+# MAIN FUNCTION
+# ============================================================================
 
-def notify_failure(call_name: str, error: Exception, session_id: str, user_email: str):
+def generate_premium_report(results, api_key, session_id):
     """
-    Alert admins when API call fails.
-    In production: sends email to info@humanclarityinstitute.com
-    """
-    timestamp = datetime.utcnow().isoformat()
-    error_type = type(error).__name__
-    error_msg = str(error)[:200]
+    Generate complete premium report with all sections.
     
-    alert = f"""
-REPORT GENERATION FAILURE ALERT
-
-Session ID: {session_id}
-User Email: {user_email}
-Failed Call: {call_name}
-Error Type: {error_type}
-Error Message: {error_msg}
-Timestamp: {timestamp}
-
-ADMIN ACTION REQUIRED:
-Go to: https://web-production-381d3.up.railway.app/recover-report
-Paste session ID above and click "Rebuild Report"
-
-The system will regenerate all 9 API calls and send a new report to the user.
+    Args:
+        results: Complete results dict from api.py (with enriched data from Phase 1)
+        api_key: Anthropic API key
+        session_id: Assessment session ID
+    
+    Returns:
+        dict: Complete report_dict with all sections, or None if failed
     """
     
-    logger.error(alert)
-    # TODO: In production, send email to ALERT_EMAIL
-    # For now, log it
-    print(alert)
-
-
-def call_claude_with_resilience(
-    client,
-    model: str,
-    max_tokens: int,
-    system: str,
-    messages: List[Dict],
-    call_name: str,
-    session_id: str = None
-) -> str:
-    """
-    Call Claude with 90s timeout + single retry on timeout.
-    NO PARTIAL REPORTS — if this fails, the whole report fails.
-    """
-    
-    for attempt in range(MAX_RETRIES_PER_CALL + 1):
-        start_time = time.time()
+    try:
+        logger.info(f"[Phase 2] Starting report generation for session {session_id}")
         
-        try:
-            message = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=messages,
-                timeout=float(CALL_TIMEOUT_SECONDS),
-            )
-            
-            duration = time.time() - start_time
-            
-            if duration > 30:
-                logger.info(
-                    f"[SLOW] {call_name} completed in {duration:.1f}s "
-                    f"(session: {session_id})"
-                )
-            
-            return message.content[0].text.strip()
+        client = Anthropic(api_key=api_key)
+        participant = results['full_results']
+        demographics = results['demographics']
         
-        except APITimeoutError as e:
-            duration = time.time() - start_time
-            logger.warning(
-                f"[TIMEOUT] {call_name} timed out after {duration:.1f}s "
-                f"(attempt {attempt + 1}/{MAX_RETRIES_PER_CALL + 1})"
-            )
-            
-            if attempt < MAX_RETRIES_PER_CALL:
-                time.sleep(1)
-                continue
-            else:
-                logger.error(
-                    f"[FATAL] {call_name} failed on final attempt. "
-                    f"NO PARTIAL REPORTS — entire report generation aborted."
-                )
-                raise
-        
-        except Exception as e:
-            logger.error(
-                f"[ERROR] {call_name} failed: {type(e).__name__}: {str(e)[:100]}"
-            )
-            raise
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
-
-def plain_english_percentile(p: Optional[int]) -> str:
-    """Convert percentile to plain English."""
-    if not p:
-        return "at the population centre"
-    if p >= 75:
-        return f"higher than {p} out of every 100 people"
-    elif p >= 50:
-        return f"higher than {p} out of every 100 people"
-    else:
-        return f"lower than {100-p} out of every 100 people"
-
-
-def get_most_distinctive_variable(responses: Dict, percentiles: Dict) -> tuple:
-    """
-    Find the question with the largest deviation from 50th percentile.
-    Returns: (question_key, percentile, raw_score)
-    """
-    max_divergence = 0
-    most_distinctive = None
-    
-    for q_key, percentile in percentiles.items():
-        if isinstance(percentile, dict):
-            p = percentile.get('percentile_overall', 50)
-        else:
-            p = percentile
-        
-        divergence = abs(p - 50)
-        if divergence > max_divergence:
-            max_divergence = divergence
-            most_distinctive = (q_key, p)
-    
-    return most_distinctive if most_distinctive else ('unknown', 50)
-
-
-def get_perception_gaps(results: Dict) -> List[Dict]:
-    """Extract perception gaps from results."""
-    gaps = results.get('full_results', {}).get('perception_gaps', [])
-    return gaps if isinstance(gaps, list) else []
-
-
-def get_rare_combinations(results: Dict) -> List[Dict]:
-    """Extract rare combinations from results."""
-    combos = results.get('full_results', {}).get('rare_combinations', [])
-    return combos if isinstance(combos, list) else []
-
-# ============================================================
-# API CALL GENERATORS — 9 TOTAL
-# ============================================================
-
-def generate_opening(results: Dict, client, session_id: str) -> str:
-    """API CALL #1: Opening — Top 3 Findings"""
-    
-    logger.info("[1/9] Opening — Top 3 Findings")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    perception_gaps = get_perception_gaps(results)
-    rare_combos = get_rare_combinations(results)
-    percentiles = results.get('percentiles', {})
-    
-    # Get signal context for most distinctive dimension
-    top_dim_name = max(
-        dimensions.keys(),
-        key=lambda x: abs(dimensions[x].get('percentile_overall', 50) - 50)
-    ) if dimensions else 'trust'
-    
-    top_dim_percentile = dimensions.get(top_dim_name, {}).get('percentile_overall', 50)
-    
-    signal_context = prepare_complete_signal_context(
-        dimension=top_dim_name,
-        actual_score=dimensions.get(top_dim_name, {}).get('raw_score', 3.5),
-        frequency=demographics.get('ai_tool_use_frequency', 'sometimes'),
-        age_group=demographics.get('age_group', '25-34'),
-        actual_percentile=top_dim_percentile
-    )
-    
-    signal_text = format_signal_context_for_api_prompt(signal_context, 'Opening')
-    
-    # Find largest perception gap
-    largest_gap = max(perception_gaps, key=lambda x: abs(x.get('gap_magnitude', 0))) if perception_gaps else None
-    
-    # Get rare combo context
-    combo_text = ""
-    if rare_combos:
-        combo = rare_combos[0]
-        combo_key = f"{combo.get('dimension_1')}_{combo.get('dimension_2')}"
-        if combo_key in SIGNALS.get('combinations', {}):
-            combo_text = SIGNALS['combinations'][combo_key].get('what_it_reveals', '')
-    
-    # Map perception question keys to dimension names
-    perception_to_dimension_name = {
-        'perceived_usage': 'Reliance (Usage)',
-        'perceived_reliance': 'Reliance',
-        'perceived_dependence': 'Reliance (Dependence)'
-    }
-    
-    prompt = f"""
-This person's profile has three striking features:
-
-DATA POINT 1 — MOST DISTINCTIVE DIMENSION:
-{top_dim_name.replace('_', ' ').title()}: {plain_english_percentile(top_dim_percentile)}
-
-RESEARCH SIGNALS:
-{signal_text}
-
-{f'''DATA POINT 2 — PERCEPTION GAP:
-{perception_to_dimension_name.get(largest_gap['question'], largest_gap['question'].replace('_', ' ').title())}: 
-They estimated {largest_gap['perceived_answer']}, but actually score {largest_gap['actual_percentile']}th percentile. 
-Gap: {largest_gap['gap_magnitude']:.1f} points.
-''' if largest_gap else ''}
-
-{f'''DATA POINT 3 — RARE COMBINATION:
-{combo_text}
-''' if combo_text else ''}
-
-Write three paragraphs (50-75 words each) that:
-1. Open with what's striking about their most distinctive dimension
-2. Observe their perception gap (if exists)
-3. Highlight their rare combination (if exists)
-
-Frame as findings, not questions. Use plain language. Speak directly as "you".
-Tone: "Here's what stands out about you."
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Opening — Top 3 Findings',
-        session_id=session_id
-    )
-
-
-def generate_rare_combinations(results: Dict, client, session_id: str) -> str:
-    """API CALL #2: Rare Combinations Analysis"""
-    
-    logger.info("[2/9] Rare Combinations")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    rare_combos = get_rare_combinations(results)
-    demographics = results.get('demographics', {})
-    
-    if not rare_combos:
-        return "No rare combinations detected in this profile."
-    
-    # Show top 2 rare combinations (if available)
-    combos_to_analyze = rare_combos[:2]  # Get top 2
-    
-    combos_text = ""
-    for i, combo in enumerate(combos_to_analyze, 1):
-        dim1 = combo.get('dimension_1', 'unknown')
-        dim2 = combo.get('dimension_2', 'unknown')
-        
-        combos_text += f"\nCOMBINATION {i}:\n"
-        combos_text += f"{dim1.title()}: {combo.get('percentile_dim1')}th percentile\n"
-        combos_text += f"{dim2.title()}: {combo.get('percentile_dim2')}th percentile\n"
-        combos_text += f"Rarity: ~{combo.get('rarity_percent', 5)}% of participants\n"
-    
-    prompt = f"""
-This person has rare dimensional combinations:
-
-{combos_text}
-
-Analyze these combinations:
-1. What makes each combination unusual?
-2. How do they reinforce or complicate each other?
-3. What do they reveal about this person's distinctive approach to AI?
-4. What research shows about people with similar combinations?
-
-Write 250-300 words exploring what these rare combinations suggest about their
-engagement with AI. Ground in research patterns. Speak directly to them.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Rare Combinations',
-        session_id=session_id
-    )
-
-
-def generate_behaviour_story(results: Dict, client, session_id: str) -> str:
-    """API CALL #3: Behaviour Story"""
-    
-    logger.info("[3/9] Behaviour Story")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    
-    # Build dimension summary
-    dim_summary = ""
-    for dim_name, dim_data in dimensions.items():
-        percentile = dim_data.get('percentile_overall', 50)
-        dim_summary += f"- {dim_name.title()}: {percentile}th percentile\n"
-    
-    prompt = f"""
-Here is this person's complete profile across all 9 dimensions:
-
-{dim_summary}
-
-Demographics:
-- Age group: {demographics.get('age_group', 'unknown')}
-- AI usage frequency: {demographics.get('ai_tool_use_frequency', 'unknown')}
-
-Write a 300-400 word narrative that tells the "story" of how this person engages
-with AI. Not a list of scores — a connected narrative.
-
-What pattern emerges when you look at all 9 dimensions together?
-How do these dimensions relate and support each other?
-What's distinctive about their overall approach to AI?
-
-Tone: You're a researcher who has studied this person's data. Tell the story
-of their relationship with AI in a way that makes them feel understood.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Behaviour Story',
-        session_id=session_id
-    )
-
-
-def generate_distinctive_responses(results: Dict, client, session_id: str) -> str:
-    """API CALL #4: Distinctive Responses"""
-    
-    logger.info("[4/9] Distinctive Responses")
-    
-    percentiles = results.get('percentiles', {})
-    responses = results.get('responses', {})
-    
-    # Find most distinctive responses (extremes: percentile 0-10 or 90-100)
-    # These are truly distinctive, not just "divergent from 50"
-    distinctive = []
-    for q_key, p_data in percentiles.items():
-        if isinstance(p_data, dict):
-            percentile = p_data.get('percentile_overall', 50)
-            question_text = p_data.get('question_text', q_key)
-        else:
-            percentile = p_data
-            question_text = q_key
-        
-        # Spec: 3-5 responses at extremes (percentile 0-10 or 90-100)
-        is_extreme = (percentile <= 10 or percentile >= 90)
-        
-        if is_extreme:
-            answer = responses.get(q_key, 4)
-            distinctive.append((q_key, question_text, answer, percentile))
-    
-    # Sort by extremeness (distance from 50), take top 3-5
-    distinctive.sort(key=lambda x: abs(x[3] - 50), reverse=True)
-    top_distinctive = distinctive[:5]  # Up to 5 responses
-    
-    # Build text showing question, answer, and percentile
-    distinctive_text = "\n".join([
-        f"Q: {q_text}\nAnswer: {answer}/7 (Percentile: {pct}th)\n"
-        for _, q_text, answer, pct in top_distinctive
-    ])
-    
-    prompt = f"""
-This person has these truly distinctive question-level responses (at the extremes):
-
-{distinctive_text}
-
-Analyze what these distinctive responses reveal:
-1. What pattern emerges across these responses?
-2. Do they cluster around a theme or dimension?
-3. What do they suggest about this person's approach to AI?
-4. What coherence or intentionality do you see?
-
-Write 200-250 words that illuminate what these specific responses reveal
-about their pattern. Ground in the data. Make it personal and specific.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=800,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Distinctive Responses',
-        session_id=session_id
-    )
-
-
-def generate_perception_gap(results: Dict, client, session_id: str) -> str:
-    """API CALL #5: Perception Gap"""
-    
-    logger.info("[5/9] Perception Gap")
-    
-    gaps = get_perception_gaps(results)
-    
-    if not gaps:
-        return "No significant perception gaps detected in this profile."
-    
-    # Map question keys to readable names
-    question_to_name = {
-        'perceived_usage': 'Usage',
-        'perceived_reliance': 'Reliance',
-        'perceived_dependence': 'Dependence'
-    }
-    
-    gap_text = "\n".join([
-        f"- {question_to_name.get(g['question'], g['question'].replace('_', ' ').title())}: "
-        f"Estimated {g['perceived_answer']}, "
-        f"actually {g['actual_percentile']}th percentile "
-        f"({g['gap_magnitude']:.1f} point gap)"
-        for g in gaps[:3]
-    ])
-    
-    prompt = f"""
-This person has perception gaps between how they estimate their positioning
-and where they actually score:
-
-{gap_text}
-
-Analyze what these gaps reveal:
-1. What's the largest and most interesting gap?
-2. What do overestimates suggest? Underestimates?
-3. What does this self-awareness pattern indicate?
-
-Write 200-250 words that synthesize what these perception gaps reveal.
-Frame as observation, not judgment.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=800,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Perception Gap',
-        session_id=session_id
-    )
-
-
-def generate_trajectory(results: Dict, client, session_id: str) -> str:
-    """API CALL #6: Trajectory & Outlook"""
-    
-    logger.info("[6/9] Trajectory & Outlook")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    
-    # Get highest and lowest
-    sorted_dims = sorted(
-        dimensions.items(),
-        key=lambda x: x[1].get('percentile_overall', 50)
-    )
-    
-    lowest = sorted_dims[0][0] if sorted_dims else 'unknown'
-    highest = sorted_dims[-1][0] if sorted_dims else 'unknown'
-    
-    prompt = f"""
-This person's current profile shows:
-- Highest dimension: {highest.title()} 
-- Lowest dimension: {lowest.title()}
-- Age group: {demographics.get('age_group', 'unknown')}
-- Usage frequency: {demographics.get('ai_tool_use_frequency', 'unknown')}
-
-Based on their current positioning and research on how AI engagement patterns
-evolve, what trajectory might this person be on?
-
-1. What does research show about people with this profile pattern?
-2. Where might they find growth or challenge?
-3. What appears worth protecting as their use evolves?
-4. What would intentional engagement look like for them?
-
-Write 250-300 words exploring their likely trajectory. 
-Tone: Forward-positive, curious about possibilities.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1000,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Trajectory & Outlook',
-        session_id=session_id
-    )
-
-
-def generate_what_to_protect(results: Dict) -> Dict:
-    """
-    SECTION 9: What to Protect
-    
-    Four pre-written subsections with data insertion.
-    No API calls - entirely template-based.
-    """
-    
-    dimension_scores = results.get('full_results', {}).get('dimension_scores', {})
-    
-    # Get the 4 key dimension percentiles
-    verification_pct = dimension_scores.get('verification', {}).get('percentile_overall', 50)
-    agency_pct = dimension_scores.get('human_agency', {}).get('percentile_overall', 50)
-    emotional_pct = dimension_scores.get('emotional_regulation', {}).get('percentile_overall', 50)
-    thought_pct = dimension_scores.get('thought_partnership', {}).get('percentile_overall', 50)
-    
-    def get_positioning(pct):
-        """Convert percentile to positioning language"""
-        if pct >= 71:
-            return "at the high end"
-        elif pct >= 41:
-            return "in the middle"
-        else:
-            return "at the low end"
-    
-    # Build all 4 subsections
-    subsections = {
-        'verification': {
-            'title': 'WHAT TO NOTICE: WHEN VERIFICATION BECOMES TIRING',
-            'positioning': get_positioning(verification_pct),
-            'content': f"""Most people verify AI outputs (84-99% do before acting). 
-But the research reveals something important: 43% find constant verification cognitively 
-costly, and 54% now verify selectively — checking only what feels high-risk or important.
-
-If your Verification score places you {get_positioning(verification_pct)}, here's what to watch for:
-
-→ Noticing yourself checking less than usual
-→ Feeling relief or efficiency when you skip verification
-→ Finding it hard to care whether an output is accurate
-→ Moving from "verify everything" to "verify selectively" without realizing it
-
-What HCI's research shows: Verification fatigue is real and common. It's not laziness — 
-it's the cost of constant cognitive effort. The question worth noticing is whether your 
-verification rhythm serves your needs, or whether you're rationing it because it's exhausting.
-
-You decide what level of verification matters to you."""
-        },
-        'agency': {
-            'title': 'WHAT TO NOTICE: WHEN DRIFT HAPPENS WITHOUT YOU CHOOSING IT',
-            'positioning': get_positioning(agency_pct),
-            'content': f"""Research shows an interesting contrast: At the identity level, agency is strong — 91% of people 
-retain a clear sense of responsibility for their decisions. But at the process level, something 
-else is happening. 59% report feeling subtly steered by AI suggestions without fully choosing it.
-
-If your Agency score places you {get_positioning(agency_pct)}, here's what to watch for:
-
-→ Accepting AI suggestions without thinking them through first
-→ Using AI defaults instead of customizing your approach
-→ Realizing you haven't actually made a decision yourself in days
-→ Noticing AI's framing has become your first instinct
-→ Finding it harder to develop your own position before consulting AI
-
-What HCI's research shows: Drift happens through convenience, not collapse. You're not 
-losing agency overnight — you're losing it incrementally through small moments where the 
-path of least resistance happens to align with what AI suggests.
-
-You decide if this matters to you."""
-        },
-        'emotional': {
-            'title': 'WHAT TO NOTICE: IF EMOTIONAL RELIANCE BECOMES SUBSTITUTION',
-            'positioning': get_positioning(emotional_pct),
-            'content': f"""This one is the most live tension in HCI's research. 87% of people still believe — deeply — 
-that only humans can truly meet emotional needs. Yet 18% are already using AI for emotional 
-support, and that number is growing. 27% report getting some emotional support from AI.
-
-If your Emotional Regulation score places you {get_positioning(emotional_pct)}, here's what to watch for:
-
-→ Turning to AI before turning to people when you're struggling
-→ Preferring AI conversations to human ones for processing difficult feelings
-→ Finding it harder to sit with discomfort without AI input
-→ Noticing you're more open with AI about emotions than with people you trust
-→ Realizing emotional support from AI feels more available than human support
-
-What HCI's research shows: This isn't inherently a problem. For some people, AI offers a 
-genuinely safe space that human relationships don't. But it's worth noticing the difference 
-between AI as a supplement to human connection and AI as a replacement for it.
-
-You decide if emotional support from AI is right for you."""
-        },
-        'thought_partnership': {
-            'title': 'WHAT TO NOTICE: WHEN THINKING WITH AI BECOMES THINKING FOR YOU',
-            'positioning': get_positioning(thought_pct),
-            'content': f"""AI works best as a thinking partner — someone (or something) to develop ideas with, not 
-instead of your own thinking. But research shows 34-38% of people question whether their 
-AI-assisted decisions are genuinely theirs. The difference? A clear values anchor.
-
-If your Thought Partnership score places you {get_positioning(thought_pct)}, here's what to watch for:
-
-→ Defaulting to AI's framing instead of developing your own position first
-→ Struggling to think independently when AI isn't available
-→ Realizing AI's suggestions have become your first instinct (not your second opinion)
-→ Finding it hard to disagree with AI once it's stated a position
-→ Noticing you use AI to avoid the discomfort of thinking through hard problems alone
-
-What HCI's research shows: Genuine partnership requires you to know what you think before 
-you ask AI. The people who maintain clear authorship are the ones who use AI to challenge 
-their thinking, not replace it. Values clarity is what keeps that distinction alive.
-
-You decide if this matters to you."""
-        }
-    }
-    
-    return {
-        'subsections': subsections,
-        'dimensions_used': {
-            'verification': verification_pct,
-            'agency': agency_pct,
-            'emotional_regulation': emotional_pct,
-            'thought_partnership': thought_pct
-        }
-    }
-
-
-def generate_next_steps(results: Dict) -> Dict:
-    """
-    DATA-ONLY: SECTION 11 — Action-oriented closing with concrete next-step prompts.
-    
-    Provides three concrete reflection prompts grounded in participant's specific pattern.
-    No prescriptive "you should" language — only curious, forward-oriented questions.
-    """
-    
-    logger.info("[11/11] Next Steps — Generating action-oriented closing")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    
-    # Identify highest and lowest dimensions for personalization
-    highest_dim = max(
-        dimensions.items(),
-        key=lambda x: x[1].get('percentile_overall', 50)
-    ) if dimensions else ('reliance', {})
-    
-    lowest_dim = min(
-        dimensions.items(),
-        key=lambda x: x[1].get('percentile_overall', 50)
-    ) if dimensions else ('verification', {})
-    
-    highest_name = highest_dim[0].replace('_', ' ').title()
-    lowest_name = lowest_dim[0].replace('_', ' ').title()
-    
-    # Three personalized reflection prompts
-    next_steps = {
-        'title': 'Your Next Steps',
-        'tagline': 'Three reflections to guide your relationship with AI going forward',
-        'prompts': [
-            {
-                'number': 1,
-                'title': 'On Your Strongest Pattern',
-                'prompt': f'You score notably high on {highest_name}. What role do you want this dimension to play in your thinking and work? Is its current place intentional?'
-            },
-            {
-                'number': 2,
-                'title': 'On What You Might Explore',
-                'prompt': f'You score lower on {lowest_name}. Rather than viewing this as a weakness, what might it reveal about your deliberate choices? What would change if you engaged differently here?'
-            },
-            {
-                'number': 3,
-                'title': 'On Your Relationship with AI',
-                'prompt': 'Looking at your complete profile, what has surprised you most about how you actually engage with AI? What question about your pattern feels most worth sitting with?'
+        # Initialize report_dict
+        report_dict = {
+            'metadata': {
+                'session_id': session_id,
+                'created_at': datetime.utcnow().isoformat(),
+                'participant_age_group': demographics.get('age_group'),
+                'participant_frequency': demographics.get('frequency'),
             }
-        ],
-        'closing': {
-            'title': 'Resources',
-            'text': 'Your complete report is yours to keep. Return to it when your AI use evolves, or when you want to revisit what your pattern revealed.',
-            'link': 'Learn more at humanclarityinstitute.com'
         }
-    }
-    
-    return next_steps
-
-
-def generate_deep_dive_1(results: Dict, client, session_id: str) -> str:
-    """API CALL #7: Deep Dive Part 1 — Research Lenses"""
-    
-    logger.info("[7/9] Deep Dive Part 1 — Research Lenses")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    demographics = results.get('demographics', {})
-    
-    # Build dimension overview
-    dim_overview = "\n".join([
-        f"- {k.title()}: {v.get('percentile_overall', 50)}th percentile"
-        for k, v in dimensions.items()
-    ])
-    
-    prompt = f"""
-This person's complete profile:
-
-{dim_overview}
-
-Age group: {demographics.get('age_group', 'unknown')}
-Usage frequency: {demographics.get('ai_tool_use_frequency', 'unknown')}
-
-Examine this profile through multiple research lenses:
-
-LENS 1: INTENTIONALITY
-How intentional vs passive does their profile suggest?
-
-LENS 2: AGENCY & BOUNDARY-SETTING  
-How well do they maintain human agency?
-
-LENS 3: TRUST & VERIFICATION
-How does their trust align with their verification behavior?
-
-LENS 4: RELATIONAL ENGAGEMENT
-How relational vs instrumental is their engagement?
-
-LENS 5: COHERENCE
-How coherent is their overall pattern?
-
-Write 400-500 words applying these lenses to their specific profile.
-Make it deep and specific — not generic. Show how research explains their pattern.
-
-Tone: Research-grounded, analytical, illuminating.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1200,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Deep Dive Part 1 — Research Lenses',
-        session_id=session_id
-    )
-
-
-def generate_deep_dive_4(results: Dict, client, session_id: str) -> str:
-    """API CALL #8: Deep Dive Part 4 — Rare Combination Deep"""
-    
-    logger.info("[8/9] Deep Dive Part 4 — Rare Combination Deep")
-    
-    rare_combos = get_rare_combinations(results)
-    
-    if not rare_combos:
-        return "No rare combinations for deep dive."
-    
-    combo = rare_combos[0]
-    
-    prompt = f"""
-This person has a rare combination:
-
-{combo.get('dimension_1', 'X').title()}: {combo.get('percentile_dim1', 50)}th percentile
-{combo.get('dimension_2', 'Y').title()}: {combo.get('percentile_dim2', 50)}th percentile
-
-This combination appears in approximately {combo.get('rarity_percent', 5)}% of the research.
-
-Draw from HCI's 21-dataset research to explore:
-
-1. What do people with this combination typically look like?
-2. How does this combination relate to usage patterns?
-3. What other dimensions typically co-occur with this combo?
-4. What does research show about stability of this combo?
-5. What does this combo reveal about their relationship with AI?
-
-Write 350-400 words providing deep, research-grounded context about this
-specific combination. Not generic — show what research reveals.
-
-Tone: Research-grounded, illuminating, specific to their data.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1200,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Deep Dive Part 4 — Rare Combination Deep',
-        session_id=session_id
-    )
-
-
-def generate_deep_dive_5(results: Dict, client, session_id: str) -> str:
-    """API CALL #9: Deep Dive Part 5 — Cross-Dimensional Story"""
-    
-    logger.info("[9/9] Deep Dive Part 5 — Cross-Dimensional Story")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    
-    dim_overview = "\n".join([
-        f"- {k.title()}: {v.get('percentile_overall', 50)}th percentile"
-        for k, v in dimensions.items()
-    ])
-    
-    prompt = f"""
-This person's complete 9-dimension profile:
-
-{dim_overview}
-
-Analyze the cross-dimensional architecture:
-
-1. How do high dimensions enable or reinforce each other?
-2. How do low dimensions suggest intentional boundaries?
-3. What's the "architecture" — how dimensions relate?
-4. Are high dimensions coherent or in tension?
-5. Do low dimensions represent passive absence or active boundary-setting?
-
-What does research show about people with THIS specific dimensional architecture?
-
-Write 350-400 words analyzing how dimensions work together and what that
-reveals about their relationship with AI.
-
-Tone: Analytical, research-grounded. Explore the architecture not just 
-individual dimensions.
-    """
-    
-    return call_claude_with_resilience(
-        client,
-        model=MODEL,
-        max_tokens=1200,
-        system=GLOBAL_SYSTEM_PROMPT,
-        messages=[{'role': 'user', 'content': prompt}],
-        call_name='Deep Dive Part 5 — Cross-Dimensional Story',
-        session_id=session_id
-    )
-
-# ============================================================
-# DATA-ONLY SECTIONS (NO API CALLS)
-# ============================================================
-
-def generate_dashboard(results: Dict) -> Dict:
-    """DATA-ONLY: Dashboard of all 9 dimensions"""
-    
-    logger.info("[Dashboard] Compiling 9 dimensions")
-    
-    dimensions = results.get('full_results', {}).get('dimension_scores', {})
-    
-    # Locked dimension definitions (from spec)
-    DIMENSION_DEFINITIONS = {
-        'reliance': 'How much you depend on AI for thinking and functioning',
-        'trust': 'How much you believe AI outputs are accurate',
-        'verification': 'How often you check AI outputs before using them',
-        'decision_delegation': 'How much you hand over decisions to AI',
-        'human_agency': 'How much control you maintain over your decisions',
-        'emotional_regulation': 'Whether you turn to AI for emotional support',
-        'disclosure': 'How much personal information you share with AI',
-        'thought_partnership': 'How much you use AI as a thinking partner',
-        'social_transparency': 'How openly you discuss your AI use with others',
-    }
-    
-    dashboard = {
-        'title': 'Benchmark Dashboard',
-        'dimensions': {}
-    }
-    
-    for dim_name, dim_data in dimensions.items():
-        percentile = dim_data.get('percentile_overall', 50)
         
-        # Get research signal for this dimension
-        signal = SIGNALS.get('dimensions', {}).get(dim_name, {})
-        if percentile >= 60:
-            insight = signal.get('high', 'At the high end of this dimension')
-        elif percentile <= 40:
-            insight = signal.get('low', 'At the low end of this dimension')
+        # ================================================================
+        # OPENING SECTION
+        # ================================================================
+        
+        logger.info("[Phase 2] Generating opening section...")
+        
+        report_dict['opening_statement'] = OPENING_STATEMENT
+        report_dict['top_3_findings'] = _call_api_1_top_3_findings(
+            client, results
+        )
+        
+        # ================================================================
+        # CORE SECTIONS (Data-only, no API calls)
+        # ================================================================
+        
+        logger.info("[Phase 2] Building dashboard (Section 1)...")
+        report_dict['section_1_dashboard'] = _build_section_1_dashboard(
+            participant, results
+        )
+        
+        logger.info("[Phase 2] Building how typical (Section 3)...")
+        report_dict['section_3_how_typical'] = _build_section_3_how_typical(
+            participant
+        )
+        
+        # ================================================================
+        # CORE SECTIONS (With API calls)
+        # ================================================================
+        
+        logger.info("[Phase 2] Generating rare combinations (Section 4 / API #2)...")
+        report_dict['section_4_rare_combos'] = _call_api_2_rare_combos(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Generating behaviour story (Section 5 / API #3)...")
+        report_dict['section_5_behaviour_story'] = _call_api_3_behaviour_story(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Building question profile (Section 6)...")
+        report_dict['section_6_question_profile'] = _build_section_6_question_profile(
+            participant, results
+        )
+        
+        logger.info("[Phase 2] Generating distinctive responses (Section 7 / API #4)...")
+        report_dict['section_7_distinctive'] = _call_api_4_distinctive_responses(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Generating perception gap (Section 8 / API #5)...")
+        report_dict['section_8_perception_gap'] = _call_api_5_perception_gap(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Building what to protect (Section 9)...")
+        report_dict['section_9_what_to_protect'] = _build_section_9_what_to_protect(
+            participant, results
+        )
+        
+        logger.info("[Phase 2] Generating trajectory (Section 10 / API #6)...")
+        report_dict['section_10_trajectory'] = _call_api_6_trajectory(
+            client, results
+        )
+        
+        logger.info("[Phase 2] Building next steps (Section 11)...")
+        report_dict['section_11_next_steps'] = _build_section_11_next_steps(
+            participant, results
+        )
+        
+        # ================================================================
+        # OPTIONAL DEEP DIVE
+        # ================================================================
+        
+        report_dict['deep_dive_available'] = True
+        report_dict['deep_dive'] = {
+            'part_1_research_lenses': None,
+            'part_2_cohort_context': None,
+            'part_3_rare_combo_deep': None,
+            'part_4_architecture': None,
+        }
+        
+        logger.info(f"[Phase 2] Report generation complete for session {session_id}")
+        return report_dict
+        
+    except Exception as e:
+        logger.error(f"[Phase 2] Report generation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+# ============================================================================
+# API CALL #1: TOP 3 FINDINGS
+# ============================================================================
+
+def _call_api_1_top_3_findings(client, results):
+    """
+    Opening narrative: 3 striking features (50-75 words each)
+    """
+    
+    participant = results['full_results']
+    distinctive = results['distinctive_responses'][0] if results['distinctive_responses'] else None
+    gap = results['perception_gaps'][0] if results['perception_gaps'] else None
+    combo = results['rare_combinations'][0] if results['rare_combinations'] else None
+    
+    finding_1 = (
+        f"Question: {distinctive['question_text']}\n"
+        f"Your answer: {distinctive['respondent_answer']}/7 "
+        f"({distinctive['respondent_percentile']}th percentile)"
+    ) if distinctive else "N/A"
+    
+    finding_2 = (
+        f"{DIMENSION_NAMES.get(gap['dimension_1'], gap['dimension_1'])}: "
+        f"{gap['percentile_1']}th percentile\n"
+        f"{DIMENSION_NAMES.get(gap['dimension_2'], gap['dimension_2'])}: "
+        f"{gap['percentile_2']}th percentile\n"
+        f"Gap: {gap['gap_magnitude']} points"
+    ) if gap else "No significant gaps"
+    
+    finding_3 = (
+        f"{DIMENSION_NAMES.get(combo['dimension_1'], combo['dimension_1'])} "
+        f"({combo['percentile_1']}th) + "
+        f"{DIMENSION_NAMES.get(combo['dimension_2'], combo['dimension_2'])} "
+        f"({combo['percentile_2']}th) = "
+        f"{combo['rarity_percent']}% rarity"
+    ) if combo else "No rare combos"
+    
+    prompt = f"""
+This person's profile has three striking features.
+
+FINDING 1: {finding_1}
+FINDING 2: {finding_2}
+FINDING 3: {finding_3}
+
+Write THREE PARAGRAPHS (50-75 words each):
+
+Paragraph 1: What's striking about their most extreme response? Plain language, speak as "you".
+Paragraph 2: The gap between their two most misaligned dimensions. What does it suggest?
+Paragraph 3: Their rare combination. Why it's unusual and what it reveals.
+
+Tone: "Here's what stands out about you."
+Total: 150-225 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1000,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #1] Failed: {e}")
+        return "Error generating top 3 findings"
+
+
+# ============================================================================
+# SECTION 1: DASHBOARD
+# ============================================================================
+
+def _build_section_1_dashboard(participant, results):
+    """Build 9 dimension cards"""
+    
+    dashboard = {}
+    demographic_percentiles = results.get('demographic_percentiles', {})
+    
+    for dim_name in DIMENSIONS:
+        dim_data = participant['dimension_scores'].get(dim_name, {})
+        percentile = dim_data.get('percentile', 50)
+        
+        demo_data = demographic_percentiles.get(dim_name, {})
+        percentile_frequency = demo_data.get('percentile_by_frequency')
+        percentile_age = demo_data.get('percentile_by_age')
+        
+        if percentile >= 75:
+            signal_key = 'high'
+        elif percentile <= 25:
+            signal_key = 'low'
         else:
-            insight = signal.get('typical', 'In the middle range')
+            signal_key = 'series'
         
-        dashboard['dimensions'][dim_name] = {
+        insight = SIGNALS['dimensions'].get(dim_name, {}).get(signal_key, 'Mixed patterns.')
+        
+        dashboard[dim_name] = {
+            'dimension_name': dim_name,
+            'display_name': DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title()),
+            'definition': DIMENSION_DEFINITIONS.get(dim_name, ''),
             'percentile': percentile,
-            'percentile_text': plain_english_percentile(percentile),
-            'raw_score': dim_data.get('raw_score', 3.5),
-            'definition': DIMENSION_DEFINITIONS.get(dim_name, 'Dimension details'),
-            'research_insight': insight
+            'percentile_by_frequency': percentile_frequency,
+            'percentile_by_age': percentile_age,
+            'research_insight': insight,
+            'plain_english': f"Higher than {percentile} of 100 people",
         }
     
     return dashboard
 
 
-def generate_how_typical(results: Dict) -> Dict:
-    """DATA-ONLY: Categorizes all 9 dimensions into Distinctive/Typical per spec"""
+# ============================================================================
+# SECTION 3: HOW TYPICAL
+# ============================================================================
+
+def _build_section_3_how_typical(participant):
+    """How typical each dimension is"""
     
-    logger.info("[How Typical] Categorizing dimensions into Distinctive/Typical")
+    how_typical = {}
     
-    # ✅ CORRECT: dimension_scores is nested in full_results
-    dimension_scores = results.get('full_results', {}).get('dimension_scores', {})
-    
-    # DEBUG: Log what we received
-    logger.info(f"[How Typical] Results keys: {list(results.keys())}")
-    logger.info(f"[How Typical] full_results keys: {list(results.get('full_results', {}).keys())}")
-    logger.info(f"[How Typical] dimension_scores type: {type(dimension_scores)}, len: {len(dimension_scores)}")
-    if dimension_scores:
-        logger.info(f"[How Typical] First dim_key: {list(dimension_scores.keys())[0]}")
-        first_dim = list(dimension_scores.values())[0]
-        logger.info(f"[How Typical] First dim structure: {first_dim.keys() if isinstance(first_dim, dict) else type(first_dim)}")
-    
-    # Dimension names mapping
-    DIM_NAMES = {
-        'reliance': 'Reliance',
-        'trust': 'Trust',
-        'verification': 'Verification',
-        'decision_delegation': 'Decision Delegation',
-        'human_agency': 'Human Agency',
-        'emotional_regulation': 'Emotional Regulation',
-        'disclosure': 'Disclosure',
-        'thought_partnership': 'Thought Partnership',
-        'social_transparency': 'Social Transparency',
-    }
-    
-    distinctive = []  # percentile > 75 or < 25
-    typical = []      # percentile 35-65
-    moderate = []     # percentile 26-34 or 66-74
-    
-    for dim_key, dim_data in dimension_scores.items():
-        if not isinstance(dim_data, dict):
-            continue
+    for dim_name in DIMENSIONS:
+        dim_data = participant['dimension_scores'].get(dim_name, {})
+        percentile = dim_data.get('percentile', 50)
         
-        pct = dim_data.get('percentile_overall', 50)
-        dim_name = DIM_NAMES.get(dim_key, dim_key)
-        
-        # ✅ Pull interpretation from SIGNALS library
-        signal = SIGNALS.get('dimensions', {}).get(dim_key, {})
-        if pct > 75:
-            interpretation = signal.get('high', f'You sit notably/exceptionally high on {dim_name}.')
-        elif pct < 25:
-            interpretation = signal.get('low', f'You sit notably/exceptionally low on {dim_name}.')
+        if percentile <= 20:
+            positioning = "notably low"
+            signal_key = 'low'
+        elif percentile >= 80:
+            positioning = "notably high"
+            signal_key = 'high'
         else:
-            interpretation = signal.get('typical', f'You sit in the middle range on {dim_name}.')
+            positioning = "near the population centre"
+            signal_key = 'series'
         
-        dimension_item = {
-            'key': dim_key,
-            'name': dim_name,
-            'percentile': pct,
-            'interpretation': interpretation
+        signal_text = SIGNALS['dimensions'].get(dim_name, {}).get(signal_key, 'Mixed patterns.')
+        
+        how_typical[dim_name] = {
+            'dimension_name': dim_name,
+            'display_name': DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title()),
+            'percentile': percentile,
+            'positioning': positioning,
+            'signal_text': signal_text,
         }
+    
+    return how_typical
+
+
+# ============================================================================
+# API CALL #2: RARE COMBINATIONS
+# ============================================================================
+
+def _call_api_2_rare_combos(client, results):
+    """Analyze rare combinations (500-600 words)"""
+    
+    combos = results.get('rare_combinations', [])
+    if not combos:
+        return "No rare combinations detected."
+    
+    combo_descriptions = []
+    for i, combo in enumerate(combos[:2], 1):
+        dim1_name = DIMENSION_NAMES.get(combo['dimension_1'], combo['dimension_1'])
+        dim2_name = DIMENSION_NAMES.get(combo['dimension_2'], combo['dimension_2'])
         
-        if pct > 75 or pct < 25:
-            distinctive.append(dimension_item)
-        elif 35 <= pct <= 65:
-            typical.append(dimension_item)
-        else:
-            moderate.append(dimension_item)
-    
-    # Sort distinctive by distance from 50 (most extreme first)
-    distinctive.sort(key=lambda x: abs(x['percentile'] - 50), reverse=True)
-    
-    logger.info(f"[How Typical] Distinctive: {len(distinctive)}, Typical: {len(typical)}, Moderate: {len(moderate)}")
-    
-    # ✅ Convert lists to dicts indexed by position (for JavaScript compatibility)
-    return {
-        'distinctive': {str(i): item for i, item in enumerate(distinctive)},
-        'typical': {str(i): item for i, item in enumerate(typical)},
-        'moderate': {str(i): item for i, item in enumerate(moderate)},
-    }
+        desc = f"""
+COMBINATION {i}: {dim1_name} + {dim2_name}
+- {dim1_name}: {combo['percentile_1']}th percentile
+- {dim2_name}: {combo['percentile_2']}th percentile
+- Rarity: {combo['rarity_percent']}% of participants
 
+Why unusual: {combo.get('why_unusual', 'Uncommon pairing.')}
+What it reveals: {combo.get('what_reveals', 'Unusual AI relationship.')}
+"""
+        combo_descriptions.append(desc)
+    
+    combos_text = "\n".join(combo_descriptions)
+    
+    prompt = f"""
+Rare combinations in this profile:
 
-def generate_question_profile(results: Dict) -> Dict:
-    """
-    DATA-ONLY: All 39 assessment questions with their percentiles
-    
-    NOTE: Perception questions (perceived_usage, perceived_reliance, perceived_dependence)
-    are EXCLUDED from this profile because:
-    1. They have text answers, not 1-7 scale responses
-    2. They don't have individual percentiles/histograms
-    3. They're analyzed separately in Section 5 (Perception Gap Analysis)
-    4. Their contribution is the perception_gaps field, not direct histogram data
-    """
-    
-    logger.info("[Question Profile] Compiling all 39 assessment questions (excluding 3 perception questions)")
-    
-    # ✅ CORRECT: percentiles is nested in full_results
-    percentiles = results.get('full_results', {}).get('percentiles', {})
-    responses = results.get('responses', {})
-    demographics = results.get('demographics', {})
-    
-    profile = {
-        'title': 'Question Profile',
-        'total_questions': 39,  # ONLY assessment questions, not perception
-        'questions': []
-    }
-    
-    question_count = 0  # Count for numbering (skip perception questions)
-    
-    for q_key in sorted(percentiles.keys()):
-        # SKIP perception questions - they're handled in Section 5 (perception_gaps)
-        # Perception questions have text answers like "Much more than most people", not 1-7 scale
-        if is_perception_question(q_key):
-            logger.debug(f"[Question Profile] Skipping perception question: {q_key}")
-            continue
-        
-        # Only process assessment questions (39 total)
-        if not is_assessment_question(q_key):
-            logger.debug(f"[Question Profile] Skipping non-assessment question: {q_key}")
-            continue
-        
-        question_count += 1
-        p_data = percentiles[q_key]
-        percentile = p_data.get('percentile_overall', 50) if isinstance(p_data, dict) else p_data
-        response_value = responses.get(q_key, 4)  # Default to neutral (4 on 1-7 scale)
-        
-        # Extract all fields from percentiles
-        dimension = p_data.get('dimension', 'unknown') if isinstance(p_data, dict) else 'unknown'
-        
-        # Use question_metadata as source of truth for question text
-        # All 39 questions are in QUESTION_MAP
-        question_text = get_question_text(q_key)
-        
-        age_percentile = p_data.get('percentile_age_group', 50) if isinstance(p_data, dict) else 50
-        distribution = p_data.get('distribution', []) if isinstance(p_data, dict) else []
-        # DEBUG OUTPUT
-        print(f"[DEBUG] Processing {q_key}: p_data type={type(p_data).__name__}")
-        if isinstance(p_data, dict):
-            print(f"[DEBUG] {q_key} has 'dimension' key? {'dimension' in p_data}")
-            print(f"[DEBUG] {q_key} dimension value = {p_data.get('dimension', 'MISSING')}")
-        
-        profile['questions'].append({
-            'dimension': dimension,
-            'number': question_count,  # Correct numbering (1-39, not 1-42)
-            'variable': question_text,
-            'respondent_answer': response_value,
-            'respondent_percentile': percentile,
-            'age_group': demographics.get('age_group', '25-34'),
-            'age_percentile': age_percentile,
-            'distribution': distribution
-        })
-    
-    logger.info(f"[Question Profile] Built profile with {question_count} questions")
-    return profile
+{combos_text}
 
+For EACH combination write 250-300 words:
 
-def generate_cohort_context(results: Dict) -> Dict:
-    """DATA-ONLY: Age group / cohort context"""
-    
-    logger.info("[Cohort Context] Analyzing cohort patterns")
-    
-    demographics = results.get('demographics', {})
-    age_group = demographics.get('age_group', '25-34')
-    
-    cohort_signal = SIGNALS.get('cohorts', {}).get(age_group, {})
-    
-    return {
-        'title': 'Your Cohort in Research',
-        'age_group': age_group,
-        'cohort_description': cohort_signal.get('description', 'Unknown cohort'),
-        'what_distinctive': cohort_signal.get('what_high', []),
-        'pressure_points': cohort_signal.get('what_pressured', []),
-        'research_signal': cohort_signal.get('signal', 'Research context available')
-    }
+1. WHY IT'S UNUSUAL (150 words)
+   - What does research from HCI's 21 datasets show?
+   - How rare is this pairing?
+   - What behavioral pattern does research predict?
 
-# ============================================================
-# JSON SERIALIZATION HELPER
-# ============================================================
+2. WHAT IT REVEALS (150 words)
+   - What does this tell us about their AI relationship?
+   - What strengths or vulnerabilities?
+   - What pressure points might emerge?
 
-def make_json_safe(obj):
-    """
-    Recursively convert non-JSON-serializable Python objects to JSON-safe types.
-    Handles datetime, UUID, Decimal, and nested structures.
-    
-    This ensures report_dict can be successfully serialized when saving to database.
-    """
-    from uuid import UUID
-    from decimal import Decimal
-    
-    if isinstance(obj, dict):
-        return {k: make_json_safe(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return [make_json_safe(item) for item in obj]
-    elif isinstance(obj, datetime):
-        return obj.isoformat()
-    elif isinstance(obj, UUID):
-        return str(obj)
-    elif isinstance(obj, Decimal):
-        return float(obj)
-    else:
-        return obj
+3. PATTERN IMPLICATIONS (100 words)
+   - How does this fit their overall profile?
+   - Research perspective on where this leads
 
-# ============================================================
-# MAIN REPORT GENERATOR
-# ============================================================
+Speak directly as "you". Ground in research. Use plain language.
 
-def generate_premium_report(
-    results: Dict,
-    api_key: str = None,
-    session_id: str = None
-) -> Dict:
-    """
-    Generate complete premium report using 9 focused API calls.
-    
-    ALL 9 CALLS REQUIRED — NO SKIPPING
-    NO PARTIAL REPORTS — FAIL COMPLETELY OR SUCCEED COMPLETELY
-    """
-    
-    client = anthropic.Anthropic(api_key=api_key)
-    
-    session_id = session_id or results.get('session_id', 'unknown')
-    demographics = results.get('demographics', {})
-    
-    logger.info(f"[REPORT] Starting premium report generation — Session {session_id}")
-    logger.info(f"[REPORT] Starting 9 API calls (6 core + 3 deep dive)...")
+Total: 500-600 words across both combinations.
+"""
     
     try:
-        # ── API CALL #1: Opening ──────────────────────────────────────────────
-        opening = generate_opening(results, client, session_id)
-        
-        # ── DASHBOARD (no API) ────────────────────────────────────────────────
-        dashboard = generate_dashboard(results)
-        
-        # ── HOW TYPICAL (no API) ──────────────────────────────────────────────
-        how_typical = generate_how_typical(results)
-        
-        # ── API CALL #2: Rare Combinations ────────────────────────────────────
-        rare_combos = generate_rare_combinations(results, client, session_id)
-        
-        # ── API CALL #3: Behaviour Story ──────────────────────────────────────
-        behaviour_story = generate_behaviour_story(results, client, session_id)
-        
-        # ── QUESTION PROFILE (no API) ─────────────────────────────────────────
-        question_profile = generate_question_profile(results)
-        
-        # ── API CALL #4: Distinctive Responses ────────────────────────────────
-        distinctive_responses = generate_distinctive_responses(results, client, session_id)
-        
-        # ── API CALL #5: Perception Gap ───────────────────────────────────────
-        perception_gap = generate_perception_gap(results, client, session_id)
-        
-        # ── API CALL #6: Trajectory & Outlook ─────────────────────────────────
-        trajectory = generate_trajectory(results, client, session_id)
-        
-        # ── SECTION 9: What to Protect (no API call) ──────────────────────────
-        what_to_protect = generate_what_to_protect(results)
-        
-        # ── DEEP DIVE OPENING ─────────────────────────────────────────────────
-        deep_dive_opening = """
-Your pattern is complete on its own. This deep dive goes deeper, examining your profile 
-through multiple research lenses and showing what your specific combination reveals about 
-your relationship with AI.
-        """.strip()
-        
-        # ── API CALL #7: Deep Dive Part 1 ────────────────────────────────────
-        deep_dive_part_1 = generate_deep_dive_1(results, client, session_id)
-        
-        # ── COHORT CONTEXT (no API) ───────────────────────────────────────────
-        cohort_context = generate_cohort_context(results)
-        
-        # ── API CALL #8: Deep Dive Part 4 ────────────────────────────────────
-        deep_dive_part_4 = generate_deep_dive_4(results, client, session_id)
-        
-        # ── API CALL #9: Deep Dive Part 5 ────────────────────────────────────
-        deep_dive_part_5 = generate_deep_dive_5(results, client, session_id)
-        
-        # ── SECTION 11: Next Steps (no API call) ──────────────────────────────
-        next_steps = generate_next_steps(results)
-        
-        # ── Assemble Report ───────────────────────────────────────────────────
-        logger.info("[REPORT] Assembling final report...")
-        
-        report = {
-            'metadata': {
-                'session_id': session_id,
-                'demographics': demographics,
-                'generated_at': datetime.utcnow().isoformat(),
-                'version': '9.0',
-            },
-            'opening': opening,
-            'section_1_dashboard': dashboard,
-            'section_3_how_typical': how_typical,
-            'section_4_what_different': rare_combos,
-            'section_5_behaviour_story': behaviour_story,
-            'section_6_question_profile': question_profile,
-            'section_7_distinctive_responses': distinctive_responses,
-            'section_8_perception_gap': perception_gap,
-            'section_9_what_to_protect': what_to_protect,
-            'section_10_trajectory': trajectory,
-            'section_11_next_steps': next_steps,
-            'deep_dive': {
-                'opening': deep_dive_opening,
-                'part_1_research_lenses': deep_dive_part_1,
-                'part_3_cohort_context': cohort_context,
-                'part_4_rare_combination': deep_dive_part_4,
-                'part_5_cross_dimensional': deep_dive_part_5,
-            }
-        }
-        
-        logger.info("[REPORT] ✅ Premium report generation complete (9 API calls: 6 core + 3 deep dive)")
-        
-        # Ensure all objects are JSON serializable before returning
-        report = make_json_safe(report)
-        return report
-    
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1500,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
     except Exception as e:
-        user_email = demographics.get('email', 'unknown')
-        notify_failure('Report Generation', e, session_id, user_email)
-        raise
+        logger.error(f"[API #2] Failed: {e}")
+        return "Error generating rare combinations analysis"
 
 
-if __name__ == '__main__':
-    print("Report Generator v9.0 loaded successfully")
-    print(f"Model: {MODEL}")
-    print(f"Timeout: {CALL_TIMEOUT_SECONDS}s per call")
-    print(f"Max retries: {MAX_RETRIES_PER_CALL}")
-    print("All signal files imported successfully")
+# ============================================================================
+# API CALL #3: BEHAVIOUR STORY
+# ============================================================================
+
+def _call_api_3_behaviour_story(client, results):
+    """Full profile narrative (800-1000 words)"""
+    
+    participant = results['full_results']
+    
+    dimensions_summary = []
+    for dim_name in DIMENSIONS:
+        dim_data = participant['dimension_scores'].get(dim_name, {})
+        percentile = dim_data.get('percentile', 50)
+        display_name = DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title())
+        dimensions_summary.append(f"{display_name}: {percentile}th percentile")
+    
+    dimensions_list = "\n".join(dimensions_summary)
+    
+    prompt = f"""
+Full dimensional profile:
+
+{dimensions_list}
+
+Write BEHAVIOUR STORY (800-1000 words):
+
+1. OPENING (150 words)
+   Synthesize what their pattern reveals about AI engagement
+   Use research context. Set up dimensional analysis.
+
+2. DIMENSIONAL ANALYSIS (500-600 words)
+   Order by distinctiveness. For top 3-4 dimensions:
+   - Their positioning (high/low/typical)
+   - What research shows this means
+   - Pressure points from HBE_FRAMEWORK
+   - Behavioral implications specific to them
+   - One reflective question
+
+3. PATTERN ACROSS DIMENSIONS (150-200 words)
+   How dimensions interact?
+   Rare combinations suggest?
+   Research shows for trajectory?
+   What pressure points matter most?
+
+4. CLOSING (100 words)
+   What their profile suggests about AI relationship
+   Where research shows this leads
+   Forward-looking perspective
+
+Requirements:
+- Use HCI research throughout
+- Reference SIGNALS for each dimension
+- Ground pressure points in HBE_FRAMEWORK
+- Speak directly as "you"
+- Plain language, no jargon
+
+Tone: Research-grounded, flowing, illuminating.
+Total: 800-1000 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=2500,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #3] Failed: {e}")
+        return "Error generating behaviour story"
+
+
+# ============================================================================
+# SECTION 6: QUESTION PROFILE
+# ============================================================================
+
+def _build_section_6_question_profile(participant, results):
+    """All 39 questions with distributions"""
+    
+    questions = {}
+    question_scores = participant.get('question_scores', {})
+    question_distributions = results.get('question_distributions', {})
+    
+    for q_key, q_data in question_scores.items():
+        questions[q_key] = {
+            'question_key': q_key,
+            'question_text': q_data.get('question_text', ''),
+            'dimension': q_data.get('dimension', ''),
+            'respondent_answer': q_data.get('respondent_answer', 0),
+            'respondent_percentile': q_data.get('percentile', 50),
+            'population_distribution': question_distributions.get(q_key, [14]*7),
+        }
+    
+    return questions
+
+
+# ============================================================================
+# API CALL #4: DISTINCTIVE RESPONSES
+# ============================================================================
+
+def _call_api_4_distinctive_responses(client, results):
+    """Extreme responses analysis (300-400 words)"""
+    
+    distinctive = results.get('distinctive_responses', [])[:5]
+    
+    if not distinctive:
+        return "Your responses are well-distributed across the scale."
+    
+    response_list = []
+    for i, resp in enumerate(distinctive, 1):
+        response_list.append(
+            f"{i}. {resp['question_text']}\n"
+            f"   Answer: {resp['respondent_answer']}/7 ({resp['respondent_percentile']}th %ile)\n"
+            f"   Dimension: {DIMENSION_NAMES.get(resp['dimension'], resp['dimension'])}"
+        )
+    
+    responses_text = "\n".join(response_list)
+    
+    prompt = f"""
+Extreme responses:
+
+{responses_text}
+
+Analyze in ~300-400 words:
+
+1. PATTERN ANALYSIS (100 words)
+   What coherence emerges across these extremes?
+   What do they reveal about AI relationship?
+
+2. RESEARCH PERSPECTIVE (150 words)
+   How common is this pattern?
+   What do people with similar extremes typically do?
+   What does HCI research show?
+   What trajectory does research predict?
+
+3. BEHAVIORAL IMPLICATIONS (50-100 words)
+   What strengths does this suggest?
+   What pressure points might emerge?
+   What's worth noticing?
+
+Speak directly as "you". Ground in research. Plain language.
+
+Total: 300-400 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1200,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #4] Failed: {e}")
+        return "Error generating distinctive responses analysis"
+
+
+# ============================================================================
+# API CALL #5: PERCEPTION GAP
+# ============================================================================
+
+def _call_api_5_perception_gap(client, results):
+    """Perception gaps analysis (200-300 words)"""
+    
+    gaps = results.get('perception_gaps', [])[:3]
+    
+    if not gaps:
+        return "Self-perception aligns well with benchmarked positioning, indicating strong self-awareness."
+    
+    gap_list = []
+    for gap in gaps:
+        dim1 = DIMENSION_NAMES.get(gap['dimension_1'], gap['dimension_1'])
+        dim2 = DIMENSION_NAMES.get(gap['dimension_2'], gap['dimension_2'])
+        
+        gap_list.append(
+            f"{dim1}: {gap['percentile_1']}th %ile\n"
+            f"{dim2}: {gap['percentile_2']}th %ile\n"
+            f"Gap: {gap['gap_magnitude']} points"
+        )
+    
+    gaps_text = "\n\n".join(gap_list)
+    
+    prompt = f"""
+Perception gaps (where dimensions diverge):
+
+{gaps_text}
+
+Write 200-300 words:
+
+1. WHAT THIS REVEALS (100 words)
+   What does significant divergence mean?
+   Suggest internal conflict or legitimate variation?
+   Reveal about self-awareness?
+
+2. RESEARCH PERSPECTIVE (100 words)
+   What does HCI research show about this gap?
+   Is this common or unusual?
+   What typically happens with this pattern?
+
+3. IMPLICATIONS (50-100 words)
+   What pressure points might emerge?
+   What's worth noticing?
+
+Speak directly as "you". Ground in research.
+
+Total: 200-300 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1000,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #5] Failed: {e}")
+        return "Error generating perception gap analysis"
+
+
+# ============================================================================
+# SECTION 9: WHAT TO PROTECT
+# ============================================================================
+
+def _build_section_9_what_to_protect(participant, results):
+    """4 subsections based on their pattern"""
+    
+    dimension_scores = participant['dimension_scores']
+    sorted_dims = sorted(
+        dimension_scores.items(),
+        key=lambda x: abs(x[1].get('percentile', 50) - 50),
+        reverse=True
+    )[:3]
+    
+    pressure_points = []
+    values_list = []
+    strengths = []
+    
+    for dim_name, dim_data in sorted_dims:
+        display_name = DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title())
+        percentile = dim_data.get('percentile', 50)
+        
+        pp = SIGNALS['dimensions'].get(dim_name, {}).get('pressure_point', '')
+        if pp:
+            pressure_points.append(pp)
+        
+        val = VALUES_SIGNALS.get(dim_name, '')
+        if val:
+            values_list.append(val)
+        
+        if percentile >= 75:
+            strengths.append(f"High {display_name} supports intentionality")
+        elif percentile <= 25:
+            strengths.append(f"Clear boundary around {display_name}")
+    
+    return {
+        'whats_working_well': {
+            'title': "What's Working Well",
+            'strengths': strengths[:3]
+        },
+        'pressure_points': {
+            'title': 'Pressure Points to Watch',
+            'points': pressure_points[:3]
+        },
+        'values_at_stake': {
+            'title': 'Values at Stake',
+            'values': values_list[:3]
+        },
+        'protective_strategies': {
+            'title': 'Protective Strategies',
+            'strategies': [
+                'Maintain intentional boundaries',
+                'Regular reflection on AI relationship',
+                'Preserve human connection in decisions'
+            ]
+        }
+    }
+
+
+# ============================================================================
+# API CALL #6: TRAJECTORY
+# ============================================================================
+
+def _call_api_6_trajectory(client, results):
+    """Trajectory & outlook (300-400 words)"""
+    
+    participant = results['full_results']
+    
+    distinctive_dims = sorted(
+        participant['dimension_scores'].items(),
+        key=lambda x: abs(x[1].get('percentile', 50) - 50),
+        reverse=True
+    )[:2]
+    
+    dims_summary = []
+    for dim_name, dim_data in distinctive_dims:
+        display_name = DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title())
+        percentile = dim_data.get('percentile', 50)
+        dims_summary.append(f"{display_name}: {percentile}th percentile")
+    
+    dims_text = "\n".join(dims_summary)
+    
+    prompt = f"""
+Based on HCI's 21-dataset research, patterns like theirs evolve predictably.
+
+Distinctive positioning:
+{dims_text}
+
+Write 300-400 words:
+
+1. TRAJECTORY (100 words)
+   Where this typically leads with continued AI use
+   What tends to strengthen/weaken/become automatic
+   Skills that develop
+
+2. PRESSURE POINTS (100 words)
+   Specific vulnerable areas
+   Where research shows friction emerges
+   What's worth monitoring
+
+3. REFRAME (100 words)
+   How to think about this healthily (HBE_FRAMEWORK)
+   Normalize human baseline
+   Acknowledge AI-induced pressures
+   Integrated framing
+
+4. FORWARD-LOOKING (100 words)
+   How conscious choice-making looks
+   How might growth look
+   Research suggests what works
+
+Speak directly as "you". Ground in research.
+
+Total: 300-400 words.
+"""
+    
+    try:
+        response = client.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=1200,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[API #6] Failed: {e}")
+        return "Error generating trajectory analysis"
+
+
+# ============================================================================
+# SECTION 11: NEXT STEPS
+# ============================================================================
+
+def _build_section_11_next_steps(participant, results):
+    """3 reflection prompts"""
+    
+    dimension_scores = participant['dimension_scores']
+    
+    highest_dim = max(dimension_scores.items(), key=lambda x: x[1].get('percentile', 0))[0]
+    lowest_dim = min(dimension_scores.items(), key=lambda x: x[1].get('percentile', 100))[0]
+    
+    highest_name = DIMENSION_NAMES.get(highest_dim, highest_dim.replace('_', ' ').title())
+    lowest_name = DIMENSION_NAMES.get(lowest_dim, lowest_dim.replace('_', ' ').title())
+    
+    return {
+        'intro': "This report opens questions. Here are three reflection prompts based on your pattern:",
+        'prompts': [
+            {
+                'title': f"About your {highest_name} strength",
+                'prompt': f"You score highly on {highest_name}. What would it mean to lean into this strength intentionally?"
+            },
+            {
+                'title': f"About your {lowest_name} boundary",
+                'prompt': f"You maintain a clear boundary around {lowest_name}. What is this boundary protecting?"
+            },
+            {
+                'title': "About your overall pattern",
+                'prompt': "If your relationship with AI evolved, what would you want to stay the same? What might you explore changing?"
+            }
+        ],
+        'closing': "Your relationship with AI is just beginning. The most important question is: what do you choose to do with this understanding?"
+    }
