@@ -753,7 +753,7 @@ def premium():
                 )
                 print(f'Updated assessment report_email to: {stripe_email}')
         
-       # Step 4: Get complete assessment (all fields needed for report)
+        # Step 4: Get complete assessment (all fields needed for report)
         if not full_results:
             assessment = db.get_assessment(session_id)
             if not assessment:
@@ -797,40 +797,40 @@ def premium():
                 }), 503
             
             print(f'Generating premium report for session {session_id}')
-
-        # PHASE 1: Enrich full_results with calculated data
-        # This adds: demographic_percentiles, perception_gaps, rare_combinations,
-        # distinctive_responses, question_distributions
+            
+            # PHASE 1: Enrich full_results with calculated data
+            # This adds: demographic_percentiles, perception_gaps, rare_combinations,
+            # distinctive_responses, question_distributions
             print('Phase 1: Enriching assessment data...')
-        full_results = enrich_results_for_report(
-        full_results=full_results,
-        demographics=demographics,
-        benchmark_path=BENCHMARK_PATH
-        )
-        print('Phase 1: Data enrichment complete')
-
-        # Build complete results structure with all data report generator needs
-     results_for_report = {
-    'full_results': full_results,
-    'demographics': demographics,
-    'responses': responses,
-    'percentiles': percentiles,
-    'session_id': session_id,
-    'demographic_percentiles': full_results.get('demographic_percentiles', {}),
-    'perception_gaps': full_results.get('perception_gaps', []),
-    'rare_combinations': full_results.get('rare_combinations', []),
-    'distinctive_responses': full_results.get('distinctive_responses', []),
-    'question_distributions': full_results.get('question_distributions', {})
-}
-
-# Generate report dict (9 API calls + data sections)
-# PHASE 2 & 3 will be implemented in report_generator.py and hci_report_page_builder.py
-print('Phase 2-3: Generating report...')
-report_dict = generate_premium_report(
-    results=results_for_report,
-    api_key=api_key,
-    session_id=session_id
-)
+            full_results = enrich_results_for_report(
+                full_results=full_results,
+                demographics=demographics,
+                benchmark_path=BENCHMARK_PATH
+            )
+            print('Phase 1: Data enrichment complete')
+            
+            # Build complete results structure with all data report generator needs
+            results_for_report = {
+                'full_results': full_results,
+                'demographics': demographics,
+                'responses': responses,
+                'percentiles': percentiles,
+                'session_id': session_id,
+                'demographic_percentiles': full_results.get('demographic_percentiles', {}),
+                'perception_gaps': full_results.get('perception_gaps', []),
+                'rare_combinations': full_results.get('rare_combinations', []),
+                'distinctive_responses': full_results.get('distinctive_responses', []),
+                'question_distributions': full_results.get('question_distributions', {})
+            }
+            
+            # Generate report dict (9 API calls + data sections)
+            # PHASE 2 & 3 will be implemented in report_generator.py and hci_report_page_builder.py
+            print('Phase 2-3: Generating report...')
+            report_dict = generate_premium_report(
+                results=results_for_report,
+                api_key=api_key,
+                session_id=session_id
+            )
             
             if not report_dict:
                 print(f'Report generator returned empty dict for session {session_id}')
