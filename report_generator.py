@@ -877,10 +877,11 @@ def generate_question_profile(results: Dict) -> Dict:
         
         age_percentile = p_data.get('percentile_age_group', 50) if isinstance(p_data, dict) else 50
         distribution = p_data.get('distribution', []) if isinstance(p_data, dict) else []
+        # DEBUG OUTPUT
         print(f"[DEBUG] Processing {q_key}: p_data type={type(p_data).__name__}")
         if isinstance(p_data, dict):
-        print(f"[DEBUG] {q_key} has 'dimension' key? {'dimension' in p_data}")
-        print(f"[DEBUG] {q_key} dimension value = {p_data.get('dimension', 'MISSING')}")
+            print(f"[DEBUG] {q_key} has 'dimension' key? {'dimension' in p_data}")
+            print(f"[DEBUG] {q_key} dimension value = {p_data.get('dimension', 'MISSING')}")
         
         profile['questions'].append({
             'dimension': dimension,
