@@ -171,7 +171,13 @@ def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
 
 
 def build_dimension_cards(dimensions: Dict[str, Any]) -> str:
-    """Build HTML for dimension cards (Section 1: Dashboard)."""
+    """Build HTML for dimension cards (Section 1: Dashboard).
+    
+    Reads new fields from report_generator.py:
+    - 'definition': Plain English description of dimension
+    - 'percentile_by_frequency': Percentile for daily users
+    - 'percentile_by_age_group': Percentile for age cohort
+    """
     if not dimensions:
         return ""
     
@@ -183,6 +189,9 @@ def build_dimension_cards(dimensions: Dict[str, Any]) -> str:
         
         percentile = dim_data.get('percentile', 50)
         raw_score = dim_data.get('raw_score', 3.5)
+        definition = dim_data.get('definition', '')  # NEW
+        percentile_frequency = dim_data.get('percentile_by_frequency', None)  # NEW
+        percentile_age_group = dim_data.get('percentile_by_age_group', None)  # NEW
         plain = plain_english_percentile(percentile)
         pos = positional_label(percentile)
         
@@ -191,7 +200,7 @@ def build_dimension_cards(dimensions: Dict[str, Any]) -> str:
             <div class="dimension-label">{escape_html(dim_name.upper())}</div>
             <div class="dimension-name">{escape_html(dim_name.title())}</div>
             <div style="margin-bottom: 8pt; font-size: 10.5px; line-height: 1.3; color: #666;">
-                {escape_html(dim_data.get('research_insight', ''))}
+                {escape_html(definition)}
             </div>
             <div style="margin-bottom: 8pt;">
                 <span class="score-number">{percentile}</span>
@@ -205,13 +214,94 @@ def build_dimension_cards(dimensions: Dict[str, Any]) -> str:
                     <span style="color: #666;">Your position</span>
                     <span style="font-weight: 500; color: #0066cc;">{escape_html(pos)}</span>
                 </div>
-                <div style="display: flex; justify-content: space-between;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 3pt;">
                     <span style="color: #666;">Plain English</span>
                     <span style="font-weight: 500; color: #0066cc; font-size: 9px;">{escape_html(plain)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 3pt;">
+                    <span style="color: #666;">Daily AI users</span>
+                    <span style="font-weight: 500; color: #0066cc; font-size: 9px;">{percentile_frequency if percentile_frequency else "—"}th %ile</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #666;">Your age group</span>
+                    <span style="font-weight: 500; color: #0066cc; font-size: 9px;">{percentile_age_group if percentile_age_group else "—"}th %ile</span>
                 </div>
             </div>
         </div>
 '''
+    
+    html += '</div>\n'
+    return html
+
+
+def format_what_to_protect(section_9_data: Dict[str, Any]) -> str:
+    """Format Section 9: What to Protect into HTML."""
+    if not section_9_data:
+        return ""
+    
+    html = '<div class="section-content">\n'
+    
+    # Subsections with pre-written content
+    subsections = section_9_data.get('subsections', {})
+    
+    for subsection_key, subsection_data in subsections.items():
+        if isinstance(subsection_data, dict):
+            title = subsection_data.get('title', '')
+            content = subsection_data.get('content', '')
+            
+            if title or content:
+                html += f'<div class="subsection">\n'
+                if title:
+                    html += f'<h4>{escape_html(title)}</h4>\n'
+                if content:
+                    html += format_prose(content)
+                html += '</div>\n'
+    
+    html += '</div>\n'
+    return html
+
+
+def format_next_steps(section_11_data: Dict[str, Any]) -> str:
+    """Format Section 11: Next Steps into HTML."""
+    if not section_11_data:
+        return ""
+    
+    html = '<div class="section-content">\n'
+    
+    # Title and tagline
+    title = section_11_data.get('title', 'Your Next Steps')
+    tagline = section_11_data.get('tagline', '')
+    
+    if tagline:
+        html += f'<p class="section-tagline">{escape_html(tagline)}</p>\n'
+    
+    # Three prompts
+    prompts = section_11_data.get('prompts', [])
+    
+    for prompt in prompts:
+        if isinstance(prompt, dict):
+            prompt_num = prompt.get('number', '')
+            prompt_title = prompt.get('title', '')
+            prompt_text = prompt.get('prompt', '')
+            
+            html += f'<div class="prompt-item">\n'
+            if prompt_title:
+                html += f'<h4>{escape_html(prompt_title)}</h4>\n'
+            if prompt_text:
+                html += f'<p>{escape_html(prompt_text)}</p>\n'
+            html += '</div>\n'
+    
+    # Closing
+    closing = section_11_data.get('closing', {})
+    if closing:
+        html += '<div class="closing-section">\n'
+        if closing.get('title'):
+            html += f'<h4>{escape_html(closing.get("title", ""))}</h4>\n'
+        if closing.get('text'):
+            html += f'<p>{escape_html(closing.get("text", ""))}</p>\n'
+        if closing.get('link'):
+            html += f'<p><a href="https://humanclarityinstitute.com">{escape_html(closing.get("link", ""))}</a></p>\n'
+        html += '</div>\n'
     
     html += '</div>\n'
     return html
@@ -336,7 +426,9 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
         print(f"[DEBUG] Page builder received NO section_6_question_profile or empty questions")
     section_7_distinctive_responses = report_dict.get('section_7_distinctive_responses', '')
     section_8_perception_gap = report_dict.get('section_8_perception_gap', '')
+    section_9_what_to_protect = report_dict.get('section_9_what_to_protect', {})  # NEW
     section_10_trajectory = report_dict.get('section_10_trajectory', '')
+    section_11_next_steps = report_dict.get('section_11_next_steps', {})  # NEW
     deep_dive = report_dict.get('deep_dive', {})
     
     # Build metadata line
@@ -600,8 +692,18 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
     </div>
 
     <div class="report-section">
+        <h2>What to Protect</h2>
+        {format_what_to_protect(section_9_what_to_protect)}
+    </div>
+
+    <div class="report-section">
         <h2>Your Trajectory & Outlook</h2>
         <div class="narrative">{format_prose(section_10_trajectory)}</div>
+    </div>
+
+    <div class="report-section">
+        <h2>Your Next Steps</h2>
+        {format_next_steps(section_11_next_steps)}
     </div>
 
     <div class="report-section">
@@ -656,6 +758,8 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
     html = html.replace('{format_prose(section_7_distinctive_responses)}', format_prose(section_7_distinctive_responses))
     html = html.replace('{format_prose(section_5_behaviour_story)}', format_prose(section_5_behaviour_story))
     html = html.replace('{format_prose(section_8_perception_gap)}', format_prose(section_8_perception_gap))
+    html = html.replace('{format_what_to_protect(section_9_what_to_protect)}', format_what_to_protect(section_9_what_to_protect))  # NEW
+    html = html.replace('{format_next_steps(section_11_next_steps)}', format_next_steps(section_11_next_steps))  # NEW
     html = html.replace('{format_prose(section_10_trajectory)}', format_prose(section_10_trajectory))
     html = html.replace('{build_dimension_cards(section_1_dashboard.get("dimensions", {}))}', build_dimension_cards(section_1_dashboard.get('dimensions', {})))
     html = html.replace('{build_question_profile(section_6_question_profile.get("questions", []))}', build_question_profile(section_6_question_profile.get('questions', [])))
