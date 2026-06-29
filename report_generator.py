@@ -295,7 +295,7 @@ def generate_opening(results: Dict, client, session_id: str) -> str:
     demographics = results.get('demographics', {})
     perception_gaps = get_perception_gaps(results)
     rare_combos = get_rare_combinations(results)
-    percentiles = results.get('percentiles', {})
+    percentiles = results.get('full_results', {}).get('percentiles', {})
     
     # Get signal context for most distinctive dimension
     top_dim_name = max(
@@ -470,7 +470,7 @@ def generate_distinctive_responses(results: Dict, client, session_id: str) -> st
     
     logger.info("[4/9] Distinctive Responses")
     
-    percentiles = results.get('percentiles', {})
+    percentiles = results.get('full_results', {}).get('percentiles', {})
     
     # Find most distinctive responses (furthest from 50th percentile)
     distinctive = []
@@ -806,7 +806,8 @@ def generate_how_typical(results: Dict) -> Dict:
     
     logger.info("[How Typical] Categorizing dimensions into Distinctive/Typical")
     
-    dimension_scores = results.get('dimension_scores', {})
+    # ✅ CORRECT: dimension_scores is nested in full_results
+    dimension_scores = results.get('full_results', {}).get('dimension_scores', {})
     
     # Dimension names mapping
     DIM_NAMES = {
@@ -893,8 +894,8 @@ def generate_question_profile(results: Dict) -> Dict:
     
     logger.info("[Question Profile] Compiling all 39 assessment questions (excluding 3 perception questions)")
     
-    percentiles = results.get('percentiles', {})
-    responses = results.get('responses', {})
+    percentiles = results.get('full_results', {}).get('percentiles', {})
+    responses = results.get('full_results', {}).get('responses', {})
     demographics = results.get('demographics', {})
     
     profile = {
