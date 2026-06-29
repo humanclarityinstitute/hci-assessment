@@ -806,6 +806,15 @@ def generate_how_typical(results: Dict) -> Dict:
     # ✅ CORRECT: dimension_scores is nested in full_results
     dimension_scores = results.get('full_results', {}).get('dimension_scores', {})
     
+    # DEBUG: Log what we received
+    logger.info(f"[How Typical] Results keys: {list(results.keys())}")
+    logger.info(f"[How Typical] full_results keys: {list(results.get('full_results', {}).keys())}")
+    logger.info(f"[How Typical] dimension_scores type: {type(dimension_scores)}, len: {len(dimension_scores)}")
+    if dimension_scores:
+        logger.info(f"[How Typical] First dim_key: {list(dimension_scores.keys())[0]}")
+        first_dim = list(dimension_scores.values())[0]
+        logger.info(f"[How Typical] First dim structure: {first_dim.keys() if isinstance(first_dim, dict) else type(first_dim)}")
+    
     # Dimension names mapping
     DIM_NAMES = {
         'reliance': 'Reliance',
