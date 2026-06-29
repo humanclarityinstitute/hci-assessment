@@ -738,7 +738,7 @@ You decide if this matters to you."""
     }
 
 
-
+def generate_deep_dive_1(results: Dict, client, session_id: str) -> str:
     """API CALL #7: Deep Dive Part 1 — Research Lenses"""
     
     logger.info("[7/9] Deep Dive Part 1 — Research Lenses")
