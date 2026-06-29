@@ -24,6 +24,19 @@ from question_metadata import (
     is_assessment_question
 )
 
+# Dimension name mapping (snake_case → Human Readable)
+DIMENSION_NAMES = {
+    'trust': 'Trust',
+    'disclosure': 'Disclosure',
+    'reliance': 'Reliance',
+    'decision_delegation': 'Decision Delegation',
+    'verification': 'Verification',
+    'human_agency': 'Human Agency',
+    'emotional_regulation': 'Emotional Regulation',
+    'thought_partnership': 'Thought Partnership',
+    'social_transparency': 'Social Transparency',
+}
+
 
 def escape_html(text: str) -> str:
     """Escape HTML special characters."""
@@ -95,78 +108,42 @@ def positional_label(p: Optional[int]) -> str:
 def format_how_typical(how_typical_data: Dict[str, Any]) -> str:
     """Format Section 3: How Typical data into HTML.
     
-    Data already includes pre-written interpretation text from signals library
-    (pulled by generate_how_typical in report_generator.py).
-    
-    Data structure (now dicts indexed by position):
-    {
-        'distinctive': {'0': {key, name, percentile, interpretation}, '1': {...}},
-        'typical': {'0': {...}, '1': {...}},
-        'moderate': {'0': {...}, '1': {...}}
-    }
+    how_typical_data IS a flat dict of dimensions from report_generator.
+    Each dimension has: dimension_name, display_name, percentile, positioning, signal_text
     """
-    if not how_typical_data:
+    if not how_typical_data or not isinstance(how_typical_data, dict):
         return ""
     
-    print(f"[DEBUG format_how_typical] Received data type: {type(how_typical_data)}")
-    print(f"[DEBUG format_how_typical] Received keys: {how_typical_data.keys() if isinstance(how_typical_data, dict) else 'NOT A DICT'}")
+    html = '<div class="how-typical-section">\n'
+    html += '<p class="intro">Understanding where your positioning falls in relation to others:</p>\n'
     
-    if 'distinctive' in how_typical_data:
-        distinctive_data = how_typical_data['distinctive']
-        print(f"[DEBUG format_how_typical] distinctive type: {type(distinctive_data)}, len: {len(distinctive_data) if hasattr(distinctive_data, '__len__') else 'N/A'}")
-        if isinstance(distinctive_data, dict) and distinctive_data:
-            first_key = list(distinctive_data.keys())[0]
-            first_val = distinctive_data[first_key]
-            print(f"[DEBUG format_how_typical] distinctive['{first_key}']: {first_val}")
-    
-    html = ""
-    
-    # PART 1: DISTINCTIVE AREAS
-    distinctive = how_typical_data.get('distinctive', {})
-    if distinctive:
-        html += '<div class="how-typical-section">\n'
-        html += '<h3 class="how-typical-heading">Where You\'re Distinctive</h3>\n'
-        html += '<div class="how-typical-items">\n'
-        
-        for dim in distinctive.values():
-            name = dim.get('name', 'Unknown')
-            pct = dim.get('percentile', 50)
-            label = positional_label(pct)
-            interpretation = dim.get('interpretation', '')
+    # Iterate dimensions directly - data IS the dimensions dict
+    for dim_name, dim_data in how_typical_data.items():
+        if not isinstance(dim_data, dict):
+            continue
             
-            html += f'''<div class="how-typical-item">
-    <div class="how-typical-label">{name} — {label} ({pct}th %ile)</div>
-    <div class="how-typical-interpretation">{escape_html(interpretation)}</div>
-</div>\n'''
+        display_name = dim_data.get('display_name', dim_name.replace('_', ' ').title())
+        percentile = dim_data.get('percentile', 50)
+        positioning = dim_data.get('positioning', 'near the population centre')
+        signal_text = dim_data.get('signal_text', '')
         
-        html += '</div>\n'
-        html += '<div class="how-typical-summary">You sit notably above or below average on these dimensions. This reflects distinctive patterning in these areas of your relationship with AI.</div>\n'
+        html += f'<div class="dimension-item">\n'
+        html += f'<h4>{escape_html(display_name)}</h4>\n'
+        html += f'<p class="positioning">{escape_html(positioning)}</p>\n'
+        
+        # Percentile bar
+        html += f'<div class="percentile-bar">\n'
+        html += f'<div class="percentile-fill" style="width: {percentile}%"></div>\n'
+        html += f'</div>\n'
+        html += f'<p class="percentile-text">{percentile}th percentile</p>\n'
+        
+        # Signal text
+        if signal_text:
+            html += f'<p class="signal">{escape_html(signal_text)}</p>\n'
+        
         html += '</div>\n'
     
-    # PART 2: TYPICAL AREAS
-    typical = how_typical_data.get('typical', {})
-    if typical:
-        html += '<div class="how-typical-section">\n'
-        html += '<h3 class="how-typical-heading">Where You\'re Typical</h3>\n'
-        html += '<div class="how-typical-items">\n'
-        
-        for dim in typical.values():
-            name = dim.get('name', 'Unknown')
-            pct = dim.get('percentile', 50)
-            label = positional_label(pct)
-            interpretation = dim.get('interpretation', '')
-            
-            html += f'''<div class="how-typical-item">
-    <div class="how-typical-label">{name} — {label} ({pct}th %ile)</div>
-    <div class="how-typical-interpretation">{escape_html(interpretation)}</div>
-</div>\n'''
-        
-        html += '</div>\n'
-        html += '<div class="how-typical-summary">You sit in the middle range on these dimensions, meaning you move through these areas without distinctive patterning.</div>\n'
-        html += '</div>\n'
-    
-    print(f"[DEBUG format_how_typical] RETURNING HTML LENGTH: {len(html)} characters")
-    print(f"[DEBUG format_how_typical] HTML snippet (first 200 chars): {html[:200]}")
+    html += '</div>\n'
     return html
 
 
@@ -195,10 +172,13 @@ def build_dimension_cards(dimensions: Dict[str, Any]) -> str:
         plain = plain_english_percentile(percentile)
         pos = positional_label(percentile)
         
+        # Get human-readable dimension name
+        dim_display_name = DIMENSION_NAMES.get(dim_name, dim_name.replace('_', ' ').title())
+        
         html += f'''
         <div class="dimension-card">
-            <div class="dimension-label">{escape_html(dim_name.upper())}</div>
-            <div class="dimension-name">{escape_html(dim_name.title())}</div>
+            <div class="dimension-label">{escape_html(dim_display_name.upper())}</div>
+            <div class="dimension-name">{escape_html(dim_display_name)}</div>
             <div style="margin-bottom: 8pt; font-size: 10.5px; line-height: 1.3; color: #666;">
                 {escape_html(definition)}
             </div>
@@ -268,19 +248,16 @@ def format_next_steps(section_11_data: Dict[str, Any]) -> str:
     
     html = '<div class="section-content">\n'
     
-    # Title and tagline
-    title = section_11_data.get('title', 'Your Next Steps')
-    tagline = section_11_data.get('tagline', '')
-    
-    if tagline:
-        html += f'<p class="section-tagline">{escape_html(tagline)}</p>\n'
+    # Intro
+    intro = section_11_data.get('intro', '')
+    if intro:
+        html += f'<p class="intro">{escape_html(intro)}</p>\n'
     
     # Three prompts
     prompts = section_11_data.get('prompts', [])
     
-    for prompt in prompts:
+    for i, prompt in enumerate(prompts, 1):
         if isinstance(prompt, dict):
-            prompt_num = prompt.get('number', '')
             prompt_title = prompt.get('title', '')
             prompt_text = prompt.get('prompt', '')
             
@@ -291,31 +268,38 @@ def format_next_steps(section_11_data: Dict[str, Any]) -> str:
                 html += f'<p>{escape_html(prompt_text)}</p>\n'
             html += '</div>\n'
     
-    # Closing
-    closing = section_11_data.get('closing', {})
-    if closing:
+    # Closing - IS A STRING, not a dict
+    closing = section_11_data.get('closing', '')
+    if closing and isinstance(closing, str):
         html += '<div class="closing-section">\n'
-        if closing.get('title'):
-            html += f'<h4>{escape_html(closing.get("title", ""))}</h4>\n'
-        if closing.get('text'):
-            html += f'<p>{escape_html(closing.get("text", ""))}</p>\n'
-        if closing.get('link'):
-            html += f'<p><a href="https://humanclarityinstitute.com">{escape_html(closing.get("link", ""))}</a></p>\n'
+        html += f'<p>{escape_html(closing)}</p>\n'
         html += '</div>\n'
     
     html += '</div>\n'
     return html
 
 
-def build_question_profile(questions: list) -> str:
-    """Build HTML for question-level profile (Section 6)."""
-    if not questions or not isinstance(questions, list):
+def build_question_profile(questions: any) -> str:
+    """Build HTML for question-level profile (Section 6).
+    
+    questions can be either a list or a dict of questions.
+    report_generator produces a dict, keyed by question_key.
+    """
+    if not questions:
+        return ""
+    
+    # Convert dict to list if needed
+    if isinstance(questions, dict):
+        questions_list = list(questions.values())
+    elif isinstance(questions, list):
+        questions_list = questions
+    else:
         return ""
     
     html = ""
     current_dim = ""
     
-    for q in questions:
+    for i, q in enumerate(questions_list):
         if not isinstance(q, dict):
             continue
         
@@ -325,22 +309,24 @@ def build_question_profile(questions: list) -> str:
             if current_dim != "":
                 html += "</div>\n"
             current_dim = q_dim
-            html += f'<div class="question-dimension"><h3>{escape_html(q_dim.upper())}</h3>\n'
+            # Get human-readable dimension name
+            dim_display_name = DIMENSION_NAMES.get(q_dim, q_dim.replace('_', ' ').title())
+            html += f'<div class="question-dimension"><h3>{escape_html(dim_display_name.upper())}</h3>\n'
         
-        # Build histogram
-        distribution = q.get('distribution', [])
+        # Build histogram from population distribution
+        distribution = q.get('population_distribution', [14]*7)  # Default even distribution
         bars_html = ""
         if distribution:
             max_dist = max(distribution) if distribution else 1
-            for i, pct in enumerate(distribution):
+            for pct in distribution:
                 if max_dist > 0:
                     height = (pct / max_dist * 100)
                 else:
                     height = 0
                 bars_html += f'<div class="histogram-bar" style="height: {height}%; background: #ccc;"></div>'
         
-        q_num = q.get('number', i+1)
-        q_var = q.get('variable', 'unknown')
+        q_num = i + 1
+        q_var = q.get('question_key', 'unknown')
         q_answer = q.get('respondent_answer', '?')
         q_percentile = q.get('respondent_percentile', 50)
         q_position = positional_label(q_percentile)
@@ -405,30 +391,19 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
     metadata = report_dict.get('metadata', {})
     demographics = metadata.get('demographics', {})
     
-    # Extract key sections
-    opening = report_dict.get('opening', '')
+    # Extract key sections - FIXED NAMES TO MATCH report_generator.py
+    opening_statement = report_dict.get('opening_statement', '')
+    top_3_findings = report_dict.get('top_3_findings', '')
     section_1_dashboard = report_dict.get('section_1_dashboard', {})
     section_3_how_typical = report_dict.get('section_3_how_typical', {})
-    section_4_what_different = report_dict.get('section_4_what_different', '')
+    section_4_rare_combos = report_dict.get('section_4_rare_combos', '')  # FIXED: was 'section_4_what_different'
     section_5_behaviour_story = report_dict.get('section_5_behaviour_story', '')
     section_6_question_profile = report_dict.get('section_6_question_profile', {})
-    # DEBUG: Check what page builder received
-    if section_6_question_profile and section_6_question_profile.get('questions'):
-        q_list = section_6_question_profile['questions']
-        print(f"[DEBUG] Page builder received section_6 with {len(q_list)} questions")
-        if q_list:
-            first_q = q_list[0]
-            print(f"[DEBUG] First question has dimension? {'dimension' in first_q}")
-            if 'dimension' in first_q:
-                print(f"[DEBUG] First question dimension value: {first_q.get('dimension')}")
-            print(f"[DEBUG] First question keys: {list(first_q.keys())}")
-    else:
-        print(f"[DEBUG] Page builder received NO section_6_question_profile or empty questions")
-    section_7_distinctive_responses = report_dict.get('section_7_distinctive_responses', '')
+    section_7_distinctive = report_dict.get('section_7_distinctive', '')  # FIXED: was 'section_7_distinctive_responses'
     section_8_perception_gap = report_dict.get('section_8_perception_gap', '')
-    section_9_what_to_protect = report_dict.get('section_9_what_to_protect', {})  # NEW
-    section_10_trajectory = report_dict.get('section_10_trajectory', '')
-    section_11_next_steps = report_dict.get('section_11_next_steps', {})  # NEW
+    section_9_what_to_protect = report_dict.get('section_9_what_to_protect', {})
+    section_10_trajectory = report_dict.get('section_10_trajectory', '')  # NOW HANDLED
+    section_11_next_steps = report_dict.get('section_11_next_steps', {})
     deep_dive = report_dict.get('deep_dive', {})
     
     # Build metadata line
@@ -1176,14 +1151,19 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
     </div>
 
     <div class="report-section">
-        <h2>Most Surprising Finding</h2>
-        <div class="narrative">{format_prose(opening)}</div>
+        <h2>Opening Statement</h2>
+        <div class="narrative">{format_prose(opening_statement)}</div>
+    </div>
+
+    <div class="report-section">
+        <h2>Three Most Striking Findings</h2>
+        <div class="narrative">{format_prose(top_3_findings)}</div>
     </div>
 
     <div class="report-section">
         <h2>Your AI Behaviour Pattern</h2>
         <p class="section-subtitle">How you compare across nine dimensions</p>
-        {build_dimension_cards(section_1_dashboard.get('dimensions', {}))}
+        {build_dimension_cards(section_1_dashboard)}
     </div>
 
     <div class="report-section">
@@ -1192,8 +1172,8 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
     </div>
 
     <div class="report-section">
-        <h2>What's Different About Your Pattern</h2>
-        <div class="narrative">{format_prose(section_4_what_different)}</div>
+        <h2>Your Rare Dimensional Combinations</h2>
+        <div class="narrative">{format_prose(section_4_rare_combos)}</div>
     </div>
 
     <div class="report-section">
@@ -1203,12 +1183,12 @@ def build_report_html(report_dict: Dict[str, Any]) -> str:
 
     <div class="report-section">
         <h2>Your Question-Level Profile</h2>
-        {build_question_profile(section_6_question_profile.get('questions', []))}
+        {build_question_profile(section_6_question_profile)}
     </div>
 
     <div class="report-section">
         <h2>Your Most Distinctive Responses</h2>
-        <div class="narrative">{format_prose(section_7_distinctive_responses)}</div>
+        <div class="narrative">{format_prose(section_7_distinctive)}</div>
     </div>
 
     <div class="report-section">
