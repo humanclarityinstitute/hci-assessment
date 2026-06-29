@@ -615,14 +615,19 @@ def webhook_stripe():
                 }
                 
                 print(f'Webhook: Generating premium report for session {session_id}')
-                report_dict = generate_premium_report(
+                report_response = generate_premium_report(
                     results=results_for_report,
                     api_key=api_key,
                     session_id=session_id
                 )
                 
+                if not report_response or not report_response.get('success'):
+                    print(f'Report generation failed: {report_response.get("error") if report_response else "no response"}')
+                    return jsonify({'received': True}), 200
+                
+                report_dict = report_response.get('report', {})
                 if not report_dict:
-                    print(f'Report generation returned empty for session {session_id}')
+                    print(f'Report dict empty for session {session_id}')
                     return jsonify({'received': True}), 200
                 
                 # Build HTML
@@ -842,14 +847,23 @@ def premium():
             # Generate report dict (9 API calls + data sections)
             # PHASE 2 & 3 will be implemented in report_generator.py and hci_report_page_builder.py
             print('Phase 2-3: Generating report...')
-            report_dict = generate_premium_report(
+            report_response = generate_premium_report(
                 results=results_for_report,
                 api_key=api_key,
                 session_id=session_id
             )
             
+            if not report_response or not report_response.get('success'):
+                print(f'Report generator failed: {report_response.get("error")}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report generation failed'
+                }), 500
+            
+            # Extract report dict from response
+            report_dict = report_response.get('report', {})
             if not report_dict:
-                print(f'Report generator returned empty dict for session {session_id}')
+                print(f'Report generator returned empty report dict for session {session_id}')
                 return jsonify({
                     'success': False,
                     'error': 'Report generation failed'
@@ -1003,6 +1017,432 @@ def get_report():
         print(f'Get report error: {e}')
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Could not retrieve report'}), 500
+
+
+# ============================================================
+# TEST OPENING SECTION (GET /test-opening)
+# ============================================================
+
+@app.route('/test-opening', methods=['GET'])
+def test_opening():
+    """
+    Test endpoint for opening section builder.
+    
+    Query params:
+        session_id: Assessment session ID to test with
+    
+    Response:
+    {
+        "success": true,
+        "prewritten_statement": "...",
+        "findings": "...",
+        "metadata": {...}
+    }
+    """
+    try:
+        session_id = request.args.get('session_id')
+        if not session_id:
+            return jsonify({
+                'success': False,
+                'error': 'No session_id provided',
+                'usage': 'GET /test-opening?session_id=<uuid>'
+            }), 400
+        
+        # Import report_builder
+        try:
+            from report_builder import build_opening_section
+        except ImportError as e:
+            print(f'Failed to import report_builder: {e}')
+            return jsonify({
+                'success': False,
+                'error': 'report_builder module not found'
+            }), 500
+        
+        # Get API key
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        if not api_key:
+            return jsonify({
+                'success': False,
+                'error': 'ANTHROPIC_API_KEY not configured'
+            }), 500
+        
+        # Load assessment from Supabase
+        db = get_supabase_client()
+        assessment = db.get_assessment(session_id)
+        
+        if not assessment:
+            return jsonify({
+                'success': False,
+                'error': f'Session {session_id} not found'
+            }), 404
+        
+        # Build results dict
+        full_results = assessment.get('full_results', {})
+        percentiles = assessment.get('percentiles', {})
+        responses = assessment.get('responses', {})
+        demographics = assessment.get('demographics', {})
+        
+        if not percentiles:
+            return jsonify({
+                'success': False,
+                'error': 'No percentiles data for this session'
+            }), 400
+        
+        results = {
+            'full_results': full_results,
+            'percentiles': percentiles,
+            'responses': responses,
+            'demographics': demographics,
+            'session_id': session_id
+        }
+        
+        print(f'[TEST OPENING] Building opening for session {session_id}')
+        
+        # Call report_builder
+        output = build_opening_section(
+            results=results,
+            api_key=api_key,
+            session_id=session_id
+        )
+        
+        if not output or not output.get('success'):
+            print(f'[TEST OPENING] Failed: {output.get("error")}')
+            return jsonify(output), 500
+        
+        print(f'[TEST OPENING] Success')
+        
+        return jsonify(output), 200
+    
+    except Exception as e:
+        print(f'Test opening error: {e}')
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'Error: {str(e)}'
+        }), 500
+
+
+# ============================================================
+# RECOVER REPORT — Manual Report Regeneration
+# ============================================================
+
+@app.route('/recover-report', methods=['GET'])
+def recover_report_ui():
+    """
+    UI for manually regenerating reports.
+    Paste a session ID and click Generate to:
+    1. Fetch assessment data from Supabase
+    2. Generate premium report
+    3. Create PDF
+    4. Send email
+    """
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>HCI Report Recovery</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+            }
+            .container {
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                max-width: 500px;
+                width: 100%;
+                padding: 40px;
+            }
+            h1 {
+                font-size: 28px;
+                margin-bottom: 10px;
+                color: #333;
+            }
+            .subtitle {
+                color: #666;
+                margin-bottom: 30px;
+                font-size: 14px;
+            }
+            .form-group {
+                margin-bottom: 20px;
+            }
+            label {
+                display: block;
+                font-weight: 600;
+                margin-bottom: 8px;
+                color: #333;
+                font-size: 14px;
+            }
+            input {
+                width: 100%;
+                padding: 12px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                font-size: 14px;
+                font-family: monospace;
+                transition: border-color 0.2s;
+            }
+            input:focus {
+                outline: none;
+                border-color: #667eea;
+            }
+            button {
+                width: 100%;
+                padding: 12px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 16px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }
+            button:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            }
+            button:active {
+                transform: translateY(0);
+            }
+            button:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+                transform: none;
+            }
+            .status {
+                margin-top: 20px;
+                padding: 15px;
+                border-radius: 6px;
+                display: none;
+                font-size: 14px;
+            }
+            .status.loading {
+                display: block;
+                background: #e3f2fd;
+                color: #1976d2;
+                border: 1px solid #90caf9;
+            }
+            .status.success {
+                display: block;
+                background: #e8f5e9;
+                color: #388e3c;
+                border: 1px solid #81c784;
+            }
+            .status.error {
+                display: block;
+                background: #ffebee;
+                color: #d32f2f;
+                border: 1px solid #ef5350;
+            }
+            .spinner {
+                display: inline-block;
+                width: 12px;
+                height: 12px;
+                border: 2px solid transparent;
+                border-radius: 50%;
+                border-top-color: #1976d2;
+                animation: spin 0.8s linear infinite;
+                margin-right: 8px;
+            }
+            @keyframes spin {
+                to { transform: rotate(360deg); }
+            }
+            .info {
+                background: #f5f5f5;
+                padding: 15px;
+                border-radius: 6px;
+                margin-top: 20px;
+                font-size: 13px;
+                color: #666;
+                line-height: 1.6;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>📧 Report Recovery</h1>
+            <p class="subtitle">Regenerate and email a report</p>
+            
+            <form id="recoveryForm">
+                <div class="form-group">
+                    <label for="sessionId">Session ID</label>
+                    <input
+                        type="text"
+                        id="sessionId"
+                        name="sessionId"
+                        placeholder="Paste session UUID here"
+                        required
+                    />
+                </div>
+                <button type="submit" id="generateBtn">Generate & Email Report</button>
+            </form>
+            
+            <div class="status" id="status"></div>
+            
+            <div class="info">
+                <strong>How to use:</strong><br>
+                1. Get the session ID from Supabase<br>
+                2. Paste it above<br>
+                3. Click "Generate & Email Report"<br>
+                4. Report will be created and emailed immediately
+            </div>
+        </div>
+
+        <script>
+            const form = document.getElementById('recoveryForm');
+            const statusEl = document.getElementById('status');
+            const generateBtn = document.getElementById('generateBtn');
+            const sessionIdInput = document.getElementById('sessionId');
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const sessionId = sessionIdInput.value.trim();
+                if (!sessionId) {
+                    showStatus('Please enter a session ID', 'error');
+                    return;
+                }
+
+                generateBtn.disabled = true;
+                showStatus('<span class="spinner"></span>Generating report and sending email...', 'loading');
+
+                try {
+                    const response = await fetch('/recover-report-action', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: sessionId })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        showStatus(
+                            '✓ Report generated and email sent successfully!\\n' + 
+                            'Email should arrive within a few seconds.',
+                            'success'
+                        );
+                        sessionIdInput.value = '';
+                    } else {
+                        showStatus('✗ Error: ' + (data.error || 'Unknown error'), 'error');
+                    }
+                } catch (err) {
+                    showStatus('✗ Connection error: ' + err.message, 'error');
+                } finally {
+                    generateBtn.disabled = false;
+                }
+            });
+
+            function showStatus(message, type) {
+                statusEl.textContent = message;
+                statusEl.className = 'status ' + type;
+            }
+        </script>
+    </body>
+    </html>
+    '''
+
+
+@app.route('/recover-report-action', methods=['POST'])
+def recover_report_action():
+    """
+    Backend for report recovery.
+    Takes session_id, regenerates report, and emails it.
+    """
+    try:
+        data = request.json
+        session_id = data.get('session_id', '').strip()
+        
+        if not session_id:
+            return jsonify({'success': False, 'error': 'session_id required'}), 400
+        
+        print(f'[RECOVER] Processing session {session_id}')
+        
+        # Get database client and API key
+        db = get_supabase_client()
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        
+        if not api_key:
+            return jsonify({'success': False, 'error': 'API key not configured'}), 500
+        
+        # Fetch assessment from database
+        print(f'[RECOVER] Fetching assessment data...')
+        assessment = db.get_assessment(session_id)
+        
+        if not assessment:
+            return jsonify({'success': False, 'error': 'Session not found in database'}), 404
+        
+        # Extract components
+        responses = assessment.get('responses', {})
+        demographics = assessment.get('demographics', {})
+        full_results = assessment.get('full_results', {})
+        percentiles = assessment.get('percentiles', {})
+        
+        # Build results dict for report generator
+        results_for_report = {
+            'percentiles': percentiles,
+            'full_results': full_results,
+            'demographics': demographics,
+            'responses': responses,
+            'session_id': session_id
+        }
+        
+        # Generate report
+        print(f'[RECOVER] Generating premium report...')
+        report_response = generate_premium_report(
+            results=results_for_report,
+            api_key=api_key,
+            session_id=session_id
+        )
+        
+        if not report_response.get('success'):
+            error_msg = report_response.get('error', 'Unknown error')
+            print(f'[RECOVER] Report generation failed: {error_msg}')
+            return jsonify({'success': False, 'error': f'Report generation failed: {error_msg}'}), 500
+        
+        report_dict = report_response.get('report', {})
+        if not report_dict:
+            return jsonify({'success': False, 'error': 'Report dict is empty'}), 500
+        
+        # Build HTML
+        print(f'[RECOVER] Building HTML...')
+        report_html_str = build_report_html(report_dict)
+        if not report_html_str:
+            return jsonify({'success': False, 'error': 'HTML builder failed'}), 500
+        
+        # Generate PDF
+        print(f'[RECOVER] Generating PDF...')
+        pdf_bytes = None
+        try:
+            pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+            if pdf_bytes:
+                print(f'[RECOVER] PDF generated ({len(pdf_bytes)} bytes)')
+        except Exception as e:
+            print(f'[RECOVER] PDF generation failed (non-fatal): {e}')
+        
+        # Send email
+        print(f'[RECOVER] Sending email...')
+        send_report_email(
+            email=demographics.get('email', ''),
+            report_html=report_html_str,
+            pdf_bytes=pdf_bytes,
+            session_id=session_id
+        )
+        
+        print(f'[RECOVER] ✓ Report recovery complete for {session_id}')
+        return jsonify({'success': True, 'message': 'Report generated and emailed successfully'}), 200
+        
+    except Exception as e:
+        print(f'[RECOVER] Error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ============================================================
