@@ -34,7 +34,7 @@ def enrich_results_for_report(full_results, demographics, benchmark_path):
     """
     
     try:
-        benchmark = get_benchmark(benchmark_path)
+        benchmark = get_benchmark()
     except Exception as e:
         print(f'WARNING: Could not load benchmark: {e}')
         benchmark = None
