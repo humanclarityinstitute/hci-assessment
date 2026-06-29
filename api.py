@@ -821,6 +821,8 @@ def premium():
             # Convert report_dict to professional HTML for PDF
             print(f'Building HTML for session {session_id}')
 
+            report_html_str = build_report_html(report_dict)
+            
             # DEBUG: Check HTML content
             if '<h3>TRUST</h3>' in report_html_str or '<h3>RELIANCE</h3>' in report_html_str:
                 print(f"[DEBUG] HTML HAS dimension headers ✅")
