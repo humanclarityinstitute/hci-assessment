@@ -40,12 +40,6 @@ from benchmark_builder import get_benchmark
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
 from stripe_config import get_stripe_config
-from report_pdf import build_report_pdf
-
-# Import Layer 3 (Report generation)
-from report_generator import generate_premium_report
-from hci_report_page_builder import build_report_html
-from email_template import send_report_email
 
 # Import Phase 1: Data enrichment (optional, with fallback)
 try:
@@ -57,6 +51,73 @@ except ImportError:
     def enrich_results_for_report(full_results, demographics, benchmark_path):
         """Fallback: return results as-is without enrichment"""
         return full_results
+
+
+# Import Phase 2 & 3: Report generation and transformation
+from report_generator import generate_premium_report
+from report_page_builder import build_report_html
+from email_sender import send_report_email
+from report_pdf_creator import build_report_pdf
+
+
+
+# ============================================================
+# RENDER REPORT HTML WITH DATA INJECTION
+# ============================================================
+
+def render_report_html(rendering_dict):
+    """
+    Render report HTML with data injection.
+    
+    Takes rendering_dict (output from report_page_builder) and injects it
+    into hci-report-new.html so JavaScript can access window.hciRenderingData.
+    
+    Args:
+        rendering_dict: Dict from report_page_builder.build_report_html()
+    
+    Returns:
+        str: Complete HTML with data injected
+    """
+    import json
+    
+    # Read hci-report-new.html template
+    template_path = os.path.join(os.path.dirname(__file__), 'hci-report-new.html')
+    try:
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template_html = f.read()
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"Template not found: {template_path}\n"
+            "Make sure hci-report-new.html is in the project root directory"
+        )
+    
+    # Serialize rendering_dict to JSON
+    try:
+        rendering_json = json.dumps(rendering_dict)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"rendering_dict not JSON-serializable: {e}")
+    
+    # Inject data into HTML
+    data_injection = f"""    <script>
+    window.hciRenderingData = {rendering_json};
+    </script>
+"""
+    
+    if '</head>' in template_html:
+        final_html = template_html.replace(
+            '</head>',
+            f'{data_injection}</head>',
+            1
+        )
+    else:
+        final_html = template_html.replace(
+            '<body>',
+            f'<body>\n{data_injection}',
+            1
+        )
+    
+    return final_html
+
 
 # Create Flask app
 # Report storage configuration
@@ -639,7 +700,7 @@ def webhook_stripe():
                 # Generate PDF
                 pdf_bytes = None
                 try:
-                    pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+                    pdf_bytes = build_report_pdf(report_html_str, demographics=demographics)
                     if pdf_bytes:
                         print(f'Report PDF generated successfully for session {session_id}')
                     else:
@@ -869,10 +930,29 @@ def premium():
                     'error': 'Report generation failed'
                 }), 500
             
-            # Convert report_dict to professional HTML for PDF
-            print(f'Building HTML for session {session_id}')
-
-            report_html_str = build_report_html(report_dict)
+            # PHASE 4: Transform report_dict to rendering_dict
+            print(f'Phase 4: Transforming report to rendering dict for session {session_id}...')
+            try:
+                rendering_dict = build_report_html(report_dict)
+            except Exception as e:
+                print(f'report_page_builder.build_report_html() failed: {e}')
+                traceback.print_exc()
+                return jsonify({
+                    'success': False,
+                    'error': 'Report transformation failed'
+                }), 500
+            
+            # PHASE 5: Render final HTML with data injection
+            print(f'Phase 5: Rendering HTML with data injection for session {session_id}...')
+            try:
+                report_html_str = render_report_html(rendering_dict)
+            except Exception as e:
+                print(f'HTML rendering failed: {e}')
+                traceback.print_exc()
+                return jsonify({
+                    'success': False,
+                    'error': 'HTML rendering failed'
+                }), 500
             
             # Report HTML successfully generated - check that it has content
             if not report_html_str:
@@ -899,7 +979,7 @@ def premium():
         # Step 7: PDF generation
         pdf_bytes = None
         try:
-            pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+            pdf_bytes = build_report_pdf(report_html_str, demographics=demographics)
             if pdf_bytes:
                 print(f'Report PDF generated successfully for session {session_id}')
             else:
@@ -918,18 +998,17 @@ def premium():
                 if resend_key:
                     email_result = send_report_email(
                         to_email=report_email,
-                        report=report_dict,
+                        report_html=report_html_str,
                         demographics=demographics,
                         resend_api_key=resend_key,
-                        report_url=f'https://humanclarityinstitute.com/ai-assessment/report/?session_id={session_id}',
-                        pdf_bytes=pdf_bytes,
-                        pdf_filename='HCI-AI-Identity-Report.pdf'
+                        session_id=session_id,
+                        pdf_bytes=pdf_bytes
                     )
-                    if email_result:
+                    if email_result.get('success'):
                         email_sent = True
                         print(f'Report email sent to {report_email}')
                     else:
-                        print(f'Email send failed')
+                        print(f'Email send failed: {email_result.get("error")}')
                 else:
                     print('RESEND_API_KEY not configured')
         
@@ -948,10 +1027,11 @@ def premium():
 
         # Step 10: Cache report and PDF URL in Supabase
         try:
-            db.update_report(
-                session_id,
-                premium_report=report_dict,     # Full report data as JSON
-                report_pdf_url=pdf_url          # Public PDF URL (may be None if upload failed)
+            db.update_assessment(
+                session_id=session_id,
+                premium_report=report_html_str,  # Complete HTML with window.hciRenderingData
+                report_pdf_url=pdf_url,           # Public PDF URL (may be None if upload failed)
+                report_generated_at=datetime.utcnow().isoformat()
             )
             print(f'Report and PDF URL cached for session {session_id}')
         
@@ -979,16 +1059,15 @@ def premium():
 @app.route('/report', methods=['GET'])
 def get_report():
     """
-    Retrieve cached premium report by session_id.
+    Retrieve and display premium report by session_id.
+    
+    Returns complete HTML (not JSON) that displays in browser.
     
     Query params:
         session_id: Assessment session ID
     
-    Response:
-    {
-        "success": true,
-        "report": {...cached report HTML...}
-    }
+    Returns:
+        HTML document with complete report
     """
     try:
         session_id = request.args.get('session_id')
@@ -1004,14 +1083,13 @@ def get_report():
         if not assessment.get('paid'):
             return jsonify({'success': False, 'error': 'Report not purchased'}), 403
         
-        report_data = assessment.get('premium_report')
-        if not report_data:
+        # Get final HTML (with data injection already included)
+        report_html = assessment.get('premium_report')
+        if not report_html:
             return jsonify({'success': False, 'error': 'Report not yet generated'}), 404
         
-        return jsonify({
-            'success': True,
-            'report': report_data
-        }), 200
+        # Return as HTML (not JSON)
+        return report_html, 200, {'Content-Type': 'text/html; charset=utf-8'}
     
     except Exception as e:
         print(f'Get report error: {e}')
@@ -1123,11 +1201,11 @@ def test_opening():
 
 
 # ============================================================
-# RECOVER REPORT — Manual Report Regeneration
+# ERROR HANDLERS
 # ============================================================
 
-@app.route('/recover-report', methods=['GET'])
-def recover_report_ui():
+@app.errorhandler(404)
+def not_found(e):
     """
     UI for manually regenerating reports.
     Paste a session ID and click Generate to:
@@ -1411,6 +1489,11 @@ def recover_report_action():
         if not report_dict:
             return jsonify({'success': False, 'error': 'Report dict is empty'}), 500
         
+        # DEBUG: Check what's in report_dict
+        print(f'[RECOVER] Report dict keys: {list(report_dict.keys())}')
+        print(f'[RECOVER] opening_statement length: {len(report_dict.get("opening_statement", ""))} chars')
+        print(f'[RECOVER] top_3_findings length: {len(report_dict.get("top_3_findings", ""))} chars')
+        
         # Build HTML
         print(f'[RECOVER] Building HTML...')
         report_html_str = build_report_html(report_dict)
@@ -1421,7 +1504,7 @@ def recover_report_action():
         print(f'[RECOVER] Generating PDF...')
         pdf_bytes = None
         try:
-            pdf_bytes = build_report_pdf(report_dict, demographics=demographics)
+            pdf_bytes = build_report_pdf(report_html_str, demographics=demographics)
             if pdf_bytes:
                 print(f'[RECOVER] PDF generated ({len(pdf_bytes)} bytes)')
         except Exception as e:
