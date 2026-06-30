@@ -50,6 +50,7 @@ def build_sections(report_data: Dict[str, Any]) -> Dict[str, Any]:
         "section_9_what_to_protect": build_what_to_protect(report_data),
         "section_10_if_nothing_changes": build_if_nothing_changes(report_data),
         "section_11_next_steps": build_next_steps(report_data),
+        "section_12_deep_dive": build_deep_dive(report_data),
     }
 
 
@@ -118,6 +119,49 @@ def build_dashboard(report_data: Dict[str, Any]) -> Dict[str, Any]:
         "cards": report_data.get("dashboard", []),
     }
 
+
+
+# ---------------------------------------------------------------------
+# Section 12: Deep Dive
+# ---------------------------------------------------------------------
+
+def build_deep_dive(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Optional but high-value personalised Deep Dive.
+
+    This is Claude-written when available, with deterministic fallback.
+    """
+    return {
+        "title": "Deep Dive",
+        "body": narrative_block(report_data, "deep_dive", deep_dive_fallback(report_data)),
+    }
+
+
+def deep_dive_fallback(report_data: Dict[str, Any]) -> str:
+    inputs = report_data.get("synthesis_inputs") or {}
+    most = inputs.get("most_distinctive_variable")
+    top = (inputs.get("top_dimensions") or [{}])[0]
+    combo = inputs.get("top_rare_combination")
+
+    if combo:
+        return (
+            f"The most useful place to look more closely is the combination of {combo.get('label_1')} and {combo.get('label_2')}. "
+            "This pairing gives the clearest view of how different parts of your AI behaviour interact."
+        )
+
+    if most:
+        return (
+            f"The most useful place to look more closely is your response to “{most.get('question_text')}”. "
+            f"You answered {most.get('answer_display')}, which makes this one of the strongest signals in your profile."
+        )
+
+    if top:
+        return (
+            f"The most useful place to look more closely is {top.get('label', 'your highest dimension')}. "
+            "This is the clearest organising feature in your current AI behaviour pattern."
+        )
+
+    return "The most useful place to look more closely is the overall shape of your profile."
 
 # ---------------------------------------------------------------------
 # Section 3
