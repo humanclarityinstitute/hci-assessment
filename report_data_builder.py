@@ -220,49 +220,41 @@ def get_min_sample_size(benchmark: Any) -> int:
 
 def canonical_lookup(value: Any, available_keys: List[str]) -> Optional[str]:
     """
-    Case-insensitive/coercive lookup into benchmark cohort keys.
-    Solves: frontend value "everyday" vs benchmark key "Everyday".
+    Robust lookup into benchmark cohort keys.
+
+    Handles:
+    - 18-24 / 18 - 24 / 18 – 24 / 18 to 24
+    - 65+ / Over 65 / 65 plus
+    - everyday / every day / daily
     """
     if value is None:
         return None
 
-    value_str = str(value).strip()
-    if not value_str:
-        return None
+    def norm(v: Any) -> str:
+        text = str(v).strip().lower()
+        text = text.replace("–", "-").replace("—", "-").replace("−", "-")
+        text = " ".join(text.split())
+        compact = text.replace(" ", "")
+        aliases = {
+            "18-24": "18-24", "18to24": "18-24", "18_24": "18-24",
+            "25-34": "25-34", "25to34": "25-34", "25_34": "25-34",
+            "35-44": "35-44", "35to44": "35-44", "35_44": "35-44",
+            "45-54": "45-54", "45to54": "45-54", "45_54": "45-54",
+            "55-64": "55-64", "55to64": "55-64", "55_64": "55-64",
+            "55-65": "55-64", "55to65": "55-64",
+            "65+": "65+", "over65": "65+", "65andover": "65+", "65plus": "65+",
+            "everyday": "everyday", "every day": "everyday", "daily": "everyday",
+            "often": "often", "veryoften": "often", "very often": "often",
+            "sometimes": "sometimes", "occasionally": "sometimes", "occasional": "sometimes",
+            "rarely": "rarely", "rare": "rarely",
+            "never": "never",
+        }
+        return aliases.get(compact, aliases.get(text, compact))
 
-    # Exact match first.
-    if value_str in available_keys:
-        return value_str
-
-    lower_map = {str(k).strip().lower(): k for k in available_keys}
-    if value_str.lower() in lower_map:
-        return lower_map[value_str.lower()]
-
-    # Common variants.
-    aliases = {
-        "daily": "everyday",
-        "every day": "everyday",
-        "everyday": "everyday",
-        "often": "often",
-        "very often": "often",
-        "sometimes": "sometimes",
-        "occasionally": "sometimes",
-        "rare": "rarely",
-        "rarely": "rarely",
-        "never": "never",
-        "18 - 24": "18-24",
-        "25 - 34": "25-34",
-        "35 - 44": "35-44",
-        "45 - 54": "45-54",
-        "55 - 64": "55-64",
-        "55-65": "55-64",
-        "over 65": "65+",
-        "65+": "65+",
-    }
-    aliased = aliases.get(value_str.lower())
-    if aliased and aliased in lower_map:
-        return lower_map[aliased]
-
+    requested = norm(value)
+    for key in list(available_keys or []):
+        if norm(key) == requested:
+            return key
     return None
 
 
@@ -410,14 +402,18 @@ def safe_dimension_percentiles(benchmark: Any, dim: str, raw_score: Any, demogra
         out["n_overall"] = out["n_overall"] if out["n_overall"] is not None else clean_int(overall.get("n"))
 
         age_key = bench_demo.get("age_group")
-        age_data = (dim_data.get("by_age_group") or {}).get(age_key) if age_key else None
+        age_segments = dim_data.get("by_age_group") or {}
+        age_actual_key = canonical_lookup(age_key, list(age_segments.keys())) if age_key else None
+        age_data = age_segments.get(age_actual_key) if age_actual_key else None
         if isinstance(age_data, dict) and clean_int(age_data.get("n"), 0) >= min_n:
             if out["age_group"] is None:
                 out["age_group"] = calculate_percentile_from_values(raw_score, age_data.get("values") or [])
             out["n_age_group"] = out["n_age_group"] if out["n_age_group"] is not None else clean_int(age_data.get("n"))
 
         freq_key = bench_demo.get("ai_tool_use_frequency")
-        freq_data = (dim_data.get("by_frequency") or {}).get(freq_key) if freq_key else None
+        freq_segments = dim_data.get("by_frequency") or {}
+        freq_actual_key = canonical_lookup(freq_key, list(freq_segments.keys())) if freq_key else None
+        freq_data = freq_segments.get(freq_actual_key) if freq_actual_key else None
         if isinstance(freq_data, dict) and clean_int(freq_data.get("n"), 0) >= min_n:
             if out["frequency"] is None:
                 out["frequency"] = calculate_percentile_from_values(raw_score, freq_data.get("values") or [])
@@ -426,31 +422,54 @@ def safe_dimension_percentiles(benchmark: Any, dim: str, raw_score: Any, demogra
     return out
 
 
+
+def get_variable_source(benchmark: Any, key: str, segment: Optional[Tuple[str, str]] = None) -> Optional[Dict[str, Any]]:
+    """
+    Get variable source data from benchmark.data.
+    Segment requests never fall back to overall.
+    """
+    data = get_benchmark_data(benchmark)
+    var_data = (data.get("variables") or {}).get(key)
+    if not isinstance(var_data, dict):
+        return None
+
+    if segment and isinstance(segment, tuple) and len(segment) == 2:
+        seg_type, seg_value = segment
+        segments = var_data.get(f"by_{seg_type}") or {}
+        actual_key = canonical_lookup(seg_value, list(segments.keys()))
+        if actual_key is None:
+            return None
+        return segments.get(actual_key)
+
+    return var_data.get("overall")
+
 def safe_question_percentile(benchmark: Any, key: str, answer: Any, segment: Optional[Tuple[str, str]] = None) -> Optional[int]:
     if answer is None:
         return None
 
-    # Correct signature: get_percentile(variable_key, response_value, segment=None).
+    min_n = get_min_sample_size(benchmark)
+    source = get_variable_source(benchmark, key, segment)
+
+    # For cohort percentiles, require an actual cohort and enough sample.
+    if segment:
+        if not isinstance(source, dict):
+            return None
+        if clean_int(source.get("n"), 0) < min_n:
+            return None
+        return calculate_percentile_from_values(answer, source.get("values") or [])
+
+    # Overall percentile.
+    if isinstance(source, dict):
+        pct = calculate_percentile_from_values(answer, source.get("values") or [])
+        if pct is not None:
+            return pct
+
+    # Last fallback only for overall, never for cohorts.
     if benchmark is not None and hasattr(benchmark, "get_percentile"):
         try:
-            return clean_int(benchmark.get_percentile(key, answer, segment=segment))
+            return clean_int(benchmark.get_percentile(key, answer, segment=None))
         except Exception:
             pass
-
-    # Direct fallback from variable distributions.
-    data = get_benchmark_data(benchmark)
-    var_data = (data.get("variables") or {}).get(key) or {}
-    source = None
-
-    if segment and isinstance(segment, tuple) and len(segment) == 2:
-        seg_type, seg_value = segment
-        source = (var_data.get(f"by_{seg_type}") or {}).get(seg_value)
-
-    if source is None and not segment:
-        source = var_data.get("overall")
-
-    if isinstance(source, dict):
-        return calculate_percentile_from_values(answer, source.get("values") or [])
 
     return None
 
@@ -502,47 +521,24 @@ def normalize_distribution(raw: Any) -> Optional[List[int]]:
 def safe_question_distribution(benchmark: Any, key: str, segment: Optional[Tuple[str, str]] = None) -> Optional[List[int]]:
     """
     Read distribution from benchmark.data["variables"].
-    Important: if a cohort segment is missing, return None.
+    If a cohort segment is missing or below MIN_SAMPLE, return None.
     Do NOT silently fallback to overall for age/frequency rows.
     """
-    data = get_benchmark_data(benchmark)
-    var_data = (data.get("variables") or {}).get(key)
-    if not isinstance(var_data, dict):
+    source = get_variable_source(benchmark, key, segment)
+    if not isinstance(source, dict):
         return None
 
-    source = None
-    if segment and isinstance(segment, tuple) and len(segment) == 2:
-        seg_type, seg_value = segment
-        source = (var_data.get(f"by_{seg_type}") or {}).get(seg_value)
-    else:
-        source = var_data.get("overall")
-
-    if not isinstance(source, dict):
+    if segment and clean_int(source.get("n"), 0) < get_min_sample_size(benchmark):
         return None
 
     return normalize_distribution(source)
 
 
 def safe_question_sample_size(benchmark: Any, key: str, segment: Optional[Tuple[str, str]] = None) -> Optional[int]:
-    if benchmark is not None and hasattr(benchmark, "get_sample_size"):
-        try:
-            n = benchmark.get_sample_size(key, segment=segment)
-            return clean_int(n)
-        except Exception:
-            pass
-
-    data = get_benchmark_data(benchmark)
-    var_data = (data.get("variables") or {}).get(key) or {}
-    source = None
-    if segment and isinstance(segment, tuple) and len(segment) == 2:
-        seg_type, seg_value = segment
-        source = (var_data.get(f"by_{seg_type}") or {}).get(seg_value)
-    else:
-        source = var_data.get("overall")
-
+    source = get_variable_source(benchmark, key, segment)
     if isinstance(source, dict):
-        return clean_int(source.get("n"))
-    return None
+        return clean_int(source.get("n"), 0)
+    return 0 if segment else None
 
 
 # ---------------------------------------------------------------------
