@@ -57,6 +57,7 @@ except ImportError:
 # These replace the broken old report_generator/report_page_builder pipeline.
 from report_data_builder import build_report_data, assert_report_data_contract
 from report_renderer import render_report
+from claude_narrative import add_claude_narratives
 
 # Optional legacy helpers kept only for email/PDF fallback paths.
 # The clean report flow does not depend on old report_generator or report_page_builder.
@@ -945,18 +946,36 @@ def premium():
                 report_email=report_email or assessment.get('report_email')
             )
 
-        report_html_str = render_report(report_data)
-        db.update_report(
-            session_id=session_id,
-            report_html=report_html_str,
-            report_generated_at=datetime.utcnow().isoformat()
-        )
+       # Add Claude narrative blocks before rendering.
+# This writes only the API sections: opening findings, rare combinations,
+# behaviour story, distinctive responses, perception gap, trajectory, and final deep dive.
+api_key = os.environ.get('ANTHROPIC_API_KEY')
 
-        return jsonify({
-            'success': True,
-            'message': 'Premium report ready',
-            'report_url': make_report_url(session_id)
-        }), 200
+report_data = add_claude_narratives(
+    report_data=report_data,
+    api_key=api_key
+)
+
+db.update_assessment(
+    session_id=session_id,
+    report_data=report_data,
+    report_email=report_email or assessment.get('report_email')
+)
+
+report_html_str = render_report(report_data)
+
+db.update_report(
+    session_id=session_id,
+    report_html=report_html_str,
+    report_generated_at=datetime.utcnow().isoformat()
+)
+
+return jsonify({
+    'success': True,
+    'message': 'Premium report ready',
+    'report_url': make_report_url(session_id),
+    'narrative_generation': report_data.get('narrative_generation', {})
+}), 200
 
         # LEGACY BELOW DISABLED BY RETURN ABOVE
         # Step 6: Generate premium report (Layer 3)
