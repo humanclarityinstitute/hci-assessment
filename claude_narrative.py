@@ -130,43 +130,29 @@ Fill exactly these blocks:
 For opening_findings, write the opening synthesis for the report.
 This is the first personalised interpretation the reader sees. It must make the reader feel the report has actually analysed their pattern.
 
-Write 220-280 words total.
-Use exactly three compact signal blocks.
-Each block must have this exact structure:
+Write 330-430 words total.
+Use exactly three short editorial subheadings, each followed by one substantial paragraph.
+Do not use boxes, bullets, numbering, labels like "Behavioural finding", or fields such as "Data:" / "Interpretation:" / "Why it matters:".
 
-Actual finding headline
-One concise paragraph explaining what the signal means.
-Evidence: one short evidence tag
-
-Do not use bullets, numbering, "Finding One", "Finding Two", "Executive Summary", "Behavioural Finding", or fields such as "Data:" / "Interpretation:" / "Why it matters:".
-
-The three signal blocks should cover:
+The three subheadings should cover:
 1. The most distinctive signal in the profile.
 2. How the participant's self-perception compares with the benchmark, or alignment if there is no gap.
 3. The wider pattern shape: rare combination if present, otherwise coherent/no-combo interpretation.
 
-Make the headings actual findings, not topics. For example, use:
-AI has become a functional prerequisite
-Your behaviour is more established than your perception
-High reliance and light verification sit together
-
-Do not use generic headings like:
+Style the subheadings like a premium research report, for example:
 Your most distinctive signal
 How your self-perception compares
 The shape of the wider pattern
 
-Use no more than one key statistic inside each paragraph. Put the strongest statistic in the Evidence line when possible.
-Evidence tags should be short, for example:
-Evidence: 99th percentile response
-Evidence: 38-point perception gap
-Evidence: High Reliance + low Verification
+Use one or two key statistics where useful, but do not overload the opening with numbers. Later sections provide the evidence.
+Never use means, averages, standard deviations, effect sizes, raw score averages, or statistical shorthand that a general reader has to interpret. Do not write phrases such as "mean of 1.1" or "average of 4.4". If cohort differences matter, explain them in plain behavioural language, for example: "everyday AI users report higher reliance, but your pattern sits beyond that already-high group."
 
 Tone:
 - observational
 - research-grounded
 - plain English
 - direct to "you"
-- calm, not dramatic
+- curious, not dramatic
 - not clinical
 - not self-help
 - not prescriptive
@@ -180,7 +166,7 @@ Use only this context:
     schema = {
         "opening_findings": {
             "type": "string",
-            "description": "220-280 word opening synthesis with exactly three compact signal blocks. Each block has a finding headline, one concise paragraph, and an Evidence: line. No bullets, no numbering, no Finding One/Two/Three, no Executive Summary, and no Behavioural Finding label."
+            "description": "330-430 word opening synthesis with exactly three short editorial subheadings, each followed by one substantial paragraph. No bullets, no numbering, no 'Behavioural finding', no Data/Interpretation/Why-it-matters labels, and no means/averages/statistical shorthand."
         },
         "rare_combinations_narrative": {
             "type": "string",
