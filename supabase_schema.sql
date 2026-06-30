@@ -34,6 +34,15 @@ CREATE TABLE IF NOT EXISTS assessment_responses (
   -- Report Data (Cached)
   report_html JSONB,                           -- Full premium report (cached to prevent regeneration)
   report_pdf_url TEXT,                         -- URL to PDF in Supabase Storage
+  premium_report JSONB,                        -- Alternative field name (for compatibility)
+  
+  -- Percentiles & Analysis (may be separate or in full_results)
+  percentiles JSONB,                           -- Question-level percentiles
+  perception_gaps JSONB,                       -- Perception gap analysis
+  patterns JSONB,                              -- Rare combinations and patterns
+  
+  -- Metadata
+  report_generated_at TIMESTAMP,               -- When premium report was generated
   
   -- Timestamps
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
