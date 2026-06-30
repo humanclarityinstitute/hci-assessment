@@ -53,11 +53,28 @@ except ImportError:
         return full_results
 
 
-# Import Phase 2 & 3: Report generation and transformation
-from report_generator import generate_premium_report
-from report_page_builder import build_report_html
-from email_sender import send_report_email
-from report_pdf_creator import build_report_pdf
+# Clean premium report system
+# These replace the broken old report_generator/report_page_builder pipeline.
+from report_data_builder import build_report_data, assert_report_data_contract
+from report_renderer import render_report
+
+# Optional legacy helpers kept only for email/PDF fallback paths.
+# The clean report flow does not depend on old report_generator or report_page_builder.
+try:
+    from email_sender import send_report_email
+except ImportError:
+    send_report_email = None
+    print('WARNING: email_sender module not found. Report email sending disabled.')
+
+try:
+    from report_pdf_creator import build_report_pdf
+except ImportError:
+    build_report_pdf = None
+    print('WARNING: report_pdf_creator module not found. PDF generation disabled.')
+
+# Legacy report generator modules are intentionally not imported.
+generate_premium_report = None
+build_report_html = None
 
 
 
@@ -125,6 +142,13 @@ REPORT_BASE_URL = os.environ.get(
     'REPORT_BASE_URL',
     'https://humanclarityinstitute.com/ai-assessment/report/'
 )
+
+def make_report_url(session_id):
+    """Return the URL the front end/customer should use to view the paid report."""
+    if REPORT_BASE_URL:
+        sep = '&' if '?' in REPORT_BASE_URL else '?'
+        return f"{REPORT_BASE_URL}{sep}session_id={urllib.parse.quote(str(session_id))}"
+    return f"/report?session_id={urllib.parse.quote(str(session_id))}"
 
 app = Flask(__name__)
 CORS(app)
@@ -241,6 +265,7 @@ def health():
     return jsonify({
         'status': 'ok',
         'benchmark_loaded': benchmark_exists,
+        'clean_report_system': True,
         'timestamp': datetime.utcnow().isoformat(),
     }), 200
 
@@ -427,6 +452,18 @@ def score():
         percentiles = generate_percentiles(responses, demographics, scoring_results)
         scoring_results['percentiles'] = percentiles
         
+        # CLEAN PREMIUM REPORT DATA
+        # Build ONE canonical report_data object here, immediately after scoring.
+        # This object is saved to Supabase and becomes the only source of truth for /report.
+        report_data = build_report_data(
+            scoring_results=scoring_results,
+            responses=responses,
+            demographics=demographics,
+            email=report_email,
+            session_id=session_id
+        )
+        assert_report_data_contract(report_data)
+
         # Store in Supabase - include ALL data so results page has complete access
         db = get_supabase_client()
         store_result = db.store_assessment(
@@ -438,6 +475,7 @@ def score():
             perception_gaps=scoring_results.get('perception_gaps', []),
             patterns=scoring_results.get('rare_combinations', []),
             percentiles=percentiles,
+            report_data=report_data,
             report_email=report_email,
             consent=consent,
             consent_timestamp=consent_timestamp
@@ -512,7 +550,8 @@ def get_results():
             'demographics': assessment.get('demographics', {}),
             'responses': assessment.get('responses', {}),
             'report_email': assessment.get('report_email'),
-            'paid': assessment.get('paid', False)
+            'paid': assessment.get('paid', False),
+            'report_url': make_report_url(session_id) if assessment.get('paid', False) else None
         }), 200
     
     except Exception as e:
@@ -645,7 +684,14 @@ def webhook_stripe():
             except Exception as e:
                 print(f'Failed to mark assessment as paid: {e}')
                 return jsonify({'received': True}), 200  # Still ack webhook
-            
+
+            # CLEAN REPORT FLOW:
+            # Do not generate the premium report inside the webhook.
+            # /report now renders directly from saved report_data after paid=True.
+            print(f'Clean report flow: payment recorded for {session_id}; report will render on /report')
+            return jsonify({'received': True}), 200
+
+            # LEGACY BELOW DISABLED BY RETURN ABOVE
             # STEP 2: Auto-trigger premium report generation
             try:
                 # Get full results from DB
@@ -806,7 +852,7 @@ def premium():
             print(f'Report cache hit for session {session_id}')
             return jsonify({
                 'success': True,
-                'report': cached_report,
+                'report_url': make_report_url(session_id),
                 'cached': True
             }), 200
         
@@ -878,7 +924,41 @@ def premium():
             paid_at=datetime.utcnow().isoformat(),
             stripe_session_id=stripe_session_id
         )
-        
+
+        # CLEAN PREMIUM REPORT FLOW
+        # Ensure report_data exists, render final HTML from report_data, cache it, and return report_url.
+        assessment = db.get_assessment(session_id)
+        report_data = assessment.get('report_data') if assessment else None
+
+        if not report_data:
+            report_data = build_report_data(
+                scoring_results=full_results,
+                responses=responses,
+                demographics=demographics,
+                email=report_email or assessment.get('report_email'),
+                session_id=session_id
+            )
+            assert_report_data_contract(report_data)
+            db.update_assessment(
+                session_id=session_id,
+                report_data=report_data,
+                report_email=report_email or assessment.get('report_email')
+            )
+
+        report_html_str = render_report(report_data)
+        db.update_report(
+            session_id=session_id,
+            report_html=report_html_str,
+            report_generated_at=datetime.utcnow().isoformat()
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'Premium report ready',
+            'report_url': make_report_url(session_id)
+        }), 200
+
+        # LEGACY BELOW DISABLED BY RETURN ABOVE
         # Step 6: Generate premium report (Layer 3)
         # This calls report_generator which makes 9 Claude API calls
         try:
@@ -1071,37 +1151,68 @@ def premium():
 def get_report():
     """
     Retrieve and display premium report by session_id.
-    
-    Returns complete HTML (not JSON) that displays in browser.
-    
-    Query params:
-        session_id: Assessment session ID
-    
-    Returns:
-        HTML document with complete report
+
+    Clean report flow:
+    - Load assessment row
+    - Require paid=True
+    - Render final HTML from report_data
+    - Cache report_html as a convenience
+    - Return text/html
     """
     try:
         session_id = request.args.get('session_id')
         if not session_id:
             return jsonify({'success': False, 'error': 'No session_id provided'}), 400
-        
+
         db = get_supabase_client()
         assessment = db.get_assessment(session_id)
-        
+
         if not assessment:
             return jsonify({'success': False, 'error': 'Session not found'}), 404
-        
+
         if not assessment.get('paid'):
             return jsonify({'success': False, 'error': 'Report not purchased'}), 403
-        
-        # Get final HTML (with data injection already included)
-        report_html = assessment.get('report_html')  # Match schema field name
-        if not report_html:
-            return jsonify({'success': False, 'error': 'Report not yet generated'}), 404
-        
-        # Return as HTML (not JSON)
+
+        report_data = assessment.get('report_data')
+
+        # Recovery fallback for older rows created before report_data existed.
+        if not report_data:
+            full_results = assessment.get('full_results') or {}
+            responses = assessment.get('responses') or {}
+            demographics = assessment.get('demographics') or {}
+
+            if not full_results or not responses or not demographics:
+                # Final fallback: if old cached HTML exists, return it.
+                old_report_html = assessment.get('report_html')
+                if old_report_html:
+                    return old_report_html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+                return jsonify({'success': False, 'error': 'Report data not found'}), 404
+
+            report_data = build_report_data(
+                scoring_results=full_results,
+                responses=responses,
+                demographics=demographics,
+                email=assessment.get('report_email'),
+                session_id=session_id
+            )
+            assert_report_data_contract(report_data)
+            db.update_assessment(session_id=session_id, report_data=report_data)
+
+        report_html = render_report(report_data)
+
+        # Cache final HTML, but keep report_data as the source of truth.
+        try:
+            db.update_report(
+                session_id=session_id,
+                report_html=report_html,
+                report_generated_at=datetime.utcnow().isoformat()
+            )
+        except Exception as e:
+            print(f'Non-fatal: failed to cache report_html: {e}')
+
         return report_html, 200, {'Content-Type': 'text/html; charset=utf-8'}
-    
+
     except Exception as e:
         print(f'Get report error: {e}')
         traceback.print_exc()
@@ -1442,100 +1553,60 @@ def not_found(e):
 @app.route('/recover-report-action', methods=['POST'])
 def recover_report_action():
     """
-    Backend for report recovery.
-    Takes session_id, regenerates report, and emails it.
+    Backend for clean report recovery.
+    Takes session_id, rebuilds report_data, renders HTML, and caches it.
     """
     try:
-        data = request.json
+        data = request.json or {}
         session_id = data.get('session_id', '').strip()
-        
+
         if not session_id:
             return jsonify({'success': False, 'error': 'session_id required'}), 400
-        
+
         print(f'[RECOVER] Processing session {session_id}')
-        
-        # Get database client and API key
+
         db = get_supabase_client()
-        api_key = os.environ.get('ANTHROPIC_API_KEY')
-        
-        if not api_key:
-            return jsonify({'success': False, 'error': 'API key not configured'}), 500
-        
-        # Fetch assessment from database
-        print(f'[RECOVER] Fetching assessment data...')
         assessment = db.get_assessment(session_id)
-        
+
         if not assessment:
             return jsonify({'success': False, 'error': 'Session not found in database'}), 404
-        
-        # Extract components
+
         responses = assessment.get('responses', {})
         demographics = assessment.get('demographics', {})
         full_results = assessment.get('full_results', {})
-        percentiles = assessment.get('percentiles', {})
-        
-        # Build results dict for report generator
-        results_for_report = {
-            'percentiles': percentiles,
-            'full_results': full_results,
-            'demographics': demographics,
-            'responses': responses,
-            'session_id': session_id
-        }
-        
-        # Generate report
-        print(f'[RECOVER] Generating premium report...')
-        report_response = generate_premium_report(
-            results=results_for_report,
-            api_key=api_key,
+
+        if not responses or not demographics or not full_results:
+            return jsonify({
+                'success': False,
+                'error': 'Assessment row missing responses, demographics, or full_results'
+            }), 500
+
+        report_data = build_report_data(
+            scoring_results=full_results,
+            responses=responses,
+            demographics=demographics,
+            email=assessment.get('report_email'),
             session_id=session_id
         )
-        
-        if not report_response.get('success'):
-            error_msg = report_response.get('error', 'Unknown error')
-            print(f'[RECOVER] Report generation failed: {error_msg}')
-            return jsonify({'success': False, 'error': f'Report generation failed: {error_msg}'}), 500
-        
-        report_dict = report_response.get('report', {})
-        if not report_dict:
-            return jsonify({'success': False, 'error': 'Report dict is empty'}), 500
-        
-        # DEBUG: Check what's in report_dict
-        print(f'[RECOVER] Report dict keys: {list(report_dict.keys())}')
-        print(f'[RECOVER] opening_statement length: {len(report_dict.get("opening_statement", ""))} chars')
-        print(f'[RECOVER] top_3_findings length: {len(report_dict.get("top_3_findings", ""))} chars')
-        
-        # Build HTML
-        print(f'[RECOVER] Building HTML...')
-        report_html_str = build_report_html(report_dict)
-        if not report_html_str:
-            return jsonify({'success': False, 'error': 'HTML builder failed'}), 500
-        
-        # Generate PDF
-        print(f'[RECOVER] Generating PDF...')
-        pdf_bytes = None
-        try:
-            pdf_bytes = build_report_pdf(report_html_str, demographics=demographics)
-            if pdf_bytes:
-                print(f'[RECOVER] PDF generated ({len(pdf_bytes)} bytes)')
-        except Exception as e:
-            print(f'[RECOVER] PDF generation failed (non-fatal): {e}')
-        
-        # Send email
-        print(f'[RECOVER] Sending email...')
-        resend_api_key = os.environ.get('RESEND_API_KEY')
-        send_report_email(
-            to_email=demographics.get('email', ''),
-            report_html=report_html_str,
-            demographics=demographics,
-            resend_api_key=resend_api_key,
+        assert_report_data_contract(report_data)
+
+        report_html = render_report(report_data)
+
+        db.update_assessment(session_id=session_id, report_data=report_data)
+        db.update_report(
             session_id=session_id,
-            pdf_bytes=pdf_bytes
+            report_html=report_html,
+            report_generated_at=datetime.utcnow().isoformat()
         )
-        
-        print(f'[RECOVER] ✓ Report recovery complete for {session_id}')
-        return jsonify({'success': True, 'message': 'Report generated and emailed successfully'}), 200
-        
+
+        print(f'[RECOVER] ✓ Clean report recovery complete for {session_id}')
+        return jsonify({
+            'success': True,
+            'message': 'Report data and HTML rebuilt successfully',
+            'report_url': make_report_url(session_id),
+            'data_quality': report_data.get('data_quality', {})
+        }), 200
+
     except Exception as e:
         print(f'[RECOVER] Error: {e}')
         traceback.print_exc()
