@@ -109,30 +109,23 @@ def _calculate_demographic_percentiles(full_results, demographics, benchmark):
         percentile_by_age = None
         
         if raw_score is not None:
-            # Percentile by frequency (daily users)
+            # Percentile by frequency and age using the correct function
             try:
-                percentile_by_frequency = benchmark.get_percentile(
-                    raw_score,
+                percentile_results = benchmark.calculate_percentile(
                     dim_name,
-                    segment='daily_users'
+                    raw_score,
+                    demographics
                 )
+                percentile_by_frequency = percentile_results.get("frequency_percentile")
+                percentile_by_age = percentile_results.get("age_group_percentile")
+                
                 print(f'  {dim_name} (daily users): {percentile_by_frequency}th %ile')
-            except Exception as e:
-                print(f'  WARNING: Could not calculate frequency percentile for {dim_name}: {e}')
-                percentile_by_frequency = None
-            
-            # Percentile by age group
-            try:
-                age_group = demographics.get('age_group')
-                if age_group:
-                    percentile_by_age = benchmark.get_percentile(
-                        raw_score,
-                        dim_name,
-                        segment=age_group
-                    )
+                if percentile_by_age:
+                    age_group = demographics.get('age_group')
                     print(f'  {dim_name} ({age_group}): {percentile_by_age}th %ile')
             except Exception as e:
-                print(f'  WARNING: Could not calculate age percentile for {dim_name}: {e}')
+                print(f'  WARNING: Could not calculate percentiles for {dim_name}: {e}')
+                percentile_by_frequency = None
                 percentile_by_age = None
         
         demographic_percentiles[dim_name] = {
