@@ -51,6 +51,86 @@ DIMENSION_ACCENTS = {
     "social_transparency": "#344054",
 }
 
+DIMENSION_RESPONSE_COUNTS = {
+    "reliance": 5,
+    "trust": 4,
+    "verification": 4,
+    "decision_delegation": 5,
+    "human_agency": 5,
+    "emotional_regulation": 4,
+    "disclosure": 4,
+    "thought_partnership": 4,
+    "social_transparency": 4,
+}
+
+
+def dashboard_takeaway(dim, percentile):
+    """Short dashboard-only interpretation: 45-60 words, focused on the participant."""
+    p = pct(percentile)
+    high = p >= 71
+    mid = 41 <= p <= 70
+    if dim == "reliance":
+        if high:
+            return "Your reliance on AI is higher than most participants. This suggests AI has become embedded in your normal thinking workflow, bringing efficiency while increasing the chance that some cognitive tasks feel harder when AI is unavailable."
+        if mid:
+            return "Your reliance sits close to the benchmark range. AI appears useful in your workflow, but not so central that it defines how you function. This suggests a relatively balanced relationship between assistance and independent effort."
+        return "Your reliance on AI is lower than most participants. AI may support parts of your work, but it does not appear central to how you think, decide or function day to day."
+    if dim == "trust":
+        if high:
+            return "Your trust in AI outputs is higher than most participants. This suggests you have developed confidence in the usefulness of AI-generated information, while the key question is whether that confidence remains paired with enough scrutiny when accuracy matters."
+        if mid:
+            return "Your trust sits close to the benchmark range. You appear neither unusually sceptical nor unusually accepting, which suggests your confidence in AI depends on context, task type and the kind of output you are evaluating."
+        return "Your trust in AI outputs is lower than most participants. This suggests you may use AI with more caution, keeping stronger distance between what it produces and what you are prepared to accept as reliable."
+    if dim == "verification":
+        if high:
+            return "Your verification is higher than most participants. You appear more likely to check AI outputs before using them, which can protect accuracy and ownership, though it may also make AI-assisted work feel slower or more effortful."
+        if mid:
+            return "Your verification sits close to the benchmark range. You appear to check AI outputs selectively rather than automatically, which suggests your scrutiny may depend on how important, complex or uncertain the task feels."
+        return "Your verification is lower than most participants. You appear less likely to check AI outputs before using them, which can make AI feel efficient but increases the importance of noticing when a response deserves a second look."
+    if dim == "decision_delegation":
+        if high:
+            return "Your decision delegation is higher than most participants. AI appears to influence choices beyond simple information gathering, which can be useful under complexity or uncertainty but makes it important that final authority still feels clearly yours."
+        if mid:
+            return "Your decision delegation sits close to the benchmark range. You appear to move between independent judgement and AI input depending on the situation, rather than consistently handing decisions over or avoiding AI guidance altogether."
+        return "Your decision delegation is lower than most participants. You appear to keep decision authority close, using AI more as input than as a substitute for your own judgement. This can preserve agency, though it may limit how much support you accept."
+    if dim == "human_agency":
+        if high:
+            return "Your sense of human agency is higher than most participants. You appear to retain a strong feeling of authorship and control when using AI, which helps keep the technology in a supporting role rather than allowing it to quietly set direction."
+        if mid:
+            return "Your sense of human agency sits close to the benchmark range. You appear to retain control in many situations, while still leaving room for AI suggestions to shape some choices, priorities or lines of thought."
+        return "Your sense of human agency is lower than most participants. AI may be shaping parts of your process more than you fully notice, making this a useful dimension to watch as your use evolves."
+    if dim == "emotional_regulation":
+        if high:
+            return "Your emotional reliance on AI is higher than most participants. AI may function as a source of relief, comfort or processing during difficult moments. Whether that becomes helpful or limiting depends on whether it complements, rather than replaces, human support."
+        if mid:
+            return "Your emotional reliance on AI sits close to the benchmark range. You may sometimes use AI to process feelings or reduce overload, but it does not appear to dominate your emotional support system."
+        return "Your emotional reliance on AI is lower than most participants. You appear to keep AI largely outside your emotional life, which may preserve human support channels and maintain a clear boundary around what AI is for."
+    if dim == "disclosure":
+        if high:
+            return "Your disclosure to AI is higher than most participants. You may be more willing to share personal thoughts, uncertainties or private material with AI, which can make it feel useful but also makes boundaries and context especially important."
+        if mid:
+            return "Your disclosure sits close to the benchmark range. You appear to share some personal material with AI while still maintaining limits around what belongs in that space."
+        return "Your disclosure to AI is lower than most participants. You appear to keep personal material relatively bounded, using AI less as a private confidant and more as a practical or cognitive tool."
+    if dim == "thought_partnership":
+        if high:
+            return "Your thought partnership with AI is higher than most participants. You appear to use AI as a space for developing, testing and refining ideas, which can deepen thinking when your own judgement remains active in the exchange."
+        if mid:
+            return "Your thought partnership sits close to the benchmark range. You may use AI for thinking support in some contexts, but it does not appear to be the dominant structure through which your ideas are formed."
+        return "Your thought partnership with AI is lower than most participants. You may use AI more for answers or tasks than for developing your own thinking, which keeps more of the reasoning process internal or human-led."
+    if dim == "social_transparency":
+        if high:
+            return "Your social transparency about AI use is higher than most participants. You appear more open about when AI contributes to your work or thinking, which can reduce ambiguity and make your use easier for others to understand."
+        if mid:
+            return "Your social transparency sits close to the benchmark range. You appear neither highly private nor highly open about AI use, likely adjusting what you disclose depending on the audience and context."
+        return "Your social transparency about AI use is lower than most participants. You may keep AI involvement more private, which can be understandable while social norms are still forming, but may also create gaps between actual and perceived use."
+    return "This dimension shows how one part of your AI behaviour compares with the benchmark population. Read it as a pattern signal rather than a fixed trait."
+
+
+def compact_age_label(label):
+    text = str(label or "Age group").replace("Your age group", "Age").replace("(", "").replace(")", "")
+    text = text.replace("  ", " ").strip()
+    return text or "Age group"
+
 
 # -----------------------------------------------------------------------------
 # Basic helpers
@@ -106,10 +186,8 @@ def percentile_bar(value, label=None):
     label = label or f"{p}th percentile"
     return f'''
     <div class="percentile-block">
-      <div class="percentile-meta">
-        <span>Lower</span>
+      <div class="percentile-meta compact">
         <strong>{esc(label)}</strong>
-        <span>Higher</span>
       </div>
       <div class="percentile-track" aria-label="Percentile {p}">
         <span class="percentile-fill" style="width:{p}%"></span>
@@ -412,19 +490,32 @@ def render_opening(x, report_data=None, age="", country="", date=""):
 def render_dashboard(x):
     cards = ""
     for c in x.get("cards", []):
+        dim = c.get("key") or ""
+        accent = DIMENSION_ACCENTS.get(dim, "#174EA6")
         percentile = pct(c.get("percentile"))
+        comparisons = c.get("comparisons", []) or []
+        age_row = next((r for r in comparisons if r.get("type") in ("age_group", "age")), None)
+        comp_rows = [
+            ("Population", percentile, f"{safe_ordinal(percentile)} percentile"),
+        ]
+        if age_row and age_row.get("percentile") is not None:
+            comp_rows.append((compact_age_label(age_row.get("label")), age_row.get("percentile"), f"{safe_ordinal(age_row.get('percentile'))} percentile"))
         comps = "".join(
-            f'<div class="comparison"><span>{esc(r.get("label"))}</span><strong>{esc(r.get("percentile_label") or safe_ordinal(r.get("percentile")))} %ile</strong></div>'
-            for r in c.get("comparisons", [])
+            f'<div class="comparison"><span>{esc(label)}</span><strong>{esc(text)}</strong></div>'
+            for label, _, text in comp_rows
         )
+        count = DIMENSION_RESPONSE_COUNTS.get(dim)
+        footer = f'<div class="measure-footer">Measured from {count} behavioural indicators</div>' if count else ""
+        insight = dashboard_takeaway(dim, percentile)
         cards += f'''
-        <article class="dimension-card">
+        <article class="dimension-card" style="--dim-accent:{esc(accent)};">
           <div class="card-topline">{esc(c.get('label')).upper()}</div>
+          <p class="muted dimension-definition">{esc(c.get('definition'))}</p>
           <h3>{esc(c.get('plain_score') or c.get('position') or f'{percentile}th percentile')}</h3>
-          <p class="muted">{esc(c.get('definition'))}</p>
           {percentile_bar(percentile, f"{safe_ordinal(percentile)} percentile")}
           <div class="comparison-list">{comps}</div>
-          <p class="insight">{esc(c.get('research_insight') or c.get('insight'))}</p>
+          <p class="insight">{esc(insight)}</p>
+          {footer}
         </article>'''
 
     return f'''
@@ -437,26 +528,42 @@ def render_dashboard(x):
 
 
 def render_typicality(x):
-    def bucket(title, items, empty):
-        if not items:
-            body = f'<p class="muted">{esc(empty)}</p>'
-        else:
-            body = ''.join(
-                f'<div class="typical-row"><span>{esc(i.get("label"))}</span><strong>{esc(i.get("position"))} · {esc(safe_ordinal(i.get("percentile")))} %ile</strong></div>'
-                for i in items
-            )
-        return f'<article class="split-card"><h3>{esc(title)}</h3>{body}</article>'
+    distinctive = x.get('distinctive', []) or []
+    moderate = x.get('moderate', []) or []
+    typical = x.get('typical', []) or []
+    within_range = typical + moderate
+
+    if distinctive:
+        distinctive_list = ''.join(
+            f'<li><strong>{esc(i.get("label"))}</strong><span>{esc(i.get("position"))}</span></li>'
+            for i in distinctive
+        )
+        distinctive_sentence = (
+            f"Your profile is characterised by {len(distinctive)} clearly distinctive "
+            f"dimension{'s' if len(distinctive) != 1 else ''}."
+        )
+    else:
+        distinctive_list = '<li><strong>No dimension</strong><span>clearly outside the benchmark range</span></li>'
+        distinctive_sentence = "No dimension sits clearly outside the benchmark range."
+
+    if within_range:
+        remaining_sentence = (
+            f"The remaining {len(within_range)} dimension{'s' if len(within_range) != 1 else ''} sit closer to the benchmark population, "
+            "suggesting your profile is concentrated around the differences listed below rather than broad change across every aspect of AI use."
+        )
+    else:
+        remaining_sentence = "Nearly every measured dimension sits outside the benchmark range, suggesting a broadly distinctive profile rather than one concentrated in a few areas."
 
     return f'''
-    <section class="page-section">
+    <section class="page-section standing-section">
       {section_kicker('Pattern shape')}
-      <h2>{esc(x.get('title') or 'How Typical Is Your Pattern?')}</h2>
-      <div class="two-col">
-        {bucket('Where you are distinctive', x.get('distinctive', []), 'No dimensions fall cleanly into this range.')}
-        {bucket('Where you are typical', x.get('typical', []), 'No dimensions fall cleanly into this range.')}
+      <h2>Where You Stand</h2>
+      <p class="section-intro">Across the nine behavioural dimensions measured by HCI, {esc(distinctive_sentence)} {esc(remaining_sentence)}</p>
+      <div class="standing-card">
+        <h3>Your strongest areas of distinction</h3>
+        <ul class="standing-list">{distinctive_list}</ul>
       </div>
     </section>'''
-
 
 def render_rare(x):
     combos = x.get("combinations") or []
@@ -836,9 +943,9 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .stat-pill{border-bottom:1px solid var(--line);padding:0 0 13px;margin-bottom:13px}.stat-pill:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}.stat-pill span{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.stat-pill strong{display:block;margin-top:4px;font-size:15px}
 .narrow{max-width:820px}.narrative p{font-size:17px;color:#253044}.opening-section .narrative p:first-child{font-size:22px;color:#1d2939;line-height:1.48}
 .evidence-callout{background:var(--cream);border-left:4px solid var(--accent);padding:26px 30px;margin-top:28px}.evidence-callout h3{margin-top:0}.insight-list{display:grid;gap:12px}.insight-row{display:grid;grid-template-columns:18px 1fr;gap:12px}.insight-row span{width:8px;height:8px;background:var(--accent);border-radius:50%;margin-top:10px}.insight-row p{margin:0}
-.dimension-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{border:1px solid var(--line);background:#fff;padding:24px;break-inside:avoid;page-break-inside:avoid}.dimension-card{min-height:330px;display:flex;flex-direction:column}.dimension-card h3{margin-top:0;font-size:20px}.insight{color:#475467;font-size:14px;margin-top:auto;padding-top:12px;border-top:1px solid var(--line)}
-.percentile-block{margin:20px 0}.percentile-meta{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;color:var(--muted);font-size:12px}.percentile-meta strong{color:var(--accent-dark);font-size:14px}.percentile-meta span:last-child{text-align:right}.percentile-track{height:8px;background:#eef2f6;border-radius:20px;position:relative;margin-top:9px}.percentile-fill{display:block;height:100%;background:linear-gradient(90deg,var(--accent-dark),var(--accent));border-radius:20px}.percentile-marker{position:absolute;top:50%;width:14px;height:14px;background:#fff;border:3px solid var(--accent);border-radius:50%;transform:translate(-50%,-50%)}
-.comparison-list{display:grid;gap:8px;margin:14px 0}.comparison,.evidence-meta,.typical-row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid var(--line);padding-top:9px;color:#475467;font-size:14px}.comparison strong,.evidence-meta strong,.typical-row strong{color:#101828;text-align:right}.two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.split-card h3{margin-top:0}.rarity strong{font-size:20px;color:var(--accent-dark)}
+.dimension-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{border:1px solid var(--line);background:#fff;padding:24px;break-inside:avoid;page-break-inside:avoid}.dimension-card{min-height:280px;display:flex;flex-direction:column;padding:18px 18px 16px;border-left:3px solid var(--dim-accent,var(--accent));box-shadow:0 1px 0 rgba(16,24,40,.04)}.dimension-card h3{margin:14px 0 0 0;font-size:18px;line-height:1.25;color:#101828}.dimension-definition{font-size:13px;line-height:1.4;margin:2px 0 0}.insight{color:#475467;font-size:13px;line-height:1.46;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}.measure-footer{margin-top:auto;padding-top:9px;color:#98A2B3;font-size:11px;border-top:1px solid #f2f4f7}.dimension-card .card-topline{color:var(--dim-accent,var(--accent));margin-bottom:6px}
+.percentile-block{margin:14px 0}.percentile-meta{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;color:var(--muted);font-size:12px}.percentile-meta.compact{display:block;text-align:left}.percentile-meta strong{color:var(--dim-accent,var(--accent-dark));font-size:13px}.percentile-track{height:7px;background:#eef2f6;border-radius:20px;position:relative;margin-top:8px}.percentile-fill{display:block;height:100%;background:var(--dim-accent,var(--accent));border-radius:20px;opacity:.9}.percentile-marker{position:absolute;top:50%;width:15px;height:15px;background:#fff;border:3px solid var(--dim-accent,var(--accent));border-radius:50%;transform:translate(-50%,-50%)}
+.comparison-list{display:grid;gap:6px;margin:10px 0}.comparison,.evidence-meta,.typical-row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid var(--line);padding-top:7px;color:#475467;font-size:12px}.comparison strong,.evidence-meta strong,.typical-row strong{color:#101828;text-align:right}.two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.split-card h3{margin-top:0}.rarity strong{font-size:20px;color:var(--accent-dark)}.standing-card{border:1px solid var(--line);background:#fff;padding:22px 24px;border-left:3px solid var(--accent);max-width:860px}.standing-card h3{margin-top:0}.standing-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}.standing-list li{display:flex;justify-content:space-between;gap:18px;padding-top:10px;border-top:1px solid var(--line);color:#475467}.standing-list li:first-child{border-top:0;padding-top:0}.standing-list strong{color:#101828}.standing-list span{color:#475467;text-align:right}
 .evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.evidence-card p{font-size:15px;color:#344054}.protect-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.protect-card{background:#fcfcfd}.protect-card h3{font-family:Georgia,"Times New Roman",serif;font-size:25px;font-weight:500;margin-top:0}.positioning,.research-note{background:var(--cream);padding:12px;border-left:3px solid var(--accent)}ul{margin:8px 0 0 20px;padding:0}li{margin-bottom:8px}
 .question-group{margin-top:40px}.group-definition{max-width:820px}.question-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.question-card h4{font-size:16px;color:#111827}.answer{color:#344054}.scale{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:12px 0 6px}.scale span{text-align:center;border:1px solid var(--line-strong);padding:7px 0;font-size:12px;color:#475467}.scale .selected{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff;font-weight:700}.scale-label{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}.histogram-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}.dist{height:112px;display:flex;align-items:flex-end;gap:7px;background:#f9fafb;border:1px solid var(--line);padding:26px 10px 22px;border-radius:2px}.dist-bar{flex:1;background:#cfd6df;position:relative;min-height:4px;border-radius:2px 2px 0 0}.dist-bar.answer{background:var(--accent-dark)}.dist-value{position:absolute;top:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#475467}.dist-index{position:absolute;bottom:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#667085}.dist-empty{background:#f2f4f7;border:1px solid var(--line);padding:14px;color:var(--muted);font-size:13px}.comparison-note{font-size:14px;color:#475467;margin-top:14px}.empty-state{background:#f9fafb;border:1px dashed var(--line-strong);padding:18px;color:var(--muted)}
 .deep-dive{background:#101828;color:#fff;padding:42px}.deep-dive h2,.deep-dive h3{color:#fff}.deep-dive .section-kicker{color:#9cc2ff}.deep-dive p{color:#e4e7ec}.quality{background:#fff7ed;border:1px solid #fed7aa;padding:20px}.report-footer{border-top:1px solid var(--line);padding-top:24px;color:var(--muted);font-size:13px}
@@ -1164,5 +1271,5 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 @media(max-width:900px){.hci-report .protect-grid.four{grid-template-columns:1fr}}
 
 @media(max-width:900px){.hci-report{padding:36px 22px}.cover-grid,.dimension-grid,.two-col,.evidence-grid,.protect-grid,.question-grid,.histogram-grid{grid-template-columns:1fr}h1{font-size:44px}h2{font-size:30px}.brand-row{margin-bottom:42px}}
-@media print{body{background:#fff}.hci-report{max-width:none;padding:34px}.page-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:46px}.dimension-grid{grid-template-columns:repeat(3,1fr)}.question-grid{grid-template-columns:repeat(2,1fr)}.cover-panel,.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{box-shadow:none}a{color:inherit}}
+@media print{body{background:#fff}.hci-report{max-width:none;padding:34px}.page-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:46px}.dimension-grid{grid-template-columns:repeat(3,1fr);gap:12px}.dimension-card{min-height:250px;padding:15px}.dimension-card h3{font-size:16px}.insight{font-size:12px}.question-grid{grid-template-columns:repeat(2,1fr)}.cover-panel,.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{box-shadow:none}a{color:inherit}}
 </style>'''
