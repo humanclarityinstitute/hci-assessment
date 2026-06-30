@@ -1029,9 +1029,8 @@ def premium():
         try:
             db.update_assessment(
                 session_id=session_id,
-                premium_report=report_html_str,  # Complete HTML with window.hciRenderingData
-                report_pdf_url=pdf_url,           # Public PDF URL (may be None if upload failed)
-                report_generated_at=datetime.utcnow().isoformat()
+                report_html=report_html_str,  # Complete HTML with window.hciRenderingData (matches schema)
+                report_pdf_url=pdf_url           # Public PDF URL (may be None if upload failed)
             )
             print(f'Report and PDF URL cached for session {session_id}')
         
@@ -1084,7 +1083,7 @@ def get_report():
             return jsonify({'success': False, 'error': 'Report not purchased'}), 403
         
         # Get final HTML (with data injection already included)
-        report_html = assessment.get('premium_report')
+        report_html = assessment.get('report_html')  # Match schema field name
         if not report_html:
             return jsonify({'success': False, 'error': 'Report not yet generated'}), 404
         
