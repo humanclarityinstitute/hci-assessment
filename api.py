@@ -445,6 +445,11 @@ def score():
         
         if not store_result.get('success'):
             print(f'Failed to store assessment: {store_result.get("message")}')
+            return jsonify({
+                'success': False,
+                'error': 'Failed to store assessment in database',
+                'message': store_result.get('message')
+            }), 500
         
         # Return results
         return jsonify({
@@ -692,9 +697,16 @@ def webhook_stripe():
                     return jsonify({'received': True}), 200
                 
                 # Build HTML
-                report_html_str = build_report_html(report_dict)
-                if not report_html_str:
+                # Transform to rendering dict (same as /premium endpoint)
+                rendering_dict = build_report_html(report_dict)
+                if not rendering_dict:
                     print(f'HTML builder failed for session {session_id}')
+                    return jsonify({'received': True}), 200
+                
+                # Render final HTML with data injection (CRITICAL: was missing this step)
+                report_html_str = render_report_html(rendering_dict)
+                if not report_html_str:
+                    print(f'HTML rendering failed for session {session_id}')
                     return jsonify({'received': True}), 200
                 
                 # Generate PDF
