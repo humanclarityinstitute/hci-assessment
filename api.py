@@ -716,7 +716,7 @@ def webhook_stripe():
                 try:
                     db.update_report(
                         session_id=session_id,
-                        premium_report=report_dict
+                        report_html=report_html_str  # Store final HTML (matches /premium flow), use correct column name
                     )
                     print(f'Report cached in DB for session {session_id}')
                 except Exception as e:
