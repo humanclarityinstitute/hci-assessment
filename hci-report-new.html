@@ -809,6 +809,10 @@ function renderReport(renderingDict) {
 
   try {
     console.log('Rendering report...');
+    console.log('[DEBUG] renderingDict keys:', Object.keys(renderingDict));
+    console.log('[DEBUG] section_1_dashboard exists?', 'section_1_dashboard' in renderingDict);
+    console.log('[DEBUG] opening exists?', 'opening' in renderingDict);
+    console.log('[DEBUG] First 500 chars of section_1_dashboard:', JSON.stringify(renderingDict.section_1_dashboard).substring(0, 500));
 
     // Metadata
     const meta = renderingDict.metadata || {};
@@ -960,10 +964,11 @@ async function fetchReport(sessionId, stripeSessionId) {
     console.log('/premium success:', data.success);
 
     if (data.success && data.report) {
+      console.log('Rendering report from /premium response...');
       renderReport(data.report);
       showReport();
     } else {
-      console.error(`/premium: success=${data.success}, report=${!!data.report}`);
+      console.error(`/premium failed: success=${data.success}, report=${!!data.report}`);
       showError();
     }
   } catch (err) {
