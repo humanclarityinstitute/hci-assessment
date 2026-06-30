@@ -152,7 +152,14 @@ def make_report_url(session_id):
     return f"/report?session_id={urllib.parse.quote(str(session_id))}"
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "https://humanclarityinstitute.com",
+            "https://www.humanclarityinstitute.com"
+        ]
+    }
+})
 
 # PDF storage bucket (create as PUBLIC bucket in Supabase)
 REPORT_PDF_BUCKET = os.environ.get('REPORT_PDF_BUCKET', 'reports')
