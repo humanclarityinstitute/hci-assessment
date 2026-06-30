@@ -171,22 +171,47 @@ def build_percentiles_dict(responses: Dict, demographics: Dict, benchmark) -> Di
         
         try:
             # Query benchmark for percentiles
-            percentile_data = benchmark.get_percentile(
+            # get_percentile() returns a single INT (0-100), not a dict
+            percentile_overall = benchmark.get_percentile(
                 question_key,
                 response_value,
-                segment=demographics.get('ai_tool_use_frequency') if demographics else None
+                segment=None  # Get overall percentile
             )
             
-            if percentile_data:
-                percentiles[question_key] = {
-                    'question_text': question_text,
-                    'response_value': response_value,
-                    'percentile_overall': percentile_data.get('percentile_overall', 50),
-                    'percentile_age_group': percentile_data.get('percentile_age_group'),
-                    'percentile_frequency': percentile_data.get('percentile_frequency'),
-                    'dimension': dimension,
-                    'distribution': percentile_data.get('distribution', [])
-                }
+            # Get age group percentile if demographics available
+            percentile_age_group = None
+            if demographics and 'age_group' in demographics:
+                try:
+                    percentile_age_group = benchmark.get_percentile(
+                        question_key,
+                        response_value,
+                        segment=('age_group', demographics.get('age_group'))
+                    )
+                except:
+                    pass
+            
+            # Get frequency percentile if demographics available
+            percentile_frequency = None
+            if demographics and 'ai_tool_use_frequency' in demographics:
+                try:
+                    percentile_frequency = benchmark.get_percentile(
+                        question_key,
+                        response_value,
+                        segment=('ai_tool_use_frequency', demographics.get('ai_tool_use_frequency'))
+                    )
+                except:
+                    pass
+            
+            # Build percentiles dict with INT values, not dict
+            percentiles[question_key] = {
+                'question_text': question_text,
+                'response_value': response_value,
+                'percentile_overall': percentile_overall if percentile_overall is not None else 50,
+                'percentile_age_group': percentile_age_group,
+                'percentile_frequency': percentile_frequency,
+                'dimension': dimension,
+                'distribution': []
+            }
         except Exception as e:
             logger.warning(f"[PERCENTILES] Failed to get percentile for {question_key}: {e}")
             # Fallback: create minimal entry
@@ -194,6 +219,8 @@ def build_percentiles_dict(responses: Dict, demographics: Dict, benchmark) -> Di
                 'question_text': question_text,
                 'response_value': response_value,
                 'percentile_overall': 50,
+                'percentile_age_group': None,
+                'percentile_frequency': None,
                 'dimension': dimension,
                 'distribution': []
             }
