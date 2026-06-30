@@ -38,19 +38,46 @@ def build_sections(report_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build all render-ready report sections.
     """
+    opening = build_opening(report_data)
+    dashboard = build_dashboard(report_data)
+    typicality = build_typicality(report_data)
+    rare = build_rare_combinations(report_data)
+    story = build_behaviour_story(report_data)
+    questions = build_question_profile(report_data)
+    distinctive = build_distinctive_responses(report_data)
+    perception = build_perception_gap(report_data)
+    protect = build_what_to_protect(report_data)
+    trajectory = build_if_nothing_changes(report_data)
+    next_steps = build_next_steps(report_data)
+    deep_dive = build_deep_dive(report_data)
+
     return {
-        "opening": build_opening(report_data),
-        "section_1_dashboard": build_dashboard(report_data),
-        "section_3_typicality": build_typicality(report_data),
-        "section_4_rare_combinations": build_rare_combinations(report_data),
-        "section_5_behaviour_story": build_behaviour_story(report_data),
-        "section_6_question_profile": build_question_profile(report_data),
-        "section_7_distinctive_responses": build_distinctive_responses(report_data),
-        "section_8_perception_gap": build_perception_gap(report_data),
-        "section_9_what_to_protect": build_what_to_protect(report_data),
-        "section_10_if_nothing_changes": build_if_nothing_changes(report_data),
-        "section_11_next_steps": build_next_steps(report_data),
-        "section_12_deep_dive": build_deep_dive(report_data),
+        # Legacy renderer keys
+        "opening": opening,
+        "dashboard": dashboard,
+        "typicality": typicality,
+        "rare": rare,
+        "story": story,
+        "questions": questions,
+        "distinctive": distinctive,
+        "perception": perception,
+        "protect": protect,
+        "trajectory": trajectory,
+        "next_steps": next_steps,
+        "deep_dive": deep_dive,
+
+        # Explicit locked section keys
+        "section_1_dashboard": dashboard,
+        "section_3_typicality": typicality,
+        "section_4_rare_combinations": rare,
+        "section_5_behaviour_story": story,
+        "section_6_question_profile": questions,
+        "section_7_distinctive_responses": distinctive,
+        "section_8_perception_gap": perception,
+        "section_9_what_to_protect": protect,
+        "section_10_if_nothing_changes": trajectory,
+        "section_11_next_steps": next_steps,
+        "section_12_deep_dive": deep_dive,
     }
 
 
