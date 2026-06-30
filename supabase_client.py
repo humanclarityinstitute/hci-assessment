@@ -158,7 +158,7 @@ class SupabaseClient:
         """
         assessment = self.get_assessment(session_id)
         if assessment:
-            return assessment.get('cached_report')
+            return assessment.get('report_html')  # Read from correct column (matches schema)
         return None
     
     def check_session_exists(self, session_id: str) -> bool:
