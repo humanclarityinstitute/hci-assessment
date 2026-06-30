@@ -253,56 +253,29 @@ def participant_meta(age="", country="", date=""):
 
 
 def opening_synthesis_html(text):
-    """Render Claude's opening synthesis as compact premium signal cards."""
+    """Render Claude's opening synthesis as editorial prose with optional subheadings."""
     if not text:
         return render_empty("No opening synthesis was available.")
 
     raw = str(text).strip()
     blocks = [b.strip() for b in raw.split("\n\n") if b.strip()]
-    parsed = []
-
+    html = '<div class="opening-synthesis narrative">'
     for block in blocks:
         lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
         if not lines:
             continue
-
         first = lines[0]
-        heading = first.lstrip("#").strip().strip("*").strip()
-        body_lines = lines[1:]
-
-        # If Claude returns paragraph-only text, keep it graceful.
-        if len(heading) > 110 or heading.endswith("."):
-            heading = "Signal from your profile"
-            body_lines = lines
-
-        evidence = ""
-        body = []
-        for ln in body_lines:
-            clean = ln.strip().strip("*").strip()
-            lower = clean.lower()
-            if lower.startswith("evidence:"):
-                evidence = clean.split(":", 1)[1].strip()
-            else:
-                body.append(clean)
-
-        body_text = " ".join(body).strip()
-        if heading or body_text:
-            parsed.append({"heading": heading, "body": body_text, "evidence": evidence})
-
-    if not parsed:
-        return f'<div class="opening-synthesis narrative"><p>{esc(raw)}</p></div>'
-
-    html = '<div class="opening-synthesis signal-list">'
-    for item in parsed[:3]:
-        evidence_html = f'<div class="signal-evidence"><span>Evidence</span><strong>{esc(item["evidence"])}</strong></div>' if item.get("evidence") else ''
-        html += f"""
-        <article class="signal-card">
-          <h3>{esc(item.get("heading") or "Signal from your profile")}</h3>
-          <p>{esc(item.get("body") or "")}</p>
-          {evidence_html}
-        </article>"""
+        clean_first = first.lstrip("#").strip().strip("*").strip()
+        if (first.startswith("#") or (len(clean_first) <= 95 and len(lines) > 1 and not clean_first.endswith("."))):
+            html += f'<h3>{esc(clean_first)}</h3>'
+            body = " ".join(lines[1:]).strip()
+            if body:
+                html += f'<p>{esc(body)}</p>'
+        else:
+            html += f'<p>{esc(" ".join(lines))}</p>'
     html += '</div>'
     return html
+
 
 def dim_key(value):
     """Normalize a dimension label/key to a CSS/data key."""
@@ -431,9 +404,8 @@ def render_opening(x, report_data=None, age="", country="", date=""):
       <div class="opening-analysis">
         {section_kicker('Initial analysis')}
         <h2>What stands out immediately</h2>
-        <p class="opening-section-note">This section identifies the strongest behavioural signals emerging from your assessment before the report moves into the full benchmark evidence.</p>
         {opening_synthesis_html(findings)}
-        <p class="opening-transition">These signals form the foundation for the rest of the report. The next section shows how your profile appears across the nine HCI behavioural dimensions, before later sections unpack the question-level evidence behind it.</p>
+        <p class="opening-transition">Together, these patterns provide the context for the rest of the report. The next section shows how the same profile appears across the nine HCI behavioural dimensions, before later sections unpack the question-level evidence behind it.</p>
       </div>
     </section>'''
 
@@ -862,7 +834,7 @@ h3{font-size:18px;line-height:1.35;margin:26px 0 10px 0;color:#111827}h4{font-si
 p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:720px}.section-intro{font-size:18px;color:#475467;max-width:760px;margin-bottom:28px}.muted{color:var(--muted)}
 .cover-panel{background:var(--cream);border:1px solid var(--line);padding:22px;box-shadow:var(--shadow)}
 .stat-pill{border-bottom:1px solid var(--line);padding:0 0 13px;margin-bottom:13px}.stat-pill:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}.stat-pill span{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.stat-pill strong{display:block;margin-top:4px;font-size:15px}
-.narrow{max-width:820px}.narrative p{font-size:17px;color:#253044}
+.narrow{max-width:820px}.narrative p{font-size:17px;color:#253044}.opening-section .narrative p:first-child{font-size:22px;color:#1d2939;line-height:1.48}
 .evidence-callout{background:var(--cream);border-left:4px solid var(--accent);padding:26px 30px;margin-top:28px}.evidence-callout h3{margin-top:0}.insight-list{display:grid;gap:12px}.insight-row{display:grid;grid-template-columns:18px 1fr;gap:12px}.insight-row span{width:8px;height:8px;background:var(--accent);border-radius:50%;margin-top:10px}.insight-row p{margin:0}
 .dimension-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{border:1px solid var(--line);background:#fff;padding:24px;break-inside:avoid;page-break-inside:avoid}.dimension-card{min-height:330px;display:flex;flex-direction:column}.dimension-card h3{margin-top:0;font-size:20px}.insight{color:#475467;font-size:14px;margin-top:auto;padding-top:12px;border-top:1px solid var(--line)}
 .percentile-block{margin:20px 0}.percentile-meta{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;color:var(--muted);font-size:12px}.percentile-meta strong{color:var(--accent-dark);font-size:14px}.percentile-meta span:last-child{text-align:right}.percentile-track{height:8px;background:#eef2f6;border-radius:20px;position:relative;margin-top:9px}.percentile-fill{display:block;height:100%;background:linear-gradient(90deg,var(--accent-dark),var(--accent));border-radius:20px}.percentile-marker{position:absolute;top:50%;width:14px;height:14px;background:#fff;border:3px solid var(--accent);border-radius:50%;transform:translate(-50%,-50%)}
@@ -886,144 +858,110 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 
 
 
-/* Opening section V3 — compact premium signal summary */
+/* Opening section V2 — editorial HCI report opening */
 .hci-report .report-opening{
-  margin-bottom:38px;
-  padding-bottom:22px;
+  margin-bottom:58px;
+  padding-bottom:38px;
   border-bottom:1px solid var(--line);
 }
-.hci-report .opening-brand{margin-bottom:16px}
+.hci-report .opening-brand{margin-bottom:34px}
 .hci-report .opening-title-row{
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;
-  gap:22px;
+  gap:28px;
   align-items:start;
-  margin-bottom:13px;
+  margin-bottom:24px;
 }
 .hci-report .opening-title-row h1{
-  font-size:34px;
-  line-height:1.02;
+  font-size:48px;
+  line-height:1.04;
   letter-spacing:-.04em;
   margin:0;
-  max-width:700px;
+  max-width:760px;
 }
 .hci-report .participant-meta{
   align-self:start;
   display:flex;
   flex-wrap:wrap;
   justify-content:flex-end;
-  gap:5px;
-  max-width:440px;
+  gap:7px;
+  max-width:420px;
   color:#667085;
-  font-size:9.5px;
-  line-height:1.35;
-  padding-top:2px;
+  font-size:11px;
+  line-height:1.5;
+  padding-top:6px;
 }
 .hci-report .participant-meta-label{
   width:100%;
   text-align:right;
   text-transform:uppercase;
-  letter-spacing:.13em;
-  font-size:8px;
+  letter-spacing:.12em;
+  font-size:10px;
   font-weight:800;
   color:#98A2B3;
-  margin-bottom:0;
+  margin-bottom:2px;
 }
-.hci-report .participant-meta strong{color:#667085;font-weight:700}
+.hci-report .participant-meta strong{
+  color:#667085;
+  font-weight:700;
+}
 .hci-report .meta-sep{color:#D0D5DD}
 .hci-report .opening-intro{
-  max-width:850px;
-  margin:0 0 18px 0;
-  padding-bottom:14px;
+  max-width:840px;
+  margin:0 0 34px 0;
+  padding-bottom:26px;
   border-bottom:1px solid var(--line);
 }
 .hci-report .opening-intro p{
-  font-size:12.8px;
-  line-height:1.42;
+  font-size:16px;
+  line-height:1.58;
   color:#344054;
-  margin-bottom:6px;
+  margin-bottom:12px;
 }
 .hci-report .opening-intro p:first-child{
   font-family:Georgia,"Times New Roman",serif;
-  font-size:18px;
-  line-height:1.18;
+  font-size:24px;
+  line-height:1.28;
   letter-spacing:-.012em;
   color:#101828;
-  margin-bottom:8px;
+  margin-bottom:14px;
 }
-.hci-report .opening-analysis{max-width:900px}
+.hci-report .opening-analysis{
+  max-width:900px;
+}
 .hci-report .opening-analysis h2{
-  font-size:27px;
-  line-height:1.08;
-  margin-bottom:6px;
+  margin-bottom:16px;
 }
-.hci-report .opening-section-note{
-  max-width:820px;
-  color:#667085;
-  font-size:12px;
-  line-height:1.4;
-  margin:0 0 12px;
-}
-.hci-report .opening-synthesis.signal-list{
-  display:grid;
-  gap:10px;
-  max-width:860px;
-}
-.hci-report .signal-card{
-  border:1px solid var(--line);
-  background:#fff;
-  padding:12px 14px 10px;
-  box-shadow:0 1px 0 rgba(16,24,40,.03);
+.hci-report .opening-synthesis{
+  max-width:840px;
+  padding-left:22px;
   border-left:3px solid var(--accent);
-  break-inside:avoid;
-  page-break-inside:avoid;
 }
-.hci-report .signal-card h3{
+.hci-report .opening-synthesis h3{
   font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-  font-size:13px;
-  line-height:1.22;
-  letter-spacing:.005em;
-  font-weight:800;
-  color:#101828;
-  margin:0 0 5px;
-}
-.hci-report .signal-card p{
-  font-size:12.15px;
-  line-height:1.38;
-  color:#344054;
-  margin:0;
-}
-.hci-report .signal-evidence{
-  margin-top:8px;
-  padding-top:7px;
-  border-top:1px solid #EEF2F6;
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  align-items:center;
-}
-.hci-report .signal-evidence span{
-  text-transform:uppercase;
-  letter-spacing:.12em;
-  color:#98A2B3;
-  font-size:8px;
-  font-weight:800;
-}
-.hci-report .signal-evidence strong{
+  font-size:15px;
+  line-height:1.35;
+  letter-spacing:.01em;
+  font-weight:900;
   color:#0f2f63;
-  font-size:10.5px;
-  font-weight:800;
-  text-align:right;
+  margin:22px 0 8px;
+}
+.hci-report .opening-synthesis h3:first-child{margin-top:0}
+.hci-report .opening-synthesis p{
+  font-size:16px;
+  line-height:1.62;
+  color:#253044;
+  margin-bottom:16px;
 }
 .hci-report .opening-transition{
-  margin:12px 0 0;
-  max-width:860px;
+  margin:26px 0 0;
+  max-width:840px;
   color:#344054;
-  font-size:11.8px;
-  line-height:1.38;
-  padding:8px 10px;
+  font-size:15px;
+  line-height:1.58;
+  padding:16px 18px;
   background:#fbfaf7;
-  border-left:2px solid var(--accent);
+  border-left:3px solid var(--accent);
 }
 @media(max-width:900px){
   .hci-report .opening-title-row{grid-template-columns:1fr}
@@ -1226,5 +1164,5 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 @media(max-width:900px){.hci-report .protect-grid.four{grid-template-columns:1fr}}
 
 @media(max-width:900px){.hci-report{padding:36px 22px}.cover-grid,.dimension-grid,.two-col,.evidence-grid,.protect-grid,.question-grid,.histogram-grid{grid-template-columns:1fr}h1{font-size:44px}h2{font-size:30px}.brand-row{margin-bottom:42px}}
-@media print{body{background:#fff}.hci-report{max-width:none;padding:24px 42px}.page-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:36px}.hci-report .report-opening{margin-bottom:28px;padding-bottom:18px}.hci-report .opening-brand{margin-bottom:12px}.hci-report .opening-title-row{margin-bottom:10px}.hci-report .opening-title-row h1{font-size:30px}.hci-report .participant-meta{font-size:8.8px}.hci-report .participant-meta-label{font-size:7.5px}.hci-report .opening-intro{margin-bottom:14px;padding-bottom:11px}.hci-report .opening-intro p:first-child{font-size:15.8px;margin-bottom:6px}.hci-report .opening-intro p{font-size:11.1px;line-height:1.34;margin-bottom:5px}.hci-report .opening-analysis h2{font-size:22px;margin-bottom:4px}.hci-report .opening-section-note{font-size:10.5px;line-height:1.32;margin-bottom:8px}.hci-report .opening-synthesis.signal-list{gap:7px}.hci-report .signal-card{padding:9px 11px 8px}.hci-report .signal-card h3{font-size:11.2px;margin-bottom:3px}.hci-report .signal-card p{font-size:10.6px;line-height:1.31}.hci-report .signal-evidence{margin-top:6px;padding-top:5px}.hci-report .signal-evidence span{font-size:7.2px}.hci-report .signal-evidence strong{font-size:9px}.hci-report .opening-transition{font-size:10.2px;line-height:1.3;padding:6px 8px;margin-top:8px}.dimension-grid{grid-template-columns:repeat(3,1fr)}.question-grid{grid-template-columns:repeat(2,1fr)}.cover-panel,.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{box-shadow:none}a{color:inherit}}
+@media print{body{background:#fff}.hci-report{max-width:none;padding:34px}.page-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:46px}.dimension-grid{grid-template-columns:repeat(3,1fr)}.question-grid{grid-template-columns:repeat(2,1fr)}.cover-panel,.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{box-shadow:none}a{color:inherit}}
 </style>'''
