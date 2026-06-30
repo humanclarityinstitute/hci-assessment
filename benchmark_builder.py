@@ -13,6 +13,7 @@ and consumed by scoring_engine.py for fast percentile lookups.
 
 import json
 import os
+import re
 import numpy as np
 
 
@@ -104,7 +105,9 @@ class BenchmarkBuilder:
         # Age group percentile (if demographics provided)
         if demographics and 'age_group' in demographics:
             age_group = demographics['age_group']
-            age_data = dim_data.get('by_age_group', {}).get(age_group)
+            age_segments = dim_data.get('by_age_group', {})
+            age_key = self._match_segment_key(age_group, age_segments.keys())
+            age_data = age_segments.get(age_key) if age_key else None
             if age_data and age_data.get('n', 0) >= self.min_sample_size:
                 values = age_data.get('values', [])
                 percentile = self._calculate_percentile_from_distribution(score, values)
@@ -114,7 +117,9 @@ class BenchmarkBuilder:
         # Frequency user percentile (if demographics provided)
         if demographics and 'ai_tool_use_frequency' in demographics:
             frequency = demographics['ai_tool_use_frequency']
-            freq_data = dim_data.get('by_frequency', {}).get(frequency)
+            freq_segments = dim_data.get('by_frequency', {})
+            freq_key = self._match_segment_key(frequency, freq_segments.keys())
+            freq_data = freq_segments.get(freq_key) if freq_key else None
             if freq_data and freq_data.get('n', 0) >= self.min_sample_size:
                 values = freq_data.get('values', [])
                 percentile = self._calculate_percentile_from_distribution(score, values)
@@ -160,7 +165,9 @@ class BenchmarkBuilder:
         
         if demographics and 'age_group' in demographics:
             age_group = demographics['age_group']
-            age_data = dim_data.get('by_age_group', {}).get(age_group)
+            age_segments = dim_data.get('by_age_group', {})
+            age_key = self._match_segment_key(age_group, age_segments.keys())
+            age_data = age_segments.get(age_key) if age_key else None
             if age_data:
                 return age_data.get('mean', 0)
         
@@ -185,93 +192,132 @@ class BenchmarkBuilder:
         # Allow slight flexibility for rounding
         return 0.5 <= score <= 7.5
 
+    @staticmethod
+    def _normalise_key(value):
+        """
+        Normalise demographic/segment keys for robust matching.
+
+        Canonical age values:
+        18-24, 25-34, 35-44, 45-54, 55-64, 65+
+        """
+        if value is None:
+            return None
+        text = str(value).strip().lower()
+        if not text:
+            return None
+
+        # Normalise dashes/spaces.
+        text = text.replace('–', '-').replace('—', '-').replace('−', '-')
+        text = re.sub(r'\s+', ' ', text)
+        compact = text.replace(' ', '')
+
+        aliases = {
+            '18-24': '18-24', '18to24': '18-24', '18_24': '18-24',
+            '25-34': '25-34', '25to34': '25-34', '25_34': '25-34',
+            '35-44': '35-44', '35to44': '35-44', '35_44': '35-44',
+            '45-54': '45-54', '45to54': '45-54', '45_54': '45-54',
+            '55-64': '55-64', '55to64': '55-64', '55_64': '55-64', '55-65': '55-64', '55to65': '55-64',
+            '65+': '65+', 'over65': '65+', '65andover': '65+', '65plus': '65+',
+            'everyday': 'everyday', 'every day': 'everyday', 'daily': 'everyday',
+            'often': 'often', 'veryoften': 'often', 'very often': 'often',
+            'sometimes': 'sometimes', 'occasionally': 'sometimes', 'occasional': 'sometimes',
+            'rarely': 'rarely', 'rare': 'rarely',
+            'never': 'never',
+        }
+        return aliases.get(compact, aliases.get(text, compact))
+
+    @classmethod
+    def _match_segment_key(cls, requested_value, available_keys):
+        """Return the actual benchmark key matching requested_value, or None."""
+        if requested_value is None:
+            return None
+        available_keys = list(available_keys or [])
+        if requested_value in available_keys:
+            return requested_value
+
+        requested_norm = cls._normalise_key(requested_value)
+        for key in available_keys:
+            if cls._normalise_key(key) == requested_norm:
+                return key
+        return None
+
+    def _get_segment_data(self, item_data, segment):
+        """
+        Return segment data for variables/dimensions using robust key matching.
+        If a segment is requested and unavailable, return None. Never fall back to overall.
+        """
+        if not segment:
+            return item_data.get('overall')
+
+        try:
+            segment_type, segment_value = segment
+        except Exception:
+            return None
+
+        segment_key = f'by_{segment_type}'
+        segments = item_data.get(segment_key) or {}
+        if not isinstance(segments, dict):
+            return None
+
+        actual_key = self._match_segment_key(segment_value, segments.keys())
+        if actual_key is None:
+            return None
+        return segments.get(actual_key)
+
     def get_percentile(self, variable_key, response_value, segment=None):
         """
-        Calculate percentile for a specific variable response (for variable-level analysis).
-        
-        Args:
-            variable_key (str): Variable identifier (e.g., 'trust_q1')
-            response_value (int): The response value (1-7 scale)
-            segment (tuple): Optional segment as ('segment_type', 'segment_value')
-                           e.g., ('age_group', '25-34')
-        
-        Returns:
-            int: Percentile rank (0-100)
+        Calculate percentile for a specific variable response.
+
+        Important behaviour:
+        - Overall lookup uses overall values.
+        - Segment lookup uses only the requested segment if it exists and meets MIN_SAMPLE.
+        - Segment lookup NEVER falls back to overall or median/50.
+        - Missing/underpowered segment returns None.
         """
         try:
             if 'variables' not in self.data:
-                return 50  # Safe default
-            
+                return None
             if variable_key not in self.data['variables']:
-                return 50  # Safe default
-            
+                return None
+
             var_data = self.data['variables'][variable_key]
-            
-            # Get the appropriate distribution based on segment
-            if segment:
-                segment_type, segment_value = segment
-                segment_key = f'by_{segment_type}'
-                
-                if segment_key not in var_data:
-                    # Fallback to overall if segment not available
-                    all_values = var_data.get('overall', {}).get('values', [])
-                else:
-                    segment_data = var_data.get(segment_key, {}).get(segment_value, {})
-                    all_values = segment_data.get('values', [])
-            else:
-                # Overall distribution
-                all_values = var_data.get('overall', {}).get('values', [])
-            
-            if not all_values:
-                return 50  # Safe default if no data
-            
-            # Count how many responses are below the given value
-            scores_below = sum(1 for v in all_values if v < response_value)
-            
-            # Calculate percentile
-            percentile = int((scores_below / len(all_values)) * 100)
-            return percentile
-            
+            source = self._get_segment_data(var_data, segment)
+            if not isinstance(source, dict):
+                return None
+
+            if segment and source.get('n', 0) < self.min_sample_size:
+                return None
+
+            values = source.get('values', [])
+            if not values:
+                return None
+
+            return self._calculate_percentile_from_distribution(response_value, values)
+
         except Exception as e:
             print(f"Error calculating percentile for {variable_key}: {str(e)}")
-            return 50
+            return None
 
     def get_sample_size(self, variable_key, segment=None):
         """
         Get the sample size (n) for a variable in the benchmark.
-        
-        Args:
-            variable_key (str): Variable identifier (e.g., 'trust_q1')
-            segment (tuple): Optional segment as ('segment_type', 'segment_value')
-                           e.g., ('age_group', '25-34')
-        
-        Returns:
-            int: Sample size for this variable/segment, or 0 if not found
+
+        Important behaviour:
+        - If a segment is requested and missing, return 0.
+        - Never return overall n for a missing segment.
         """
         try:
             if 'variables' not in self.data:
                 return 0
-            
             if variable_key not in self.data['variables']:
                 return 0
-            
+
             var_data = self.data['variables'][variable_key]
-            
-            # Get the appropriate sample size based on segment
-            if segment:
-                segment_type, segment_value = segment
-                segment_key = f'by_{segment_type}'
-                
-                if segment_key not in var_data:
-                    # Fallback to overall if segment not available
-                    return var_data.get('overall', {}).get('n', 0)
-                
-                segment_data = var_data.get(segment_key, {}).get(segment_value, {})
-                return segment_data.get('n', 0)
-            else:
-                # Overall sample size
-                return var_data.get('overall', {}).get('n', 0)
-                
+            source = self._get_segment_data(var_data, segment)
+            if isinstance(source, dict):
+                return source.get('n', 0)
+            return 0
+
         except Exception as e:
             print(f"Error getting sample size for {variable_key}: {str(e)}")
             return 0
