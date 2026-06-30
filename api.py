@@ -848,6 +848,7 @@ def premium():
             print(f'Report cache hit for session {session_id}')
             return jsonify({
                 'success': True,
+                'session_id': session_id,
                 'report_url': make_report_url(session_id),
                 'cached': True
             }), 200
@@ -948,18 +949,13 @@ def premium():
         )
 
         return jsonify({
-    'success': True,
-    'message': 'Premium report ready',
-
-    # This lets the HCI /report/ page render the report on your own domain
-    # instead of redirecting to Railway.
-    'report': report_data,
-
-    # Keep this for fallback/admin/debug only.
-    'report_url': make_report_url(session_id),
-
-    'narrative_generation': report_data.get('narrative_generation', {})
-}), 200
+            'success': True,
+            'message': 'Premium report ready',
+            'session_id': session_id,
+            'report_url': make_report_url(session_id),
+            'cached': False,
+            'narrative_generation': report_data.get('narrative_generation', {})
+        }), 200
     except Exception as e:
         print(f'Premium endpoint error: {e}')
         traceback.print_exc()
@@ -987,6 +983,7 @@ def get_report():
     """
     try:
         session_id = request.args.get('session_id')
+        print(f'[REPORT] Requested report for session_id={session_id}')
         if not session_id:
             return jsonify({'success': False, 'error': 'No session_id provided'}), 400
 
@@ -1037,6 +1034,7 @@ def get_report():
         except Exception as e:
             print(f'Non-fatal: failed to cache report_html: {e}')
 
+        print(f'[REPORT] Returning HTML report for session_id={session_id}, length={len(report_html)}')
         return report_html, 200, {'Content-Type': 'text/html; charset=utf-8'}
 
     except Exception as e:
