@@ -87,11 +87,11 @@ def build_sections(report_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def build_opening(report_data: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "title": "Executive Summary",
+        "title": "What stands out immediately",
         "statement": (
             "Your relationship with AI is beginning to form a behavioural pattern.\n\n"
-            "This report compares that pattern with more than 10,500 participants across 21 Human Clarity Institute research studies, helping you understand where your AI use is typical, where it is distinctive, and which aspects of your relationship with AI are changing most rapidly.\n\n"
-            "Rather than measuring behaviour as good or bad, this report maps how you currently work with AI and provides evidence you can use to make more informed decisions as that relationship evolves."
+            "This report compares that pattern with more than 10,500 participants across 21 Human Clarity Institute research studies, helping identify where your AI use is typical, where it is distinctive, and which aspects of your relationship with AI are changing most rapidly.\n\n"
+            "Rather than judging behaviour as good or bad, this report maps how you currently work with AI and provides evidence you can use to make more informed decisions as that relationship evolves."
         ),
         "findings": narrative_block(report_data, "opening_findings", opening_fallback(report_data)),
     }
@@ -103,48 +103,53 @@ def opening_fallback(report_data: Dict[str, Any]) -> str:
     gap = inputs.get("largest_perception_gap") or {}
     combo = inputs.get("top_rare_combination") or {}
     top_dims = inputs.get("top_dimensions") or []
+    low_dims = inputs.get("lowest_dimensions") or []
 
     if most:
-        f1_data = f"You answered {most.get('answer_display')} to “{most.get('question_text')}”, placing this response at the {most.get('percentile_label')} percentile."
-        f1_interp = "This is the strongest individual signal in your profile. It shows where your AI behaviour differs most clearly from the benchmark population."
-        f1_why = "The most distinctive response often reveals the part of AI use that has become most visible in daily behaviour."
+        most_text = (
+            f"The strongest individual signal in your profile is your response to: “{most.get('question_text')}”. "
+            f"You answered {most.get('answer_display')}, placing this response at the {most.get('percentile_label')} percentile. "
+            "That makes it the clearest single point of difference between your pattern and the wider benchmark. "
+            "It is not just a score; it is the behaviour in your profile that most sharply reveals how AI has become part of your day-to-day thinking and functioning."
+        )
     else:
-        f1_data = "No single response dominated the profile."
-        f1_interp = "The clearest signal is the overall shape of the profile rather than one unusually high or low answer."
-        f1_why = "Some profiles are defined by one standout behaviour; others are defined by consistency across dimensions."
+        most_text = (
+            "No single response dominates your profile. The stronger signal is the overall shape of the pattern: several dimensions appear to be moving together rather than one item standing apart."
+        )
 
     if gap:
         question = gap.get("question") or gap.get("key") or "one self-perception item"
         perceived = gap.get("perceived_answer") or gap.get("perceived") or "your self-estimate"
         actual = gap.get("actual_percentile")
-        f2_data = f"Around {question}, you described yourself as “{perceived}”, while the benchmark places you around the {ordinal(actual)} percentile."
-        f2_interp = "This shows a meaningful difference between how your AI use feels from the inside and where your responses sit in the wider benchmark."
-        f2_why = "Perception gaps matter because AI use often normalises itself; what becomes routine may stop feeling distinctive."
+        gap_text = (
+            f"There is also a useful gap between how your AI use feels from the inside and where it sits in the benchmark. Around {question}, you described yourself as “{perceived}”, while the data places you around the {ordinal(actual)} percentile. "
+            "That kind of difference matters because AI use often normalises itself. Once a behaviour becomes routine, it can stop feeling distinctive even when it remains unusual compared with the wider population."
+        )
     else:
-        f2_data = "Your self-perception broadly aligns with your benchmark positioning."
-        f2_interp = "This suggests you are noticing your own AI pattern with reasonable accuracy."
-        f2_why = "Alignment matters because accurate self-perception makes later choices about AI use more deliberate."
+        gap_text = (
+            "Your self-perception broadly aligns with your benchmark position. That alignment is meaningful because it suggests you are noticing your own AI pattern with reasonable accuracy rather than only discovering it through the report."
+        )
 
     if combo:
-        f3_data = f"The most unusual combination detected is {combo.get('label_1')} + {combo.get('label_2')}, appearing in roughly {combo.get('rarity_percent')}% of participants."
-        f3_interp = "This pairing shows where two parts of your AI behaviour interact in a way that is less common in the benchmark."
-        f3_why = "Combinations matter because they reveal pattern shape, not just isolated scores."
+        combo_text = (
+            f"The clearest combination signal is {combo.get('label_1')} and {combo.get('label_2')}, a pairing that appears in roughly {combo.get('rarity_percent')}% of participants. "
+            "This matters because the report is not only about high or low scores. It is about how dimensions interact: where one behaviour reinforces another, where it counterbalances it, and where the overall pattern becomes distinctive."
+        )
     else:
-        labels = [d.get("label") for d in top_dims[:4] if isinstance(d, dict) and d.get("label")]
-        f3_data = "No rare dimensional combination was detected." + (f" Your highest dimensions are {', '.join(labels)}." if labels else "")
-        f3_interp = "Your profile is less defined by unusual tension between dimensions and more by the way several dimensions move in the same direction."
-        f3_why = "A coherent profile can be just as meaningful as a rare one, because it shows the overall direction of your AI relationship."
+        top_labels = [d.get("label") for d in top_dims[:3] if isinstance(d, dict) and d.get("label")]
+        low_labels = [d.get("label") for d in low_dims[:2] if isinstance(d, dict) and d.get("label")]
+        combo_text = (
+            "No rare dimensional combination was detected. What appears instead is a coherent pattern: "
+            + (f"your higher dimensions include {', '.join(top_labels)}, " if top_labels else "several dimensions move in the same direction, ")
+            + (f"while your lower dimensions include {', '.join(low_labels)}. " if low_labels else "")
+            + "That coherence is still informative. It suggests your profile is less defined by unusual tension and more by a recognisable overall direction in how AI is becoming integrated into your behaviour."
+        )
 
-    blocks = [
-        ("Your relationship with AI has become load-bearing", f1_data, f1_interp, f1_why),
-        ("Your self-perception sits slightly behind your actual pattern", f2_data, f2_interp, f2_why),
-        ("Your dimensions move together as a coherent whole", f3_data, f3_interp, f3_why),
-    ]
-
-    return "\n\n".join(
-        f"Headline: {headline}\nData: {data}\nInterpretation: {interp}\nWhy it matters: {why}"
-        for headline, data, interp, why in blocks
-    )
+    return "\n\n".join([
+        "Your most distinctive signal\n" + most_text,
+        "How your self-perception compares\n" + gap_text,
+        "The shape of the wider pattern\n" + combo_text,
+    ])
 
 
 # ---------------------------------------------------------------------
