@@ -941,12 +941,18 @@ def premium():
         )
 
         return jsonify({
-            'success': True,
-            'message': 'Premium report ready',
-            'report_url': make_report_url(session_id),
-            'narrative_generation': report_data.get('narrative_generation', {})
-        }), 200
+    'success': True,
+    'message': 'Premium report ready',
 
+    # This lets the HCI /report/ page render the report on your own domain
+    # instead of redirecting to Railway.
+    'report': report_data,
+
+    # Keep this for fallback/admin/debug only.
+    'report_url': make_report_url(session_id),
+
+    'narrative_generation': report_data.get('narrative_generation', {})
+}), 200
     except Exception as e:
         print(f'Premium endpoint error: {e}')
         traceback.print_exc()
