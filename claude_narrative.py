@@ -11,6 +11,7 @@ report_data["narrative_blocks"] = {
     "opening_findings": "...",
     "rare_combinations_narrative": "...",
     "behaviour_story": "...",
+    "deep_dive": "...",
     "perception_gap_narrative": "...",
     "distinctive_responses_narrative": "...",
     "likely_to_continue": "...",
@@ -63,8 +64,9 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
 
     calls = [
         ("profile_narrative", generate_profile_narrative),
-        ("distinctive_responses", generate_distinctive_responses_narrative),
+        ("distinctive_and_perception", generate_distinctive_and_perception_narrative),
         ("trajectory", generate_trajectory_narrative),
+        ("deep_dive", generate_deep_dive_narrative),
     ]
 
     for name, fn in calls:
@@ -91,18 +93,16 @@ def generate_profile_narrative(report_data: Dict[str, Any], api_key: str) -> Dic
         "opening": build_context_for_claude_section(report_data, "opening"),
         "rare_combinations": build_context_for_claude_section(report_data, "rare_combinations"),
         "behaviour_story": build_context_for_claude_section(report_data, "behaviour_story"),
-        "perception_gap": build_context_for_claude_section(report_data, "perception_gap"),
     }
 
     prompt = f"""
 You are writing selected narrative blocks for a Human Clarity Institute premium report.
 
 The report structure is locked. You are NOT creating sections, deciding layout, scoring, or adding advice.
-You are filling only these four narrative blocks:
+You are filling only these three narrative blocks:
 1. opening_findings
 2. rare_combinations_narrative
 3. behaviour_story
-4. perception_gap_narrative
 
 Use only the provided report data and HCI context.
 The tone must be:
@@ -127,8 +127,7 @@ Return VALID JSON ONLY with these exact keys:
 {{
   "opening_findings": "Three paragraphs, 50-75 words each. Finding 1: most distinctive response. Finding 2: perception gap or alignment. Finding 3: rare combination or coherent/no-combo fallback.",
   "rare_combinations_narrative": "If rare combinations exist, explain top 1-2 combinations in 350-500 words total. If none exist, write 120-180 words explaining that no rare combination means the pattern is less defined by tension and more by the score distribution.",
-  "behaviour_story": "300-400 word flowing narrative portrait. Anchor in the highest dimension. Explain cross-dimensional relationships. Ground in HCI observed patterns. No prescriptions.",
-  "perception_gap_narrative": "250-300 words comparing self-perception to benchmark positioning. If no significant gaps, explain alignment as meaningful. Illuminating, not corrective."
+  "behaviour_story": "300-400 word flowing narrative portrait. Anchor in the highest dimension. Explain cross-dimensional relationships. Ground in HCI observed patterns. No prescriptions."
 }}
 """
     return call_claude_json(
@@ -138,7 +137,6 @@ Return VALID JSON ONLY with these exact keys:
             "opening_findings",
             "rare_combinations_narrative",
             "behaviour_story",
-            "perception_gap_narrative",
         ],
     )
 
@@ -147,42 +145,98 @@ Return VALID JSON ONLY with these exact keys:
 # Call 2: Section 7
 # ---------------------------------------------------------------------
 
-def generate_distinctive_responses_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    context = build_context_for_claude_section(report_data, "distinctive_responses")
+# ---------------------------------------------------------------------
+# Call 4: Final Deep Dive
+# ---------------------------------------------------------------------
+
+def generate_deep_dive_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
+    context = build_context_for_claude_section(report_data, "deep_dive")
 
     prompt = f"""
-You are writing HCI report Section 7: "Your Most Distinctive Responses".
+You are writing the final HCI report Deep Dive.
 
-This section already has the raw data list. Your job is to explain why each of the top 7 responses is distinctive and what it reveals.
+This is the capstone section at the end of the report. It should be the most valuable interpretive insight in the report.
+
+The Deep Dive should synthesize the whole report, including earlier narrative blocks when available, while focusing on the single most information-rich pattern selected in the context:
+- rare combination if present,
+- otherwise the most distinctive response,
+- otherwise the largest perception gap,
+- otherwise the highest dimension / overall pattern.
 
 Rules:
-- Do not collapse all responses into one generic essay.
-- Write an intro paragraph, then 7 clearly separated response explanations.
-- For each response, state what is distinctive, why it matters in HCI behavioural terms, and how it connects to the wider profile if relevant.
-- Ground each explanation in the provided HCI signals/context.
+- Write one coherent 600-800 word final section.
+- Explain why this pattern matters.
+- Explain how it connects to the wider profile.
+- Ground the explanation in HCI signals, human reference framing, and benchmark context.
 - Do not prescribe action.
 - Do not diagnose.
-- Do not overclaim.
-
-Tone:
-- observational
-- research-grounded
-- direct to "you"
-- precise
-- curious
+- Do not exaggerate uniqueness.
+- Do not turn this into generic self-help.
+- Use direct plain English and speak to "you".
 
 CONTEXT:
 {json.dumps(context, ensure_ascii=False, indent=2)}
 
 Return VALID JSON ONLY:
 {{
-  "distinctive_responses_narrative": "Intro paragraph plus 7 clearly separated response explanations. 40-70 words per response. Use bold response labels if helpful."
+  "deep_dive": "600-800 word final capstone deep dive. Use 4-6 short paragraphs. Synthesize the report while focusing on the selected pattern. Observational, research-grounded, specific, and autonomy-preserving."
 }}
 """
     return call_claude_json(
         api_key,
         prompt,
-        expected_keys=["distinctive_responses_narrative"],
+        expected_keys=["deep_dive"],
+    )
+
+
+# ---------------------------------------------------------------------
+# Call 2: Section 7 + Section 8
+# ---------------------------------------------------------------------
+
+def generate_distinctive_and_perception_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
+    context = {
+        "distinctive_responses": build_context_for_claude_section(report_data, "distinctive_responses"),
+        "perception_gap": build_context_for_claude_section(report_data, "perception_gap"),
+    }
+
+    prompt = f"""
+You are writing two HCI report narrative blocks:
+1. Section 7: Your Most Distinctive Responses
+2. Section 8: Perception Gap Analysis
+
+The raw data lists/tables already exist. Your job is to explain what they mean.
+
+For Section 7:
+- Write an intro paragraph, then 7 clearly separated response explanations.
+- For each response, explain what is distinctive, why it matters in HCI behavioural terms, and how it connects to the wider profile.
+
+For Section 8:
+- Compare self-perception to benchmark positioning.
+- Frame gaps as illuminating, not corrective.
+- Never say "you were wrong".
+- If alignment is strong, explain why accurate self-perception matters.
+
+Rules:
+- Direct to "you".
+- Observational, research-grounded, curious.
+- No diagnosis.
+- No prescriptions.
+- No unsupported claims.
+- Use provided HCI context only.
+
+CONTEXT:
+{json.dumps(context, ensure_ascii=False, indent=2)}
+
+Return VALID JSON ONLY:
+{{
+  "distinctive_responses_narrative": "Intro paragraph plus 7 clearly separated response explanations. 40-70 words per response. Use bold response labels if helpful.",
+  "perception_gap_narrative": "250-300 words comparing self-perception to benchmark positioning. If no significant gaps, explain alignment as meaningful. Illuminating, not corrective."
+}}
+"""
+    return call_claude_json(
+        api_key,
+        prompt,
+        expected_keys=["distinctive_responses_narrative", "perception_gap_narrative"],
     )
 
 
