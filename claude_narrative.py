@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from typing import Any, Dict, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import traceback
@@ -53,22 +54,40 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
         "calls": {},
     }
 
-    calls = [
+    # Run the first three calls in parallel because they are independent.
+    # Then run Deep Dive last so it can use earlier narrative_blocks as context.
+    parallel_calls = [
         ("profile_narrative", generate_profile_narrative),
         ("distinctive_and_perception", generate_distinctive_and_perception_narrative),
         ("trajectory", generate_trajectory_narrative),
-        ("deep_dive", generate_deep_dive_narrative),
     ]
 
-    for name, fn in calls:
-        try:
-            blocks = fn(report_data, api_key)
-            report_data["narrative_blocks"].update(blocks)
-            status["calls"][name] = "success"
-        except Exception as e:
-            print(f"[CLAUDE] {name} failed: {e}")
-            traceback.print_exc()
-            status["calls"][name] = f"failed: {str(e)}"
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_map = {
+            executor.submit(fn, report_data, api_key): name
+            for name, fn in parallel_calls
+        }
+
+        for future in as_completed(future_map):
+            name = future_map[future]
+            try:
+                blocks = future.result()
+                report_data["narrative_blocks"].update(blocks)
+                status["calls"][name] = "success"
+            except Exception as e:
+                print(f"[CLAUDE] {name} failed: {e}")
+                traceback.print_exc()
+                status["calls"][name] = f"failed: {str(e)}"
+
+    # Deep Dive runs after the first three so it can synthesize the whole report.
+    try:
+        blocks = generate_deep_dive_narrative(report_data, api_key)
+        report_data["narrative_blocks"].update(blocks)
+        status["calls"]["deep_dive"] = "success"
+    except Exception as e:
+        print(f"[CLAUDE] deep_dive failed: {e}")
+        traceback.print_exc()
+        status["calls"]["deep_dive"] = f"failed: {str(e)}"
 
     status["status"] = "complete"
     report_data["narrative_generation"] = status
