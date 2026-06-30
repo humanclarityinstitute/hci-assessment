@@ -24,9 +24,10 @@ except Exception:
     }
     PERCEPTION_QUESTIONS = {}
 try:
-    from question_metadata import QUESTION_TEXT, REVERSE_SCORED_KEYS
+    from question_metadata import QUESTION_MAP, REVERSE_SCORED_KEYS, get_question_text
 except Exception:
-    QUESTION_TEXT, REVERSE_SCORED_KEYS = {}, set()
+    QUESTION_MAP, REVERSE_SCORED_KEYS = {}, set()
+    def get_question_text(key): return key
 try:
     from benchmark_builder import get_benchmark
 except Exception:
@@ -127,42 +128,57 @@ def safe_question_percentile(benchmark, key, answer, segment=None):
     return 50
 
 def normalize_distribution(raw):
-    if raw is None: return None
-    if isinstance(raw, list): vals = raw[:7]
-    elif isinstance(raw, dict):
-        for k in ["percentages", "distribution", "counts"]:
-            if k in raw: return normalize_distribution(raw[k])
-        vals = [raw.get(str(i), raw.get(i, 0)) for i in range(1, 8)]
-    else: return None
-    if len(vals) < 7: return None
-    nums = [clean_float(x, 0) or 0 for x in vals[:7]]
+    """Return 7 percentage values for response options 1..7."""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        for k in ["percentages", "distribution", "counts", "values"]:
+            if k in raw:
+                return normalize_distribution(raw[k])
+        raw = [raw.get(str(i), raw.get(i, 0)) for i in range(1, 8)]
+    if not isinstance(raw, list) or not raw:
+        return None
+    nums = [clean_float(x, 0) or 0 for x in raw]
+    if len(nums) > 7:
+        counts = [0] * 7
+        for v in nums:
+            iv = clean_int(v)
+            if iv is not None and 1 <= iv <= 7:
+                counts[iv - 1] += 1
+        total = sum(counts)
+        if total <= 0:
+            return None
+        return [int(round((c / total) * 100)) for c in counts]
+    if len(nums) < 7:
+        return None
+    nums = nums[:7]
     total = sum(nums)
-    if total <= 0: return None
-    if not (95 <= total <= 105): nums = [(x/total)*100 for x in nums]
+    if total <= 0:
+        return None
+    if not (95 <= total <= 105):
+        nums = [(x / total) * 100 for x in nums]
     return [int(round(x)) for x in nums]
 
 def safe_question_distribution(benchmark, key, segment=None):
-    if benchmark is None: return None
-    for name in ["get_distribution", "get_question_distribution", "get_variable_distribution", "get_response_distribution"]:
-        fn = getattr(benchmark, name, None)
-        if callable(fn):
-            try: return normalize_distribution(fn(key, segment=segment))
-            except TypeError:
-                try: return normalize_distribution(fn(key))
-                except Exception: pass
-            except Exception: pass
-    for attr in ["tables", "benchmark_tables", "data", "benchmarks"]:
-        src = getattr(benchmark, attr, None)
-        if isinstance(src, dict):
-            candidates = [src.get("variables", {}).get(key), src.get("question_distributions", {}).get(key), src.get(key)]
-            for item in candidates:
-                if not item: continue
-                if segment and isinstance(item, dict):
-                    seg_item = item.get("segments", {}).get(segment) or item.get("by_age_group", {}).get(segment) or item.get("age_groups", {}).get(segment) or item.get("by_frequency", {}).get(segment)
-                    dist = normalize_distribution(seg_item)
-                    if dist: return dist
-                dist = normalize_distribution(item)
-                if dist: return dist
+    """Read question response distributions from benchmark.data['variables']."""
+    if benchmark is None:
+        return None
+
+    data = getattr(benchmark, "data", None)
+    if isinstance(data, dict):
+        var_data = (data.get("variables") or {}).get(key)
+        if isinstance(var_data, dict):
+            source = None
+            if segment and isinstance(segment, tuple) and len(segment) == 2:
+                segment_type, segment_value = segment
+                segment_key = f"by_{segment_type}"
+                source = (var_data.get(segment_key) or {}).get(segment_value)
+            if source is None:
+                source = var_data.get("overall")
+            dist = normalize_distribution(source)
+            if dist:
+                return dist
+
     return None
 
 def normalize_dimensions(scoring_results, demographics):
@@ -216,10 +232,13 @@ def build_questions(responses, demographics):
         for key in DIMENSION_VARIABLES.get(dim, []):
             ans=responses.get(key)
             pct=safe_question_percentile(bench,key,ans)
-            pct_age=safe_question_percentile(bench,key,ans,segment=age) if age else None
-            pct_freq=safe_question_percentile(bench,key,ans,segment=usage) if usage else None
-            text = QUESTION_TEXT.get(key, key) if isinstance(QUESTION_TEXT, dict) else key
-            qs.append({"key":key,"dimension":dim,"dimension_label":DIMENSION_LABELS[dim],"question_text":text,"answer":clean_int(ans),"answer_display":f"{ans}/7" if ans is not None else "N/A","percentile":pct,"percentile_label":ordinal(pct) if pct is not None else "N/A","percentile_age_group":pct_age,"percentile_frequency":pct_freq,"distribution_everyone":safe_question_distribution(bench,key),"distribution_age_group":safe_question_distribution(bench,key,segment=age) if age else None,"comparison_statement":f"You answered {ans}/7 — higher than {pct} of 100 people overall" + (f", and higher than {pct_age} of 100 people your age." if pct_age is not None else "."),"is_reverse_scored":key in reverse_set})
+            pct_age=safe_question_percentile(bench,key,ans,segment=("age_group", age)) if age else None
+            pct_freq=safe_question_percentile(bench,key,ans,segment=("frequency", usage)) if usage else None
+            try:
+                text = get_question_text(key)
+            except Exception:
+                text = (QUESTION_MAP.get(key, {}) or {}).get("text", key) if isinstance(QUESTION_MAP, dict) else key
+            qs.append({"key":key,"dimension":dim,"dimension_label":DIMENSION_LABELS[dim],"question_text":text,"answer":clean_int(ans),"answer_display":f"{ans}/7" if ans is not None else "N/A","percentile":pct,"percentile_label":ordinal(pct) if pct is not None else "N/A","percentile_age_group":pct_age,"percentile_frequency":pct_freq,"distribution_everyone":safe_question_distribution(bench,key),"distribution_age_group":safe_question_distribution(bench,key,segment=("age_group", age)) if age else None,"comparison_statement":f"You answered {ans}/7 — higher than {pct} of 100 people overall" + (f", and higher than {pct_age} of 100 people your age." if pct_age is not None else "."),"is_reverse_scored":key in reverse_set})
     return qs
 
 def build_distinctive_responses(questions, limit=7):
@@ -294,4 +313,3 @@ def assert_report_data_contract(report_data: Dict[str,Any]) -> None:
     if len(report_data["dashboard"]) != 9: raise ValueError("dashboard must contain 9 cards")
     if len(report_data["questions"]) != 39: raise ValueError("questions must contain 39 cards")
     if len(report_data["what_to_protect"]) != 4: raise ValueError("what_to_protect must contain 4 fixed sections")
-
