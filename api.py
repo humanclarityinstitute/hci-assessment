@@ -1041,8 +1041,9 @@ def premium():
         try:
             db.update_assessment(
                 session_id=session_id,
-                report_html=report_html_str,  # Complete HTML with window.hciRenderingData (matches schema)
-                report_pdf_url=pdf_url           # Public PDF URL (may be None if upload failed)
+                premium_report=report_dict,        # Store dict in existing premium_report column
+                report_html=report_html_str,    # Store HTML for email/PDF
+                report_pdf_url=pdf_url          # Public PDF URL (may be None if upload failed)
             )
             print(f'Report and PDF URL cached for session {session_id}')
         
