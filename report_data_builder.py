@@ -1,15 +1,34 @@
 """
 report_data_builder.py
-Clean HCI report data contract. Builds ONE canonical report_data object.
+
+Clean HCI report data contract.
+
+This is the single source-of-truth builder for premium report_data.
+
+Core guarantees:
+- Builds 9 dimension cards.
+- Builds 39 question cards.
+- Uses full question text from question_metadata.py.
+- Recalculates missing dimension age/frequency percentiles from benchmark data.
+- Normalises demographic values to benchmark cohort keys.
+- Does NOT silently duplicate overall distributions as age-group distributions.
+- Stores data_quality warnings so missing cohort data is visible during testing.
 """
+
 from __future__ import annotations
+
 from copy import deepcopy
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
+
+# ---------------------------------------------------------------------
+# Imports from existing HCI assets
+# ---------------------------------------------------------------------
+
 try:
-    from scoring_engine import DIMENSION_VARIABLES, PERCEPTION_QUESTIONS
+    from scoring_engine import DIMENSION_VARIABLES
 except Exception:
     DIMENSION_VARIABLES = {
         "reliance": ["rel_q1", "rel_q2", "rel_q3", "rel_q4", "rel_q5"],
@@ -22,35 +41,65 @@ except Exception:
         "thought_partnership": ["thought_q1", "thought_q2", "thought_q3", "thought_q4"],
         "social_transparency": ["soc_q1", "soc_q2", "soc_q3", "soc_q4"],
     }
-    PERCEPTION_QUESTIONS = {}
+
 try:
-    from question_metadata import QUESTION_MAP, REVERSE_SCORED_KEYS, get_question_text
+    from question_metadata import (
+        QUESTION_MAP,
+        REVERSE_SCORED_KEYS,
+        get_question_text,
+        PERCEPTION_QUESTIONS,
+    )
 except Exception:
-    QUESTION_MAP, REVERSE_SCORED_KEYS = {}, set()
-    def get_question_text(key): return key
+    QUESTION_MAP = {}
+    REVERSE_SCORED_KEYS = set()
+    PERCEPTION_QUESTIONS = {}
+    def get_question_text(key):
+        return key
+
 try:
     from benchmark_builder import get_benchmark
 except Exception:
     get_benchmark = None
+
 try:
     from hci_signals_library import SIGNALS
 except Exception:
     SIGNALS = {"dimensions": {}, "trends": {}, "combinations": {}, "human_reference": {}}
+
 try:
     import human_reference_layer as HRL
 except Exception:
     HRL = None
 
+
+# ---------------------------------------------------------------------
+# Locked constants
+# ---------------------------------------------------------------------
+
 DIMENSION_ORDER = [
-    "reliance", "trust", "verification", "decision_delegation", "human_agency",
-    "disclosure", "emotional_regulation", "thought_partnership", "social_transparency"
+    "reliance",
+    "trust",
+    "verification",
+    "decision_delegation",
+    "human_agency",
+    "disclosure",
+    "emotional_regulation",
+    "thought_partnership",
+    "social_transparency",
 ]
+
 DIMENSION_LABELS = {
-    "reliance": "Reliance", "trust": "Trust", "verification": "Verification",
-    "decision_delegation": "Decision Delegation", "human_agency": "Human Agency",
-    "emotional_regulation": "Emotional Regulation", "disclosure": "Disclosure",
-    "thought_partnership": "Thought Partnership", "social_transparency": "Social Transparency",
+    "reliance": "Reliance",
+    "trust": "Trust",
+    "verification": "Verification",
+    "decision_delegation": "Decision Delegation",
+    "human_agency": "Human Agency",
+    "emotional_regulation": "Emotional Regulation",
+    "disclosure": "Disclosure",
+    "thought_partnership": "Thought Partnership",
+    "social_transparency": "Social Transparency",
 }
+
 DIMENSION_DEFINITIONS = {
     "reliance": "How much you depend on AI for thinking and functioning",
     "trust": "How much you believe AI outputs are accurate",
@@ -62,83 +111,369 @@ DIMENSION_DEFINITIONS = {
     "thought_partnership": "How much you use AI as a thinking partner",
     "social_transparency": "How openly you discuss your AI use with others",
 }
+
 SELF_PERCEPTION_MAP = {
-    "perceived_usage": ("Compared to most people, how much do you use AI?", "reliance", "thought_partnership"),
-    "perceived_reliance": ("Compared to most people, how much do you rely on AI?", "reliance", None),
-    "perceived_dependence": ("Compared to most people, how dependent on AI are you?", "reliance", "decision_delegation"),
+    "perceived_usage": {
+        "question": "Compared to most people, how much do you use AI?",
+        "primary_dimension": "reliance",
+        "secondary_dimension": "thought_partnership",
+    },
+    "perceived_reliance": {
+        "question": "Compared to most people, how much do you rely on AI?",
+        "primary_dimension": "reliance",
+        "secondary_dimension": None,
+    },
+    "perceived_dependence": {
+        "question": "Compared to most people, how dependent on AI are you?",
+        "primary_dimension": "reliance",
+        "secondary_dimension": "decision_delegation",
+    },
 }
-PROTECT_DIMENSIONS = ["verification", "human_agency", "emotional_regulation", "thought_partnership"]
 
-def now_iso(): return datetime.now(timezone.utc).isoformat()
-def clean_int(v, default=None):
+PROTECT_DIMENSIONS = [
+    "verification",
+    "human_agency",
+    "emotional_regulation",
+    "thought_partnership",
+]
+
+
+# ---------------------------------------------------------------------
+# Basic helpers
+# ---------------------------------------------------------------------
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def clean_int(value: Any, default: Optional[int] = None) -> Optional[int]:
     try:
-        if v is None or v == "": return default
-        return int(round(float(v)))
-    except Exception: return default
-def clean_float(v, default=None):
+        if value is None or value == "":
+            return default
+        if isinstance(value, str) and value.strip().lower() in {"none", "null", "nan", "n/a"}:
+            return default
+        return int(round(float(value)))
+    except Exception:
+        return default
+
+
+def clean_float(value: Any, default: Optional[float] = None) -> Optional[float]:
     try:
-        if v is None or v == "": return default
-        return float(v)
-    except Exception: return default
-def ordinal(n):
+        if value is None or value == "":
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def ordinal(n: Any) -> str:
     n = clean_int(n, 0) or 0
-    suffix = "th" if 10 <= n % 100 <= 20 else {1:"st",2:"nd",3:"rd"}.get(n%10,"th")
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
     return f"{n}{suffix}"
-def position_phrase(p):
-    p = clean_int(p, 50) or 50
-    if p >= 96: return "exceptionally high"
-    if p >= 86: return "notably high"
-    if p >= 71: return "above population centre"
-    if p >= 41: return "near population centre"
-    if p >= 26: return "below population centre"
-    if p >= 11: return "notably low"
-    return "exceptionally low"
-def protect_position_phrase(p):
-    p = clean_int(p, 50) or 50
-    return "at the high end" if p >= 71 else "in the middle" if p >= 41 else "at the low end"
-def get_benchmark_instance():
-    try: return get_benchmark() if callable(get_benchmark) else None
-    except Exception: return None
 
-def signal_for_dimension(dim, percentile):
-    dims = SIGNALS.get("dimensions", {}) if isinstance(SIGNALS, dict) else {}
-    sig = dims.get(dim) or dims.get(DIMENSION_LABELS.get(dim, dim)) or {}
-    if not isinstance(sig, dict): return str(sig or "")
+
+def position_phrase(percentile: Any) -> str:
     p = clean_int(percentile, 50) or 50
-    return str((sig.get("high") if p >= 50 else sig.get("low")) or sig.get("series") or sig.get("definition") or "")
+    if p >= 96:
+        return "exceptionally high"
+    if p >= 86:
+        return "notably high"
+    if p >= 71:
+        return "above population centre"
+    if p >= 41:
+        return "near population centre"
+    if p >= 26:
+        return "below population centre"
+    if p >= 11:
+        return "notably low"
+    return "exceptionally low"
 
-def hrl_context(dim):
-    if HRL is None: return {}
-    out = {}
-    for attr in ["HBE_FRAMEWORK", "VALUES_SIGNALS", "HUMAN_REFERENCE_LAYER"]:
-        src = getattr(HRL, attr, None)
-        if isinstance(src, dict):
-            item = src.get(dim) or src.get(DIMENSION_LABELS.get(dim, dim))
-            if item: out[attr.lower()] = item
+
+def protect_position_phrase(percentile: Any) -> str:
+    p = clean_int(percentile, 50) or 50
+    if p >= 71:
+        return "at the high end"
+    if p >= 41:
+        return "in the middle"
+    return "at the low end"
+
+
+def get_benchmark_instance():
+    try:
+        return get_benchmark() if callable(get_benchmark) else None
+    except Exception:
+        return None
+
+
+def get_benchmark_data(benchmark: Any) -> Dict[str, Any]:
+    data = getattr(benchmark, "data", None)
+    return data if isinstance(data, dict) else {}
+
+
+def get_min_sample_size(benchmark: Any) -> int:
+    return clean_int(getattr(benchmark, "min_sample_size", None), 30) or 30
+
+
+# ---------------------------------------------------------------------
+# Demographic normalisation
+# ---------------------------------------------------------------------
+
+def canonical_lookup(value: Any, available_keys: List[str]) -> Optional[str]:
+    """
+    Case-insensitive/coercive lookup into benchmark cohort keys.
+    Solves: frontend value "everyday" vs benchmark key "Everyday".
+    """
+    if value is None:
+        return None
+
+    value_str = str(value).strip()
+    if not value_str:
+        return None
+
+    # Exact match first.
+    if value_str in available_keys:
+        return value_str
+
+    lower_map = {str(k).strip().lower(): k for k in available_keys}
+    if value_str.lower() in lower_map:
+        return lower_map[value_str.lower()]
+
+    # Common variants.
+    aliases = {
+        "daily": "everyday",
+        "every day": "everyday",
+        "everyday": "everyday",
+        "often": "often",
+        "very often": "often",
+        "sometimes": "sometimes",
+        "occasionally": "sometimes",
+        "rare": "rarely",
+        "rarely": "rarely",
+        "never": "never",
+        "18 - 24": "18-24",
+        "25 - 34": "25-34",
+        "35 - 44": "35-44",
+        "45 - 54": "45-54",
+        "55 - 64": "55-64",
+        "55-65": "55-64",
+        "over 65": "65+",
+        "65+": "65+",
+    }
+    aliased = aliases.get(value_str.lower())
+    if aliased and aliased in lower_map:
+        return lower_map[aliased]
+
+    return None
+
+
+def infer_available_segment_keys(benchmark: Any, segment_key: str) -> List[str]:
+    """
+    Collect available segment keys across dimensions and variables.
+    segment_key examples:
+    - "by_age_group"
+    - "by_frequency"
+    """
+    data = get_benchmark_data(benchmark)
+    keys = set()
+
+    for collection_name in ["dimensions", "variables"]:
+        collection = data.get(collection_name) or {}
+        if isinstance(collection, dict):
+            for item in collection.values():
+                if isinstance(item, dict):
+                    seg = item.get(segment_key) or {}
+                    if isinstance(seg, dict):
+                        keys.update(seg.keys())
+
+    return sorted(keys)
+
+
+def normalise_demographics_for_benchmark(demographics: Dict[str, Any], benchmark: Any) -> Dict[str, Any]:
+    """
+    Preserve original values, but add benchmark-normalised cohort values.
+    """
+    demographics = dict(demographics or {})
+
+    age_keys = infer_available_segment_keys(benchmark, "by_age_group")
+    freq_keys = infer_available_segment_keys(benchmark, "by_frequency")
+
+    age_original = demographics.get("age_group")
+    freq_original = demographics.get("ai_tool_use_frequency") or demographics.get("frequency")
+
+    demographics["_age_group_original"] = age_original
+    demographics["_frequency_original"] = freq_original
+    demographics["_age_group_benchmark"] = canonical_lookup(age_original, age_keys) or age_original
+    demographics["_frequency_benchmark"] = canonical_lookup(freq_original, freq_keys) or freq_original
+
+    # These are what BenchmarkBuilder.calculate_percentile expects.
+    # Do this only inside report_data_builder; we do not mutate upstream app state.
+    demographics["_benchmark_demographics"] = {
+        "age_group": demographics["_age_group_benchmark"],
+        "gender": demographics.get("gender"),
+        "country": demographics.get("country"),
+        "ai_tool_use_frequency": demographics["_frequency_benchmark"],
+    }
+
+    demographics["_available_age_groups"] = age_keys
+    demographics["_available_frequencies"] = freq_keys
+
+    return demographics
+
+
+# ---------------------------------------------------------------------
+# Signal / HRL helpers
+# ---------------------------------------------------------------------
+
+def signal_for_dimension(dim: str, percentile: Any) -> str:
+    dims = SIGNALS.get("dimensions", {}) if isinstance(SIGNALS, dict) else {}
+    signal = dims.get(dim) or dims.get(DIMENSION_LABELS.get(dim, dim)) or {}
+    if not isinstance(signal, dict):
+        return str(signal or "")
+
+    p = clean_int(percentile, 50) or 50
+    text = (signal.get("high") if p >= 50 else signal.get("low")) or signal.get("series") or signal.get("definition")
+    return str(text or "")
+
+
+def hrl_context(dim: str) -> Dict[str, Any]:
+    if HRL is None:
+        return {}
+
+    out: Dict[str, Any] = {}
+    for attr in ["HBE_FRAMEWORK", "VALUES_SIGNALS", "HUMAN_REFERENCE_LAYER", "REFRAME_LIBRARY", "RESEARCH_INSIGHTS"]:
+        source = getattr(HRL, attr, None)
+        if isinstance(source, dict):
+            item = source.get(dim) or source.get(DIMENSION_LABELS.get(dim, dim))
+            if item is not None:
+                out[attr.lower()] = item
     return out
 
-def safe_question_percentile(benchmark, key, answer, segment=None):
-    if answer is None: return None
-    if benchmark is not None and hasattr(benchmark, "get_percentile"):
-        try: return clean_int(benchmark.get_percentile(key, answer, segment=segment))
-        except TypeError:
-            try: return clean_int(benchmark.get_percentile(key, answer))
-            except Exception: pass
-        except Exception: pass
-    return 50
 
-def normalize_distribution(raw):
-    """Return 7 percentage values for response options 1..7."""
+# ---------------------------------------------------------------------
+# Percentile / distribution helpers
+# ---------------------------------------------------------------------
+
+def calculate_percentile_from_values(score: Any, values: List[Any]) -> Optional[int]:
+    score_f = clean_float(score)
+    if score_f is None or not values:
+        return None
+
+    nums = [clean_float(v) for v in values]
+    nums = [v for v in nums if v is not None]
+    if not nums:
+        return None
+
+    below = sum(1 for v in nums if v < score_f)
+    pct = int((below / len(nums)) * 100)
+    if pct <= 0:
+        return 1
+    return min(pct, 99)
+
+
+def safe_dimension_percentiles(benchmark: Any, dim: str, raw_score: Any, demographics: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calculate overall/age/frequency dimension percentiles directly from benchmark.
+    """
+    out = {
+        "overall": None,
+        "age_group": None,
+        "frequency": None,
+        "n_overall": None,
+        "n_age_group": None,
+        "n_frequency": None,
+    }
+
+    bench_demo = demographics.get("_benchmark_demographics") or demographics
+
+    # Preferred: existing BenchmarkBuilder method.
+    if benchmark is not None and hasattr(benchmark, "calculate_percentile"):
+        try:
+            result = benchmark.calculate_percentile(dim, raw_score, bench_demo) or {}
+            out["overall"] = clean_int(result.get("overall_percentile"))
+            out["age_group"] = clean_int(result.get("age_group_percentile"))
+            out["frequency"] = clean_int(result.get("frequency_percentile"))
+            out["n_overall"] = clean_int(result.get("n_overall"))
+            out["n_age_group"] = clean_int(result.get("n_age_group"))
+            out["n_frequency"] = clean_int(result.get("n_frequency"))
+        except Exception:
+            pass
+
+    # Direct fallback from benchmark.data.
+    data = get_benchmark_data(benchmark)
+    dim_data = (data.get("dimensions") or {}).get(dim) or {}
+    min_n = get_min_sample_size(benchmark)
+
+    if isinstance(dim_data, dict):
+        overall = dim_data.get("overall") or {}
+        if out["overall"] is None:
+            out["overall"] = calculate_percentile_from_values(raw_score, overall.get("values") or [])
+        out["n_overall"] = out["n_overall"] if out["n_overall"] is not None else clean_int(overall.get("n"))
+
+        age_key = bench_demo.get("age_group")
+        age_data = (dim_data.get("by_age_group") or {}).get(age_key) if age_key else None
+        if isinstance(age_data, dict) and clean_int(age_data.get("n"), 0) >= min_n:
+            if out["age_group"] is None:
+                out["age_group"] = calculate_percentile_from_values(raw_score, age_data.get("values") or [])
+            out["n_age_group"] = out["n_age_group"] if out["n_age_group"] is not None else clean_int(age_data.get("n"))
+
+        freq_key = bench_demo.get("ai_tool_use_frequency")
+        freq_data = (dim_data.get("by_frequency") or {}).get(freq_key) if freq_key else None
+        if isinstance(freq_data, dict) and clean_int(freq_data.get("n"), 0) >= min_n:
+            if out["frequency"] is None:
+                out["frequency"] = calculate_percentile_from_values(raw_score, freq_data.get("values") or [])
+            out["n_frequency"] = out["n_frequency"] if out["n_frequency"] is not None else clean_int(freq_data.get("n"))
+
+    return out
+
+
+def safe_question_percentile(benchmark: Any, key: str, answer: Any, segment: Optional[Tuple[str, str]] = None) -> Optional[int]:
+    if answer is None:
+        return None
+
+    # Correct signature: get_percentile(variable_key, response_value, segment=None).
+    if benchmark is not None and hasattr(benchmark, "get_percentile"):
+        try:
+            return clean_int(benchmark.get_percentile(key, answer, segment=segment))
+        except Exception:
+            pass
+
+    # Direct fallback from variable distributions.
+    data = get_benchmark_data(benchmark)
+    var_data = (data.get("variables") or {}).get(key) or {}
+    source = None
+
+    if segment and isinstance(segment, tuple) and len(segment) == 2:
+        seg_type, seg_value = segment
+        source = (var_data.get(f"by_{seg_type}") or {}).get(seg_value)
+
+    if source is None and not segment:
+        source = var_data.get("overall")
+
+    if isinstance(source, dict):
+        return calculate_percentile_from_values(answer, source.get("values") or [])
+
+    return None
+
+
+def normalize_distribution(raw: Any) -> Optional[List[int]]:
+    """
+    Convert raw values/counts/percentages into 7 percentage values for response options 1..7.
+    """
     if raw is None:
         return None
+
     if isinstance(raw, dict):
-        for k in ["percentages", "distribution", "counts", "values"]:
-            if k in raw:
-                return normalize_distribution(raw[k])
+        for key in ["percentages", "distribution", "counts", "values"]:
+            if key in raw:
+                return normalize_distribution(raw.get(key))
         raw = [raw.get(str(i), raw.get(i, 0)) for i in range(1, 8)]
+
     if not isinstance(raw, list) or not raw:
         return None
-    nums = [clean_float(x, 0) or 0 for x in raw]
+
+    nums = [clean_float(v, 0) or 0 for v in raw]
+
+    # Long array = raw response values.
     if len(nums) > 7:
         counts = [0] * 7
         for v in nums:
@@ -149,167 +484,491 @@ def normalize_distribution(raw):
         if total <= 0:
             return None
         return [int(round((c / total) * 100)) for c in counts]
+
     if len(nums) < 7:
         return None
+
     nums = nums[:7]
     total = sum(nums)
     if total <= 0:
         return None
+
     if not (95 <= total <= 105):
         nums = [(x / total) * 100 for x in nums]
+
     return [int(round(x)) for x in nums]
 
-def safe_question_distribution(benchmark, key, segment=None):
-    """Read question response distributions from benchmark.data['variables']."""
-    if benchmark is None:
+
+def safe_question_distribution(benchmark: Any, key: str, segment: Optional[Tuple[str, str]] = None) -> Optional[List[int]]:
+    """
+    Read distribution from benchmark.data["variables"].
+    Important: if a cohort segment is missing, return None.
+    Do NOT silently fallback to overall for age/frequency rows.
+    """
+    data = get_benchmark_data(benchmark)
+    var_data = (data.get("variables") or {}).get(key)
+    if not isinstance(var_data, dict):
         return None
 
-    data = getattr(benchmark, "data", None)
-    if isinstance(data, dict):
-        var_data = (data.get("variables") or {}).get(key)
-        if isinstance(var_data, dict):
-            source = None
-            if segment and isinstance(segment, tuple) and len(segment) == 2:
-                segment_type, segment_value = segment
-                segment_key = f"by_{segment_type}"
-                source = (var_data.get(segment_key) or {}).get(segment_value)
-            if source is None:
-                source = var_data.get("overall")
-            dist = normalize_distribution(source)
-            if dist:
-                return dist
+    source = None
+    if segment and isinstance(segment, tuple) and len(segment) == 2:
+        seg_type, seg_value = segment
+        source = (var_data.get(f"by_{seg_type}") or {}).get(seg_value)
+    else:
+        source = var_data.get("overall")
 
+    if not isinstance(source, dict):
+        return None
+
+    return normalize_distribution(source)
+
+
+def safe_question_sample_size(benchmark: Any, key: str, segment: Optional[Tuple[str, str]] = None) -> Optional[int]:
+    if benchmark is not None and hasattr(benchmark, "get_sample_size"):
+        try:
+            n = benchmark.get_sample_size(key, segment=segment)
+            return clean_int(n)
+        except Exception:
+            pass
+
+    data = get_benchmark_data(benchmark)
+    var_data = (data.get("variables") or {}).get(key) or {}
+    source = None
+    if segment and isinstance(segment, tuple) and len(segment) == 2:
+        seg_type, seg_value = segment
+        source = (var_data.get(f"by_{seg_type}") or {}).get(seg_value)
+    else:
+        source = var_data.get("overall")
+
+    if isinstance(source, dict):
+        return clean_int(source.get("n"))
     return None
 
-def normalize_dimensions(scoring_results, demographics):
+
+# ---------------------------------------------------------------------
+# Main builders
+# ---------------------------------------------------------------------
+
+def normalize_dimensions(scoring_results: Dict[str, Any], demographics: Dict[str, Any], benchmark: Any) -> Dict[str, Dict[str, Any]]:
     src = scoring_results.get("dimension_scores") or scoring_results.get("dimensions") or {}
-    dims = {}
+    dimensions: Dict[str, Dict[str, Any]] = {}
+
     for dim in DIMENSION_ORDER:
         raw = src.get(dim, {}) if isinstance(src, dict) else {}
-        p = clean_int(raw.get("percentile_overall"), 50)
-        dims[dim] = {
-            "key": dim, "label": DIMENSION_LABELS[dim], "definition": DIMENSION_DEFINITIONS[dim],
-            "raw_score": clean_float(raw.get("raw_score")),
-            "percentile": p, "percentile_overall": p,
-            "percentile_age_group": clean_int(raw.get("percentile_age_group")),
-            "percentile_frequency": clean_int(raw.get("percentile_frequency")),
-            "n_overall": clean_int(raw.get("n_overall")), "n_age_group": clean_int(raw.get("n_age_group")), "n_frequency": clean_int(raw.get("n_frequency")),
-            "position": position_phrase(p), "protect_position": protect_position_phrase(p),
-            "research_insight": signal_for_dimension(dim, p), "hrl_context": hrl_context(dim),
-        }
-    return dims
+        raw_score = raw.get("raw_score") if isinstance(raw, dict) else None
 
-def build_dashboard(dimensions, demographics):
-    usage = demographics.get("ai_tool_use_frequency") or demographics.get("frequency") or "Your usage group"
-    age = demographics.get("age_group") or "your age group"
+        # Start with scoring_engine values.
+        overall = clean_int(raw.get("percentile_overall"), None) if isinstance(raw, dict) else None
+        age = clean_int(raw.get("percentile_age_group"), None) if isinstance(raw, dict) else None
+        freq = clean_int(raw.get("percentile_frequency"), None) if isinstance(raw, dict) else None
+        n_overall = clean_int(raw.get("n_overall"), None) if isinstance(raw, dict) else None
+        n_age = clean_int(raw.get("n_age_group"), None) if isinstance(raw, dict) else None
+        n_freq = clean_int(raw.get("n_frequency"), None) if isinstance(raw, dict) else None
+
+        # Recalculate missing values from benchmark.
+        recalculated = safe_dimension_percentiles(benchmark, dim, raw_score, demographics) if raw_score is not None else {}
+
+        if overall is None:
+            overall = clean_int(recalculated.get("overall"), 50)
+        if age is None:
+            age = clean_int(recalculated.get("age_group"))
+        if freq is None:
+            freq = clean_int(recalculated.get("frequency"))
+
+        n_overall = n_overall if n_overall is not None else clean_int(recalculated.get("n_overall"))
+        n_age = n_age if n_age is not None else clean_int(recalculated.get("n_age_group"))
+        n_freq = n_freq if n_freq is not None else clean_int(recalculated.get("n_frequency"))
+
+        p = clean_int(overall, 50)
+
+        dimensions[dim] = {
+            "key": dim,
+            "label": DIMENSION_LABELS[dim],
+            "definition": DIMENSION_DEFINITIONS[dim],
+            "raw_score": clean_float(raw_score),
+            "percentile": p,
+            "percentile_overall": p,
+            "percentile_age_group": age,
+            "percentile_frequency": freq,
+            "n_overall": n_overall,
+            "n_age_group": n_age,
+            "n_frequency": n_freq,
+            "position": position_phrase(p),
+            "protect_position": protect_position_phrase(p),
+            "research_insight": signal_for_dimension(dim, p),
+            "hrl_context": hrl_context(dim),
+        }
+
+    return dimensions
+
+
+def build_dashboard(dimensions: Dict[str, Dict[str, Any]], demographics: Dict[str, Any]) -> List[Dict[str, Any]]:
+    freq_label = demographics.get("_frequency_benchmark") or demographics.get("ai_tool_use_frequency") or "AI users"
+    age_label = demographics.get("_age_group_benchmark") or demographics.get("age_group") or "your age group"
+
     cards = []
     for dim in DIMENSION_ORDER:
         d = dimensions[dim]
         cards.append({
-            "key": dim, "label": d["label"], "definition": d["definition"], "percentile": d["percentile"],
-            "percentile_label": ordinal(d["percentile"]), "plain_score": f"Higher than {d['percentile']} of 100 people",
+            "key": dim,
+            "label": d["label"],
+            "definition": d["definition"],
+            "percentile": d["percentile"],
+            "percentile_label": ordinal(d["percentile"]),
+            "plain_score": f"Higher than {d['percentile']} of 100 people",
             "comparisons": [
-                {"label": f"{usage} users", "percentile": d.get("percentile_frequency"), "percentile_label": ordinal(d.get("percentile_frequency")) if d.get("percentile_frequency") is not None else "N/A", "n": d.get("n_frequency")},
-                {"label": f"Your age group ({age})", "percentile": d.get("percentile_age_group"), "percentile_label": ordinal(d.get("percentile_age_group")) if d.get("percentile_age_group") is not None else "N/A", "n": d.get("n_age_group")},
+                {
+                    "type": "frequency",
+                    "label": f"{freq_label} users",
+                    "percentile": d.get("percentile_frequency"),
+                    "percentile_label": ordinal(d.get("percentile_frequency")) if d.get("percentile_frequency") is not None else "N/A — limited data",
+                    "n": d.get("n_frequency"),
+                },
+                {
+                    "type": "age_group",
+                    "label": f"Your age group ({age_label})",
+                    "percentile": d.get("percentile_age_group"),
+                    "percentile_label": ordinal(d.get("percentile_age_group")) if d.get("percentile_age_group") is not None else "N/A — limited data",
+                    "n": d.get("n_age_group"),
+                },
             ],
             "research_insight": d["research_insight"],
         })
+
     return cards
 
-def build_typicality(dimensions):
-    items=[]
-    for dim in DIMENSION_ORDER:
-        d=dimensions[dim]; p=d["percentile"]
-        bucket = "distinctive" if p > 75 or p < 25 else "typical" if 35 <= p <= 65 else "moderate"
-        items.append({"dimension":dim,"label":d["label"],"percentile":p,"position":position_phrase(p),"bucket":bucket,"distance_from_centre":abs(p-50),"interpretation":d.get("research_insight","")})
-    return {"distinctive": sorted([x for x in items if x["bucket"]=="distinctive"], key=lambda x:x["distance_from_centre"], reverse=True), "typical":[x for x in items if x["bucket"]=="typical"], "moderate":[x for x in items if x["bucket"]=="moderate"], "all": items}
 
-def build_questions(responses, demographics):
-    bench=get_benchmark_instance(); age=demographics.get("age_group"); usage=demographics.get("ai_tool_use_frequency") or demographics.get("frequency")
-    qs=[]
+def build_typicality(dimensions: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    items = []
+    for dim in DIMENSION_ORDER:
+        d = dimensions[dim]
+        p = d["percentile"]
+        bucket = "distinctive" if p > 75 or p < 25 else "typical" if 35 <= p <= 65 else "moderate"
+        items.append({
+            "dimension": dim,
+            "label": d["label"],
+            "percentile": p,
+            "position": position_phrase(p),
+            "bucket": bucket,
+            "distance_from_centre": abs(p - 50),
+            "interpretation": d.get("research_insight", ""),
+        })
+
+    return {
+        "distinctive": sorted([x for x in items if x["bucket"] == "distinctive"], key=lambda x: x["distance_from_centre"], reverse=True),
+        "typical": [x for x in items if x["bucket"] == "typical"],
+        "moderate": [x for x in items if x["bucket"] == "moderate"],
+        "all": items,
+    }
+
+
+def build_questions(responses: Dict[str, Any], demographics: Dict[str, Any], benchmark: Any) -> List[Dict[str, Any]]:
+    age = demographics.get("_age_group_benchmark") or demographics.get("age_group")
+    freq = demographics.get("_frequency_benchmark") or demographics.get("ai_tool_use_frequency") or demographics.get("frequency")
+    age_segment = ("age_group", age) if age else None
+    freq_segment = ("frequency", freq) if freq else None
+
+    questions = []
     reverse_set = set(REVERSE_SCORED_KEYS or [])
+
     for dim in DIMENSION_ORDER:
         for key in DIMENSION_VARIABLES.get(dim, []):
-            ans=responses.get(key)
-            pct=safe_question_percentile(bench,key,ans)
-            pct_age=safe_question_percentile(bench,key,ans,segment=("age_group", age)) if age else None
-            pct_freq=safe_question_percentile(bench,key,ans,segment=("frequency", usage)) if usage else None
+            answer = responses.get(key)
+            pct = safe_question_percentile(benchmark, key, answer)
+            pct_age = safe_question_percentile(benchmark, key, answer, segment=age_segment) if age_segment else None
+            pct_freq = safe_question_percentile(benchmark, key, answer, segment=freq_segment) if freq_segment else None
+
+            n_overall = safe_question_sample_size(benchmark, key)
+            n_age = safe_question_sample_size(benchmark, key, segment=age_segment) if age_segment else None
+            n_freq = safe_question_sample_size(benchmark, key, segment=freq_segment) if freq_segment else None
+
             try:
-                text = get_question_text(key)
+                q_text = get_question_text(key)
             except Exception:
-                text = (QUESTION_MAP.get(key, {}) or {}).get("text", key) if isinstance(QUESTION_MAP, dict) else key
-            qs.append({"key":key,"dimension":dim,"dimension_label":DIMENSION_LABELS[dim],"question_text":text,"answer":clean_int(ans),"answer_display":f"{ans}/7" if ans is not None else "N/A","percentile":pct,"percentile_label":ordinal(pct) if pct is not None else "N/A","percentile_age_group":pct_age,"percentile_frequency":pct_freq,"distribution_everyone":safe_question_distribution(bench,key),"distribution_age_group":safe_question_distribution(bench,key,segment=("age_group", age)) if age else None,"comparison_statement":f"You answered {ans}/7 — higher than {pct} of 100 people overall" + (f", and higher than {pct_age} of 100 people your age." if pct_age is not None else "."),"is_reverse_scored":key in reverse_set})
-    return qs
+                q_text = (QUESTION_MAP.get(key, {}) or {}).get("text", key) if isinstance(QUESTION_MAP, dict) else key
 
-def build_distinctive_responses(questions, limit=7):
-    c=[]
+            questions.append({
+                "key": key,
+                "dimension": dim,
+                "dimension_label": DIMENSION_LABELS[dim],
+                "question_text": q_text,
+                "answer": clean_int(answer),
+                "answer_display": f"{answer}/7" if answer is not None else "N/A",
+                "percentile": pct,
+                "percentile_label": ordinal(pct) if pct is not None else "N/A",
+                "percentile_age_group": pct_age,
+                "percentile_frequency": pct_freq,
+                "n_overall": n_overall,
+                "n_age_group": n_age,
+                "n_frequency": n_freq,
+                "distribution_everyone": safe_question_distribution(benchmark, key),
+                "distribution_age_group": safe_question_distribution(benchmark, key, segment=age_segment) if age_segment else None,
+                "distribution_frequency": safe_question_distribution(benchmark, key, segment=freq_segment) if freq_segment else None,
+                "comparison_statement": build_question_comparison_statement(answer, pct, pct_age),
+                "is_reverse_scored": key in reverse_set,
+            })
+
+    return questions
+
+
+def build_question_comparison_statement(answer: Any, pct: Optional[int], pct_age: Optional[int]) -> str:
+    if answer is None:
+        return "No answer was recorded for this item."
+
+    if pct is None and pct_age is None:
+        return f"You answered {answer}/7. Benchmark comparison is unavailable for this item."
+
+    if pct is not None and pct_age is not None:
+        return f"You answered {answer}/7 — higher than {pct} of 100 people overall, and higher than {pct_age} of 100 people your age."
+
+    if pct is not None:
+        return f"You answered {answer}/7 — higher than {pct} of 100 people overall. Age-group comparison is unavailable."
+
+    return f"You answered {answer}/7. Overall comparison is unavailable, but your age-group percentile is {pct_age}."
+
+
+def build_distinctive_responses(questions: List[Dict[str, Any]], limit: int = 7) -> List[Dict[str, Any]]:
+    candidates = []
     for q in questions:
-        if q.get("percentile") is not None:
-            item=deepcopy(q); item["distance_from_centre"]=abs((clean_int(item["percentile"],50) or 50)-50); c.append(item)
-    return sorted(c, key=lambda x:(x["distance_from_centre"], x.get("percentile") or 0), reverse=True)[:limit]
+        pct = q.get("percentile")
+        if pct is not None:
+            item = deepcopy(q)
+            item["distance_from_centre"] = abs((clean_int(pct, 50) or 50) - 50)
+            candidates.append(item)
 
-def build_perception_gap(scoring_results, responses, dimensions):
-    gaps=scoring_results.get("perception_gaps") or []
-    rows=[]
-    for key,(question,primary,secondary) in SELF_PERCEPTION_MAP.items():
-        rows.append({"key":key,"question":question,"answer":responses.get(key),"primary_dimension":primary,"primary_dimension_label":DIMENSION_LABELS[primary],"actual_percentile":dimensions[primary]["percentile"],"actual_position":position_phrase(dimensions[primary]["percentile"]),"secondary_dimension":secondary,"secondary_percentile":dimensions.get(secondary,{}).get("percentile") if secondary else None})
-    return {"self_perception": rows, "gaps": gaps, "largest_gap": gaps[0] if gaps else None, "has_significant_gap": bool(gaps)}
+    return sorted(candidates, key=lambda x: (x["distance_from_centre"], x.get("percentile") or 0), reverse=True)[:limit]
 
-def combo_signal(d1,d2):
-    combos=SIGNALS.get("combinations", {}) if isinstance(SIGNALS, dict) else {}
+
+def build_perception_gap(scoring_results: Dict[str, Any], responses: Dict[str, Any], dimensions: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    gaps = scoring_results.get("perception_gaps") or []
+    rows = []
+
+    for key, meta in SELF_PERCEPTION_MAP.items():
+        # Prefer metadata file text if present.
+        question = meta["question"]
+        if isinstance(PERCEPTION_QUESTIONS, dict) and isinstance(PERCEPTION_QUESTIONS.get(key), dict):
+            question = PERCEPTION_QUESTIONS[key].get("text") or question
+
+        primary = meta["primary_dimension"]
+        secondary = meta.get("secondary_dimension")
+
+        rows.append({
+            "key": key,
+            "question": question,
+            "answer": responses.get(key),
+            "primary_dimension": primary,
+            "primary_dimension_label": DIMENSION_LABELS[primary],
+            "actual_percentile": dimensions[primary]["percentile"],
+            "actual_position": position_phrase(dimensions[primary]["percentile"]),
+            "secondary_dimension": secondary,
+            "secondary_percentile": dimensions.get(secondary, {}).get("percentile") if secondary else None,
+        })
+
+    return {
+        "self_perception": rows,
+        "gaps": gaps,
+        "largest_gap": gaps[0] if gaps else None,
+        "has_significant_gap": bool(gaps),
+    }
+
+
+def combo_signal(d1: str, d2: str) -> str:
+    combos = SIGNALS.get("combinations", {}) if isinstance(SIGNALS, dict) else {}
     for key in [f"{d1}+{d2}", f"{d2}+{d1}", f"{d1}_{d2}", f"{d2}_{d1}"]:
-        val=combos.get(key)
-        if isinstance(val, str): return val
-        if isinstance(val, dict): return str(val.get("insight") or val.get("series") or val.get("text") or "")
+        val = combos.get(key)
+        if isinstance(val, str):
+            return val
+        if isinstance(val, dict):
+            return str(val.get("insight") or val.get("series") or val.get("text") or "")
     return ""
 
-def build_rare_combinations(scoring_results, dimensions):
-    out=[]
-    for item in (scoring_results.get("rare_combinations") or [])[:2]:
-        combo=item.get("combo") or [None,None]
-        d1=item.get("dimension_1") or combo[0]; d2=item.get("dimension_2") or combo[1]
-        if not d1 or not d2: continue
-        out.append({"dimension_1":d1,"dimension_2":d2,"label_1":DIMENSION_LABELS.get(d1,d1),"label_2":DIMENSION_LABELS.get(d2,d2),"percentile_1":clean_int(item.get("percentile_dim1") or (item.get("percentiles") or [None,None])[0] or dimensions.get(d1,{}).get("percentile")),"percentile_2":clean_int(item.get("percentile_dim2") or (item.get("percentiles") or [None,None])[1] or dimensions.get(d2,{}).get("percentile")),"rarity_percent":clean_float(item.get("rarity_percent") or item.get("frequency_pct") or 5),"description":item.get("description") or f"{DIMENSION_LABELS.get(d1,d1)} + {DIMENSION_LABELS.get(d2,d2)}","research_signal":combo_signal(d1,d2)})
+
+def build_rare_combinations(scoring_results: Dict[str, Any], dimensions: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    raw_combos = scoring_results.get("rare_combinations") or scoring_results.get("patterns", {}).get("rare_combinations", []) or []
+
+    for item in raw_combos[:2]:
+        combo = item.get("combo") or [None, None]
+        d1 = item.get("dimension_1") or combo[0]
+        d2 = item.get("dimension_2") or combo[1]
+
+        if not d1 or not d2:
+            continue
+
+        out.append({
+            "dimension_1": d1,
+            "dimension_2": d2,
+            "label_1": DIMENSION_LABELS.get(d1, d1),
+            "label_2": DIMENSION_LABELS.get(d2, d2),
+            "percentile_1": clean_int(item.get("percentile_dim1") or (item.get("percentiles") or [None, None])[0] or dimensions.get(d1, {}).get("percentile")),
+            "percentile_2": clean_int(item.get("percentile_dim2") or (item.get("percentiles") or [None, None])[1] or dimensions.get(d2, {}).get("percentile")),
+            "rarity_percent": clean_float(item.get("rarity_percent") or item.get("frequency_pct") or 5),
+            "description": item.get("description") or f"{DIMENSION_LABELS.get(d1, d1)} + {DIMENSION_LABELS.get(d2, d2)}",
+            "research_signal": combo_signal(d1, d2),
+        })
+
     return out
 
-def build_what_to_protect(dimensions):
-    return [{"dimension":dim,"label":DIMENSION_LABELS[dim],"definition":DIMENSION_DEFINITIONS[dim],"percentile":dimensions[dim]["percentile"],"positioning":protect_position_phrase(dimensions[dim]["percentile"]),"research_insight":dimensions[dim].get("research_insight",""),"hrl_context":dimensions[dim].get("hrl_context",{})} for dim in PROTECT_DIMENSIONS]
 
-def build_if_nothing_changes(dimensions, demographics):
-    ranked=sorted(dimensions.values(), key=lambda d:d["percentile"], reverse=True)
-    strengths=[d for d in ranked if d["percentile"]>71][:3]
-    monitor=[dimensions[d] for d in ["verification","reliance","human_agency"] if d in dimensions]
-    return {"usage_frequency":demographics.get("ai_tool_use_frequency") or demographics.get("frequency"),"strengths_likely_to_deepen":strengths,"areas_worth_monitoring":monitor[:3],"highest_dimension":ranked[0] if ranked else None,"monitoring_anchor":monitor[0] if monitor else None}
+def build_what_to_protect(dimensions: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "dimension": dim,
+            "label": DIMENSION_LABELS[dim],
+            "definition": DIMENSION_DEFINITIONS[dim],
+            "percentile": dimensions[dim]["percentile"],
+            "positioning": protect_position_phrase(dimensions[dim]["percentile"]),
+            "research_insight": dimensions[dim].get("research_insight", ""),
+            "hrl_context": dimensions[dim].get("hrl_context", {}),
+        }
+        for dim in PROTECT_DIMENSIONS
+    ]
 
-def build_data_quality(report_data):
-    warnings=[]
-    if len(report_data.get("dimensions",{})) != 9: warnings.append("Expected 9 dimensions.")
-    if len(report_data.get("dashboard",[])) != 9: warnings.append("Expected 9 dashboard cards.")
-    if len(report_data.get("questions",[])) != 39: warnings.append(f"Expected 39 question cards, got {len(report_data.get('questions',[]))}.")
-    missing=[q["key"] for q in report_data.get("questions",[]) if not q.get("distribution_everyone")]
-    if missing: warnings.append(f"{len(missing)} question distributions missing; renderer will show fallback.")
-    if sum(1 for q in report_data.get("questions",[]) if q.get("percentile")==50) > 25: warnings.append("Many question percentiles are 50; benchmark question-level lookup may be unavailable or mis-keyed.")
-    return {"ok": not warnings, "warnings": warnings, "generated_at": now_iso()}
 
-def build_report_data(scoring_results: Dict[str,Any], responses: Optional[Dict[str,Any]]=None, demographics: Optional[Dict[str,Any]]=None, email: Optional[str]=None, session_id: Optional[str]=None) -> Dict[str,Any]:
-    if not isinstance(scoring_results, dict): raise ValueError("scoring_results must be a dict")
+def build_if_nothing_changes(dimensions: Dict[str, Dict[str, Any]], demographics: Dict[str, Any]) -> Dict[str, Any]:
+    ranked = sorted(dimensions.values(), key=lambda d: d["percentile"], reverse=True)
+    strengths = [d for d in ranked if d["percentile"] > 71][:3]
+    monitor = [dimensions[d] for d in ["verification", "reliance", "human_agency"] if d in dimensions]
+
+    return {
+        "usage_frequency": demographics.get("_frequency_benchmark") or demographics.get("ai_tool_use_frequency") or demographics.get("frequency"),
+        "strengths_likely_to_deepen": strengths,
+        "areas_worth_monitoring": monitor[:3],
+        "highest_dimension": ranked[0] if ranked else None,
+        "monitoring_anchor": monitor[0] if monitor else None,
+    }
+
+
+def build_data_quality(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    warnings = []
+
+    if len(report_data.get("dimensions", {})) != 9:
+        warnings.append("Expected 9 dimensions.")
+    if len(report_data.get("dashboard", [])) != 9:
+        warnings.append("Expected 9 dashboard cards.")
+    if len(report_data.get("questions", [])) != 39:
+        warnings.append(f"Expected 39 question cards, got {len(report_data.get('questions', []))}.")
+
+    dashboard_missing_age = [c["key"] for c in report_data.get("dashboard", []) if not c["comparisons"][1].get("percentile")]
+    dashboard_missing_freq = [c["key"] for c in report_data.get("dashboard", []) if not c["comparisons"][0].get("percentile")]
+
+    if dashboard_missing_age:
+        warnings.append(f"Dashboard age-group percentile missing for {len(dashboard_missing_age)} dimensions: {dashboard_missing_age}.")
+    if dashboard_missing_freq:
+        warnings.append(f"Dashboard frequency percentile missing for {len(dashboard_missing_freq)} dimensions: {dashboard_missing_freq}.")
+
+    missing_overall_dist = [q["key"] for q in report_data.get("questions", []) if not q.get("distribution_everyone")]
+    missing_age_dist = [q["key"] for q in report_data.get("questions", []) if not q.get("distribution_age_group")]
+
+    if missing_overall_dist:
+        warnings.append(f"{len(missing_overall_dist)} overall question distributions missing.")
+    if missing_age_dist:
+        warnings.append(f"{len(missing_age_dist)} age-group question distributions missing or below threshold.")
+
+    neutral_question_pcts = [q["key"] for q in report_data.get("questions", []) if q.get("percentile") == 50]
+    if len(neutral_question_pcts) > 25:
+        warnings.append("Many question percentiles are 50; benchmark question-level lookup may be unavailable or mis-keyed.")
+
+    demographics = report_data.get("demographics") or {}
+    if demographics.get("_frequency_original") != demographics.get("_frequency_benchmark"):
+        warnings.append(f"Frequency normalised from {demographics.get('_frequency_original')} to {demographics.get('_frequency_benchmark')}.")
+    if demographics.get("_age_group_original") != demographics.get("_age_group_benchmark"):
+        warnings.append(f"Age group normalised from {demographics.get('_age_group_original')} to {demographics.get('_age_group_benchmark')}.")
+
+    return {
+        "ok": not warnings,
+        "warnings": warnings,
+        "generated_at": now_iso(),
+    }
+
+
+# ---------------------------------------------------------------------
+# Public builder
+# ---------------------------------------------------------------------
+
+def build_report_data(
+    scoring_results: Dict[str, Any],
+    responses: Optional[Dict[str, Any]] = None,
+    demographics: Optional[Dict[str, Any]] = None,
+    email: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    if not isinstance(scoring_results, dict):
+        raise ValueError("scoring_results must be a dict")
+
     responses = responses or scoring_results.get("responses") or {}
-    demographics = demographics or scoring_results.get("demographics") or {}
+    original_demographics = demographics or scoring_results.get("demographics") or {}
     session_id = session_id or scoring_results.get("session_id") or str(uuid.uuid4())
-    dimensions=normalize_dimensions(scoring_results, demographics)
-    questions=build_questions(responses, demographics)
-    perception=build_perception_gap(scoring_results, responses, dimensions)
-    rare=build_rare_combinations(scoring_results, dimensions)
-    distinctive=build_distinctive_responses(questions, 7)
-    report_data={"schema_version":"hci_report_data_v1","session_id":session_id,"email":email,"created_at":now_iso(),"demographics":demographics,"responses":responses,"dimensions":dimensions,"dashboard":build_dashboard(dimensions, demographics),"typicality":build_typicality(dimensions),"rare_combinations":rare,"questions":questions,"distinctive_responses":distinctive,"perception_gap":perception,"what_to_protect":build_what_to_protect(dimensions),"if_nothing_changes":build_if_nothing_changes(dimensions, demographics),"synthesis_inputs":{"most_distinctive_variable":distinctive[0] if distinctive else None,"largest_perception_gap":perception.get("largest_gap"),"top_rare_combination":rare[0] if rare else None,"top_dimensions":sorted(dimensions.values(), key=lambda d:d["percentile"], reverse=True)[:5],"lowest_dimensions":sorted(dimensions.values(), key=lambda d:d["percentile"])[:3],"signals":{"trends":SIGNALS.get("trends",{}) if isinstance(SIGNALS,dict) else {},"combinations":SIGNALS.get("combinations",{}) if isinstance(SIGNALS,dict) else {},"human_reference":SIGNALS.get("human_reference",{}) if isinstance(SIGNALS,dict) else {}}},"narrative_blocks":{}}
-    report_data["data_quality"]=build_data_quality(report_data)
+
+    benchmark = get_benchmark_instance()
+    demographics = normalise_demographics_for_benchmark(original_demographics, benchmark)
+
+    dimensions = normalize_dimensions(scoring_results, demographics, benchmark)
+    questions = build_questions(responses, demographics, benchmark)
+    perception = build_perception_gap(scoring_results, responses, dimensions)
+    rare = build_rare_combinations(scoring_results, dimensions)
+    distinctive = build_distinctive_responses(questions, 7)
+
+    report_data = {
+        "schema_version": "hci_report_data_v1",
+        "session_id": session_id,
+        "email": email,
+        "created_at": now_iso(),
+        "demographics": demographics,
+        "responses": responses,
+
+        "dimensions": dimensions,
+        "dashboard": build_dashboard(dimensions, demographics),
+        "typicality": build_typicality(dimensions),
+        "rare_combinations": rare,
+        "questions": questions,
+        "distinctive_responses": distinctive,
+        "perception_gap": perception,
+        "what_to_protect": build_what_to_protect(dimensions),
+        "if_nothing_changes": build_if_nothing_changes(dimensions, demographics),
+
+        "synthesis_inputs": {
+            "most_distinctive_variable": distinctive[0] if distinctive else None,
+            "largest_perception_gap": perception.get("largest_gap"),
+            "top_rare_combination": rare[0] if rare else None,
+            "top_dimensions": sorted(dimensions.values(), key=lambda d: d["percentile"], reverse=True)[:5],
+            "lowest_dimensions": sorted(dimensions.values(), key=lambda d: d["percentile"])[:3],
+            "signals": {
+                "trends": SIGNALS.get("trends", {}) if isinstance(SIGNALS, dict) else {},
+                "combinations": SIGNALS.get("combinations", {}) if isinstance(SIGNALS, dict) else {},
+                "human_reference": SIGNALS.get("human_reference", {}) if isinstance(SIGNALS, dict) else {},
+            },
+        },
+
+        "narrative_blocks": {},
+    }
+
+    report_data["data_quality"] = build_data_quality(report_data)
     return report_data
 
-def assert_report_data_contract(report_data: Dict[str,Any]) -> None:
-    required=["session_id","demographics","dimensions","dashboard","typicality","questions","distinctive_responses","perception_gap","what_to_protect","if_nothing_changes"]
-    missing=[k for k in required if k not in report_data]
-    if missing: raise ValueError(f"report_data missing required keys: {missing}")
-    if len(report_data["dimensions"]) != 9: raise ValueError("report_data must contain 9 dimensions")
-    if len(report_data["dashboard"]) != 9: raise ValueError("dashboard must contain 9 cards")
-    if len(report_data["questions"]) != 39: raise ValueError("questions must contain 39 cards")
-    if len(report_data["what_to_protect"]) != 4: raise ValueError("what_to_protect must contain 4 fixed sections")
+
+def assert_report_data_contract(report_data: Dict[str, Any]) -> None:
+    required = [
+        "session_id",
+        "demographics",
+        "dimensions",
+        "dashboard",
+        "typicality",
+        "questions",
+        "distinctive_responses",
+        "perception_gap",
+        "what_to_protect",
+        "if_nothing_changes",
+    ]
+    missing = [k for k in required if k not in report_data]
+    if missing:
+        raise ValueError(f"report_data missing required keys: {missing}")
+
+    if len(report_data["dimensions"]) != 9:
+        raise ValueError("report_data must contain 9 dimensions")
+    if len(report_data["dashboard"]) != 9:
+        raise ValueError("dashboard must contain 9 cards")
+    if len(report_data["questions"]) != 39:
+        raise ValueError("questions must contain 39 cards")
+    if len(report_data["what_to_protect"]) != 4:
+        raise ValueError("what_to_protect must contain 4 fixed sections")
