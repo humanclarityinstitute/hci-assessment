@@ -127,13 +127,24 @@ Fill exactly these blocks:
 - rare_combinations_narrative
 - behaviour_story
 
-For opening_findings, write exactly three findings. Each finding must use this structure:
-Headline: [short memorable headline]
-Data: [one specific data point only]
-Interpretation: [what the data suggests in plain English]
-Why it matters: [why this finding matters for the reader's AI pattern]
+For opening_findings, write the opening synthesis for the report.
+This is the first personalised interpretation the reader sees. It must make the reader feel the report has actually analysed their pattern.
 
-Separate the three findings with a blank line. Do not number them. Do not use markdown bullets.
+Write 330-430 words total.
+Use exactly three short editorial subheadings, each followed by one substantial paragraph.
+Do not use boxes, bullets, numbering, labels like "Behavioural finding", or fields such as "Data:" / "Interpretation:" / "Why it matters:".
+
+The three subheadings should cover:
+1. The most distinctive signal in the profile.
+2. How the participant's self-perception compares with the benchmark, or alignment if there is no gap.
+3. The wider pattern shape: rare combination if present, otherwise coherent/no-combo interpretation.
+
+Style the subheadings like a premium research report, for example:
+Your most distinctive signal
+How your self-perception compares
+The shape of the wider pattern
+
+Use one or two key statistics where useful, but do not overload the opening with numbers. Later sections provide the evidence.
 
 Tone:
 - observational
@@ -154,7 +165,7 @@ Use only this context:
     schema = {
         "opening_findings": {
             "type": "string",
-            "description": "Exactly three structured findings separated by blank lines. Each finding must contain Headline, Data, Interpretation, and Why it matters lines. Finding 1: most distinctive response. Finding 2: perception gap or alignment. Finding 3: rare combination or coherent/no-combo fallback."
+            "description": "330-430 word opening synthesis with exactly three short editorial subheadings, each followed by one substantial paragraph. No bullets, no numbering, no 'Behavioural finding', and no Data/Interpretation/Why-it-matters labels."
         },
         "rare_combinations_narrative": {
             "type": "string",
