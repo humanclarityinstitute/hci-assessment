@@ -127,6 +127,14 @@ Fill exactly these blocks:
 - rare_combinations_narrative
 - behaviour_story
 
+For opening_findings, write exactly three findings. Each finding must use this structure:
+Headline: [short memorable headline]
+Data: [one specific data point only]
+Interpretation: [what the data suggests in plain English]
+Why it matters: [why this finding matters for the reader's AI pattern]
+
+Separate the three findings with a blank line. Do not number them. Do not use markdown bullets.
+
 Tone:
 - observational
 - research-grounded
@@ -146,7 +154,7 @@ Use only this context:
     schema = {
         "opening_findings": {
             "type": "string",
-            "description": "Three paragraphs, 50-75 words each. Finding 1: most distinctive response. Finding 2: perception gap or alignment. Finding 3: rare combination or coherent/no-combo fallback."
+            "description": "Exactly three structured findings separated by blank lines. Each finding must contain Headline, Data, Interpretation, and Why it matters lines. Finding 1: most distinctive response. Finding 2: perception gap or alignment. Finding 3: rare combination or coherent/no-combo fallback."
         },
         "rare_combinations_narrative": {
             "type": "string",
