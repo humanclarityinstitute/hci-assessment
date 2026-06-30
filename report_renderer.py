@@ -20,8 +20,8 @@ DIMENSION_ORDER = [
     "decision_delegation",
     "human_agency",
     "emotional_regulation",
-    "thought_partnership",
     "disclosure",
+    "thought_partnership",
     "social_transparency",
 ]
 
@@ -93,7 +93,11 @@ def percentile_bar(value, label=None):
 
 
 def dist(values, answer=None):
-    """Render a 1-7 response distribution histogram."""
+    """Render a 1-7 response distribution histogram.
+
+    Accepts either percentages or raw counts. Always displays percentages and
+    scales bars to the largest percentage in the 1-7 response distribution.
+    """
     if not values:
         return '<div class="dist-empty">Distribution data unavailable</div>'
 
@@ -103,17 +107,27 @@ def dist(values, answer=None):
         ans = None
 
     vals = list(values[:7])
-    # Values are usually percentages already. If all are tiny / counts, scale by max.
     try:
-        numeric = [float(v or 0) for v in vals]
+        numeric = [max(0.0, float(v or 0)) for v in vals]
     except Exception:
-        numeric = [0 for _ in vals]
+        numeric = [0.0 for _ in vals]
 
-    max_v = max(numeric) if numeric else 0
+    total = sum(numeric)
+    if total > 0:
+        if total > 105 or max(numeric) > 100:
+            percents = [(v / total) * 100 for v in numeric]
+        elif 95 <= total <= 105:
+            percents = numeric
+        else:
+            percents = [(v / total) * 100 for v in numeric]
+    else:
+        percents = [0.0 for _ in numeric]
+
+    max_p = max(percents) if percents else 0
     html = '<div class="dist" role="img" aria-label="Response distribution from 1 to 7">'
-    for i, raw in enumerate(numeric, 1):
+    for i, raw in enumerate(percents, 1):
         cls = "dist-bar answer" if ans == i else "dist-bar"
-        height = max(4, min(100, int(round(raw if max_v <= 100 else (raw / max_v) * 100))))
+        height = 4 if max_p <= 0 else max(4, min(100, int(round((raw / max_p) * 100))))
         shown = int(round(raw))
         html += f'''
           <div class="{cls}" style="height:{height}%">
@@ -121,6 +135,39 @@ def dist(values, answer=None):
             <span class="dist-index">{i}</span>
           </div>'''
     return html + "</div>"
+
+
+def position_band(percentile):
+    p = pct(percentile)
+    if p >= 71:
+        return "at the high end"
+    if p >= 41:
+        return "in the middle"
+    return "at the low end"
+
+
+def extract_dimension_percentiles(report_data):
+    """Best-effort extraction of dimension percentiles from canonical report_data."""
+    out = {}
+    candidates = [
+        report_data.get("dimensions"),
+        report_data.get("dimension_scores"),
+        report_data.get("scores"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            for key, val in candidate.items():
+                if isinstance(val, dict):
+                    out[key] = val.get("percentile") or val.get("overall_percentile") or val.get("score_percentile") or val.get("percentile_overall")
+                else:
+                    out[key] = val
+        elif isinstance(candidate, list):
+            for item in candidate:
+                if isinstance(item, dict):
+                    key = item.get("key") or item.get("dimension") or item.get("name")
+                    if key:
+                        out[str(key).lower().replace(" ", "_")] = item.get("percentile") or item.get("overall_percentile") or item.get("score_percentile")
+    return out
 
 
 def stat_pill(label, value):
@@ -186,7 +233,7 @@ def render_report(report_data):
   {render_questions(s.get('questions') or {}, d)}
   {render_distinctive(s.get('distinctive') or {})}
   {render_perception(s.get('perception') or {})}
-  {render_protect(s.get('protect') or {})}
+  {render_protect(s.get('protect') or {}, report_data)}
   {render_trajectory(s.get('trajectory') or {})}
   {render_next(s.get('next_steps') or {})}
   {render_deep_dive(deep) if deep else ''}
@@ -365,26 +412,117 @@ def render_perception(x):
     </section>'''
 
 
-def render_protect(x):
+def render_protect(x, report_data=None):
+    """Render locked What to Protect section.
+
+    The product spec requires four capacity sections every time:
+    Verification, Human Agency, Emotional Boundaries, and Thought Partnership.
+    If report_sections supplies items, render them. Otherwise use the locked
+    static templates with the user's percentile inserted where available.
+    """
+    supplied = x.get("items", []) if isinstance(x, dict) else []
+    if supplied:
+        items = ""
+        for i in supplied:
+            watch = "".join(f"<li>{esc(w)}</li>" for w in i.get("watch", []))
+            items += f'''
+            <article class="protect-card">
+              <div class="card-topline">What to notice</div>
+              <h3>{esc(i.get('title'))}</h3>
+              <p class="muted"><strong>{esc(i.get('label'))}</strong>: {esc(i.get('definition'))}</p>
+              <p class="positioning">Your position: <strong>{esc(i.get('positioning'))}</strong> ({esc(safe_ordinal(i.get('percentile')))} %ile)</p>
+              <p>{esc(i.get('intro'))}</p>
+              <h4>What to watch for</h4>
+              <ul>{watch}</ul>
+              <p class="research-note"><strong>What HCI’s research shows:</strong> {esc(i.get('research'))}</p>
+              <p>{esc(i.get('closing'))}</p>
+            </article>'''
+        return f'''<section class="page-section protect-section">{section_kicker("Human skills")}
+          <h2>{esc(x.get("title") or "What to Protect")}</h2>
+          <p class="section-intro">{esc(x.get("subtitle") or "Four capacities worth staying aware of as your AI use evolves.")}</p>
+          <div class="protect-grid">{items}</div>
+        </section>'''
+
+    dims = extract_dimension_percentiles(report_data or {})
+    templates = [
+        {
+            "key": "verification",
+            "title": "When verification becomes tiring",
+            "label": "Verification capacity",
+            "research": "Most people verify AI outputs before acting, but the research also shows that verification becomes cognitively costly and increasingly selective.",
+            "watch": [
+                "Noticing yourself checking less than usual",
+                "Feeling relief or efficiency when you skip verification",
+                "Finding it hard to care whether an output is accurate",
+                "Moving from verify everything to verify selectively without noticing it",
+            ],
+            "closing": "You decide what level of verification matters to you.",
+        },
+        {
+            "key": "human_agency",
+            "title": "When drift happens without you choosing it",
+            "label": "Human agency",
+            "research": "At the identity level, people often retain a strong sense of responsibility. At the process level, small AI suggestions can still steer decisions through convenience.",
+            "watch": [
+                "Accepting AI suggestions without thinking them through first",
+                "Using AI defaults instead of customizing your approach",
+                "Realizing AI's framing has become your first instinct",
+                "Finding it harder to develop your own position before consulting AI",
+            ],
+            "closing": "You decide if this matters to you.",
+        },
+        {
+            "key": "emotional_regulation",
+            "title": "If emotional reliance becomes substitution",
+            "label": "Emotional boundaries",
+            "research": "AI can offer a useful space for reflection, but it is worth noticing the difference between AI as a supplement to human connection and AI as a replacement for it.",
+            "watch": [
+                "Turning to AI before turning to people when you are struggling",
+                "Preferring AI conversations to human ones for difficult feelings",
+                "Finding it harder to sit with discomfort without AI input",
+                "Realizing emotional support from AI feels more available than human support",
+            ],
+            "closing": "You decide if emotional support from AI is right for you.",
+        },
+        {
+            "key": "thought_partnership",
+            "title": "When thinking with AI becomes thinking for you",
+            "label": "Thought partnership",
+            "research": "Genuine partnership requires you to retain authorship. The strongest patterns use AI to challenge and develop thinking, not replace it.",
+            "watch": [
+                "Defaulting to AI's framing instead of developing your own position first",
+                "Struggling to think independently when AI is not available",
+                "Finding it hard to disagree with AI once it has stated a position",
+                "Using AI to avoid the discomfort of thinking through hard problems alone",
+            ],
+            "closing": "You decide if this matters to you.",
+        },
+    ]
+
     items = ""
-    for i in x.get("items", []):
-        watch = "".join(f"<li>{esc(w)}</li>" for w in i.get("watch", []))
+    for t in templates:
+        percentile = dims.get(t["key"])
+        pos = position_band(percentile)
+        pct_label = f" ({safe_ordinal(percentile)} %ile)" if percentile not in (None, "") else ""
+        watch = "".join(f"<li>{esc(w)}</li>" for w in t["watch"])
         items += f'''
         <article class="protect-card">
-          <div class="card-topline">Protect</div>
-          <h3>{esc(i.get('title'))}</h3>
-          <p class="muted"><strong>{esc(i.get('label'))}</strong>: {esc(i.get('definition'))}</p>
-          <p class="positioning">Your position: <strong>{esc(i.get('positioning'))}</strong> ({esc(safe_ordinal(i.get('percentile')))} %ile)</p>
-          <p>{esc(i.get('intro'))}</p>
+          <div class="card-topline">What to notice</div>
+          <h3>{esc(t['title'])}</h3>
+          <p class="muted"><strong>{esc(t['label'])}</strong></p>
+          <p class="positioning">Your position: <strong>{esc(pos)}</strong>{pct_label}</p>
+          <p class="research-note"><strong>What HCI’s research shows:</strong> {esc(t['research'])}</p>
           <h4>What to watch for</h4>
           <ul>{watch}</ul>
-          <p class="research-note"><strong>What HCI’s research shows:</strong> {esc(i.get('research'))}</p>
-          <p>{esc(i.get('closing'))}</p>
+          <p>{esc(t['closing'])}</p>
         </article>'''
+
+    section_title = x.get("title") if isinstance(x, dict) else ""
+    section_subtitle = x.get("subtitle") if isinstance(x, dict) else ""
     return f'''<section class="page-section protect-section">{section_kicker("Human skills")}
-      <h2>{esc(x.get("title") or "What to Protect")}</h2>
-      <p class="section-intro">{esc(x.get("subtitle"))}</p>
-      <div class="protect-grid">{items or render_empty("No protection signals were available.")}</div>
+      <h2>{esc(section_title or "What to Protect")}</h2>
+      <p class="section-intro">{esc(section_subtitle or "Four capacities worth staying aware of as your AI use evolves. This section is about awareness and choice, not danger or diagnosis.")}</p>
+      <div class="protect-grid four">{items}</div>
     </section>'''
 
 
@@ -405,11 +543,52 @@ def render_trajectory(x):
 
 
 def render_next(x):
-    items = "".join(
-        f'<article class="split-card"><h3>{esc(i.get("title"))}</h3>' + "".join(f"<p>{esc(p)}</p>" for p in i.get("body", [])) + '</article>'
-        for i in x.get("items", [])
-    )
-    return f'<section class="page-section">{section_kicker("Next steps")}<h2>{esc(x.get("title") or "Next Steps")}</h2><div class="two-col">{items or render_empty("No next steps were available.")}</div></section>'
+    supplied = x.get("items", []) if isinstance(x, dict) else []
+    if supplied:
+        items = "".join(
+            f'<article class="split-card"><h3>{esc(i.get("title"))}</h3>' + "".join(f"<p>{esc(p)}</p>" for p in i.get("body", [])) + '</article>'
+            for i in supplied
+        )
+    else:
+        locked = [
+            {
+                "title": "Step 1: test this report with your AI",
+                "body": [
+                    "Upload this full report to whichever AI you use most.",
+                    'Ask it: "Does this report ring true to how we work together? Where does it match your sense of how I use you? Where does it miss?"',
+                    "Listen for where it confirms and where it challenges. This conversation can deepen your clarity about your actual pattern.",
+                    "Your data stays with you. Nothing about that conversation returns to HCI.",
+                ],
+            },
+            {
+                "title": "What this awareness does",
+                "body": [
+                    "Knowing your pattern is the foundation for clarity. And clarity is what lets you make intentional choices about your boundaries with AI.",
+                    "This report shows where you sit — how you use AI, what you rely on it for, where you are distinctive, and where you are typical. That positioning is neutral. What matters is what you do with it.",
+                    "The people who flourish with AI are the ones who stay aware of their own pattern and adjust their relationship as it evolves.",
+                ],
+            },
+            {
+                "title": "Stay within your boundaries",
+                "body": [
+                    "Return to this assessment periodically — quarterly, annually, or whenever your relationship with AI feels like it is shifting significantly.",
+                    "Retesting lets you notice what has actually changed in your pattern, not only what you think has changed.",
+                ],
+            },
+            {
+                "title": "This report as a mirror",
+                "body": [
+                    "This report is a mirror. What it shows is real — your positioning in a benchmark population, your rare combinations, and your observable patterns.",
+                    "What you do with that clarity is entirely yours.",
+                ],
+            },
+        ]
+        items = "".join(
+            '<article class="split-card"><h3>' + esc(i["title"]) + '</h3>' + "".join(f"<p>{esc(p)}</p>" for p in i["body"]) + '</article>'
+            for i in locked
+        )
+    title = x.get("title") if isinstance(x, dict) else ""
+    return f'<section class="page-section next-section">{section_kicker("Next steps")}<h2>{esc(title or "Your Next Steps")}</h2><div class="two-col">{items}</div></section>'
 
 
 def render_deep_dive(x):
@@ -481,6 +660,21 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.evidence-card p{font-size:15px;color:#344054}.protect-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.protect-card{background:#fcfcfd}.protect-card h3{font-family:Georgia,"Times New Roman",serif;font-size:25px;font-weight:500;margin-top:0}.positioning,.research-note{background:var(--cream);padding:12px;border-left:3px solid var(--accent)}ul{margin:8px 0 0 20px;padding:0}li{margin-bottom:8px}
 .question-group{margin-top:40px}.group-definition{max-width:820px}.question-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.question-card h4{font-size:16px;color:#111827}.answer{color:#344054}.scale{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:12px 0 6px}.scale span{text-align:center;border:1px solid var(--line-strong);padding:7px 0;font-size:12px;color:#475467}.scale .selected{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff;font-weight:700}.scale-label{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}.histogram-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}.dist{height:112px;display:flex;align-items:flex-end;gap:7px;background:#f9fafb;border:1px solid var(--line);padding:26px 10px 22px;border-radius:2px}.dist-bar{flex:1;background:#cfd6df;position:relative;min-height:4px;border-radius:2px 2px 0 0}.dist-bar.answer{background:var(--accent-dark)}.dist-value{position:absolute;top:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#475467}.dist-index{position:absolute;bottom:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#667085}.dist-empty{background:#f2f4f7;border:1px solid var(--line);padding:14px;color:var(--muted);font-size:13px}.comparison-note{font-size:14px;color:#475467;margin-top:14px}.empty-state{background:#f9fafb;border:1px dashed var(--line-strong);padding:18px;color:var(--muted)}
 .deep-dive{background:#101828;color:#fff;padding:42px}.deep-dive h2,.deep-dive h3{color:#fff}.deep-dive .section-kicker{color:#9cc2ff}.deep-dive p{color:#e4e7ec}.quality{background:#fff7ed;border:1px solid #fed7aa;padding:20px}.report-footer{border-top:1px solid var(--line);padding-top:24px;color:var(--muted);font-size:13px}
+
+/* V1 structure fixes */
+.hci-report .protect-grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+.hci-report .dimension-card,
+.hci-report .evidence-card,
+.hci-report .split-card,
+.hci-report .question-card,
+.hci-report .protect-card{box-shadow:0 1px 0 rgba(16,24,40,.04)}
+.hci-report .question-card{padding:22px}
+.hci-report .dist-bar{transition:none}
+.hci-report .dist-value{white-space:nowrap}
+.hci-report .protect-card h4{margin-top:18px}
+.hci-report .next-section .split-card{background:#fcfcfd}
+@media(max-width:900px){.hci-report .protect-grid.four{grid-template-columns:1fr}}
+
 @media(max-width:900px){.hci-report{padding:36px 22px}.cover-grid,.dimension-grid,.two-col,.evidence-grid,.protect-grid,.question-grid,.histogram-grid{grid-template-columns:1fr}h1{font-size:44px}h2{font-size:30px}.brand-row{margin-bottom:42px}}
 @media print{body{background:#fff}.hci-report{max-width:none;padding:34px}.page-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:46px}.dimension-grid{grid-template-columns:repeat(3,1fr)}.question-grid{grid-template-columns:repeat(2,1fr)}.cover-panel,.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{box-shadow:none}a{color:inherit}}
 </style>'''
