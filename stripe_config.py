@@ -139,7 +139,20 @@ class StripeConfig:
         
         try:
             # Stripe signs with: HMAC-SHA256(secret, payload)
-            timestamp, signed_hash = signature.split(',')[0].split('=')[1], signature.split('t=')[1].split(',')[0]
+            # Signature format: t=<timestamp>,v1=<signature>
+            parts = {}
+            for part in signature.split(','):
+                if '=' in part:
+                    key, value = part.split('=', 1)
+                    parts[key] = value
+            
+            timestamp = parts.get('t')
+            signed_hash = parts.get('v1')  # Extract v1 signature (was extracting timestamp!)
+            
+            if not timestamp or not signed_hash:
+                print(f'Invalid Stripe signature format: missing t or v1')
+                return False
+            
             signed_content = f'{timestamp}.{payload}'
             
             computed_hash = hmac.new(
