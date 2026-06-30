@@ -286,8 +286,15 @@ def normalise_demographics_for_benchmark(demographics: Dict[str, Any], benchmark
     """
     demographics = dict(demographics or {})
 
-    age_keys = infer_available_segment_keys(benchmark, "by_age_group")
-    freq_keys = infer_available_segment_keys(benchmark, "by_frequency")
+    # Age keys can exist under by_age_group for dimensions and by_age for variables.
+    age_keys = sorted(set(
+        infer_available_segment_keys(benchmark, "by_age_group")
+        + infer_available_segment_keys(benchmark, "by_age")
+    ))
+    freq_keys = sorted(set(
+        infer_available_segment_keys(benchmark, "by_frequency")
+        + infer_available_segment_keys(benchmark, "by_ai_tool_use_frequency")
+    ))
 
     age_original = demographics.get("age_group")
     freq_original = demographics.get("ai_tool_use_frequency") or demographics.get("frequency")
@@ -426,7 +433,12 @@ def safe_dimension_percentiles(benchmark: Any, dim: str, raw_score: Any, demogra
 def get_variable_source(benchmark: Any, key: str, segment: Optional[Tuple[str, str]] = None) -> Optional[Dict[str, Any]]:
     """
     Get variable source data from benchmark.data.
-    Segment requests never fall back to overall.
+
+    Important:
+    - Segment requests never fall back to overall.
+    - benchmark_tables.json currently stores variable age cohorts under by_age.
+    - Dimension age cohorts use by_age_group.
+    - This function supports both so question-level age histograms can populate.
     """
     data = get_benchmark_data(benchmark)
     var_data = (data.get("variables") or {}).get(key)
@@ -435,11 +447,32 @@ def get_variable_source(benchmark: Any, key: str, segment: Optional[Tuple[str, s
 
     if segment and isinstance(segment, tuple) and len(segment) == 2:
         seg_type, seg_value = segment
-        segments = var_data.get(f"by_{seg_type}") or {}
-        actual_key = canonical_lookup(seg_value, list(segments.keys()))
-        if actual_key is None:
-            return None
-        return segments.get(actual_key)
+
+        possible_keys = [f"by_{seg_type}"]
+
+        if seg_type == "age_group":
+            possible_keys.extend(["by_age", "by_age_group"])
+        elif seg_type == "age":
+            possible_keys.extend(["by_age_group", "by_age"])
+        elif seg_type == "frequency":
+            possible_keys.extend(["by_frequency", "by_ai_tool_use_frequency"])
+        elif seg_type == "ai_tool_use_frequency":
+            possible_keys.extend(["by_frequency", "by_ai_tool_use_frequency"])
+
+        # De-duplicate while preserving order.
+        seen = set()
+        possible_keys = [k for k in possible_keys if not (k in seen or seen.add(k))]
+
+        for seg_key in possible_keys:
+            segments = var_data.get(seg_key) or {}
+            if not isinstance(segments, dict) or not segments:
+                continue
+
+            actual_key = canonical_lookup(seg_value, list(segments.keys()))
+            if actual_key is not None:
+                return segments.get(actual_key)
+
+        return None
 
     return var_data.get("overall")
 
