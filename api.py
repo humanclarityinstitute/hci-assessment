@@ -939,8 +939,25 @@ def premium():
             report_email=report_email or assessment.get('report_email')
         )
 
-        # Step 8: Render final HTML and cache it
+        # Step 8: Render final HTML, generate PDF, upload PDF, cache HTML, and send email
         report_html_str = render_report(report_data)
+
+        pdf_bytes = None
+        pdf_url = None
+
+        if build_report_pdf:
+            try:
+                pdf_bytes = build_report_pdf(report_html_str)
+                if pdf_bytes:
+                    pdf_url = upload_report_pdf(session_id, pdf_bytes)
+                    print(f'PDF generated and uploaded for session {session_id}')
+                else:
+                    print('PDF generation returned None')
+            except Exception as e:
+                print(f'PDF generation/upload failed non-fatally: {e}')
+                traceback.print_exc()
+        else:
+            print('PDF generation skipped: build_report_pdf is not available')
 
         db.update_report(
             session_id=session_id,
@@ -948,11 +965,34 @@ def premium():
             report_generated_at=datetime.utcnow().isoformat()
         )
 
+        # Step 9: Email delivery via Resend. Non-fatal: report remains available online even if email fails.
+        resend_key = os.environ.get('RESEND_API_KEY')
+        delivery_email = report_email or assessment.get('report_email')
+
+        if send_report_email and resend_key and delivery_email:
+            try:
+                send_report_email(
+                    to_email=delivery_email,
+                    report_html=report_html_str,
+                    demographics=demographics,
+                    resend_api_key=resend_key,
+                    session_id=session_id,
+                    pdf_bytes=pdf_bytes
+                )
+                print(f'Report email sent to {delivery_email}')
+            except Exception as e:
+                print(f'Email sending failed non-fatally: {e}')
+                traceback.print_exc()
+        else:
+            print('Email not sent: missing send_report_email, RESEND_API_KEY, or delivery email')
+
         return jsonify({
             'success': True,
             'message': 'Premium report ready',
             'session_id': session_id,
             'report_url': make_report_url(session_id),
+            'pdf_url': pdf_url,
+            'email_sent_to': delivery_email if send_report_email and resend_key and delivery_email else None,
             'cached': False,
             'narrative_generation': report_data.get('narrative_generation', {})
         }), 200
