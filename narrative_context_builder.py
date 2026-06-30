@@ -368,6 +368,19 @@ def build_context_for_claude_section(report_data: Dict[str, Any], section: str) 
             "global_hci_assets": full["global_hci_assets"],
         }
 
+    if section == "deep_dive":
+        return {
+            "profile": full["profile"],
+            "deep_dive_candidate": select_deep_dive_candidate(full),
+            "dimension_contexts": full["dimension_contexts"],
+            "rare_combinations": full["rare_combinations"],
+            "distinctive_responses": full["distinctive_responses"][:3],
+            "perception_gap": full["perception_gap"],
+            "trajectory": full["trajectory"],
+            "previous_narrative_blocks": report_data.get("narrative_blocks", {}),
+            "global_hci_assets": full["global_hci_assets"],
+        }
+
     if section == "distinctive_responses":
         return {
             "distinctive_responses": full["distinctive_responses"],
@@ -395,6 +408,57 @@ def build_context_for_claude_section(report_data: Dict[str, Any], section: str) 
 
     return full
 
+
+
+def select_deep_dive_candidate(full_context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Select the most valuable Deep Dive focus.
+
+    Priority:
+    1. Rare combination if present.
+    2. Most distinctive response if very extreme.
+    3. Largest perception gap if significant.
+    4. Highest dimension as fallback.
+    """
+    rare = full_context.get("rare_combinations") or []
+    if rare:
+        return {
+            "type": "rare_combination",
+            "reason": "Rare combinations are the most information-rich HCI pattern when present.",
+            "data": rare[0],
+        }
+
+    most = (full_context.get("profile") or {}).get("most_distinctive_variable")
+    if isinstance(most, dict):
+        pct = clean_float(most.get("percentile"), 50) or 50
+        if abs(pct - 50) >= 35:
+            return {
+                "type": "distinctive_response",
+                "reason": "The strongest individual response is unusually far from the benchmark centre.",
+                "data": most,
+            }
+
+    gap = (full_context.get("profile") or {}).get("largest_perception_gap")
+    if gap:
+        return {
+            "type": "perception_gap",
+            "reason": "The largest gap between self-perception and benchmark position may reveal a meaningful blind spot or alignment point.",
+            "data": gap,
+        }
+
+    top = (full_context.get("profile") or {}).get("top_dimensions") or []
+    if top:
+        return {
+            "type": "highest_dimension",
+            "reason": "The highest dimension is the clearest organising feature of the profile.",
+            "data": top[0],
+        }
+
+    return {
+        "type": "overall_pattern",
+        "reason": "No single rare pattern dominates, so the Deep Dive should focus on the overall profile shape.",
+        "data": full_context.get("profile", {}),
+    }
 
 # ---------------------------------------------------------------------
 # Enrichers
