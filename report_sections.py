@@ -229,7 +229,7 @@ def build_typicality(report_data: Dict[str, Any]) -> Dict[str, Any]:
         return out
 
     return {
-        "title": "How Typical Is Your AI Behaviour?",
+        "title": "Where You Stand",
         "distinctive": enrich(source.get("distinctive", [])),
         "typical": enrich(source.get("typical", [])),
         "moderate": enrich(source.get("moderate", [])),
