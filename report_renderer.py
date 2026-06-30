@@ -5,6 +5,7 @@ V1 renderer principles:
 - Uses report_sections.build_sections(report_data) as the presentation adapter.
 - No redirects, no API calls, no Stripe logic.
 - Output is complete standalone HTML for /report?session_id=... responses.
+- CSS is included in both <head> and <body> so the WordPress Option B container can safely inject returned HTML and retain styling.
 """
 from html import escape
 
@@ -153,6 +154,7 @@ def render_report(report_data):
 {styles()}
 </head>
 <body>
+{styles()}
 <main class="hci-report">
   <header class="cover page-section">
     <div class="brand-row">
