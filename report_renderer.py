@@ -241,106 +241,40 @@ def format_report_date(value):
 def participant_detail(label, value):
     if value in (None, ""):
         return ""
-    return f'<div class="participant-detail"><span>{esc(label)}</span><strong>{esc(value)}</strong></div>'
+    return f'<span><strong>{esc(label)}:</strong> {esc(value)}</span>'
 
 
-def split_opening_findings(findings):
-    if isinstance(findings, list):
-        return [str(x).strip() for x in findings if str(x).strip()]
-    if not findings:
-        return []
-    text = str(findings).strip()
-    parts = [part.strip() for part in text.split("\n\n") if part.strip()]
-    if len(parts) >= 3:
-        return parts[:3]
-    import re
-    parts = [part.strip() for part in re.split(r'(?=Finding\s+\d+[:.])', text, flags=re.I) if part.strip()]
-    return parts[:3] if parts else [text]
+def participant_meta(age="", country="", date=""):
+    parts = [participant_detail("Age", age), participant_detail("Country", country), participant_detail("Completed", date)]
+    parts = [p for p in parts if p]
+    if not parts:
+        return ""
+    return '<div class="participant-meta"><span class="participant-meta-label">Participant details</span>' + '<span class="meta-sep">•</span>'.join(parts) + '</div>'
 
 
-def extract_finding_fields(text, default_headline):
-    raw = str(text or "").strip()
-    fields = {"headline": default_headline, "data": "", "interpretation": raw, "implication": ""}
-    if not raw:
-        return fields
+def opening_synthesis_html(text):
+    """Render Claude's opening synthesis as editorial prose with optional subheadings."""
+    if not text:
+        return render_empty("No opening synthesis was available.")
 
-    lines = [line.strip() for line in raw.splitlines() if line.strip()]
-    parsed_any = False
-    valid_labels = {
-        "headline", "finding", "data", "what the data shows",
-        "interpretation", "what it suggests", "implication", "why it matters"
-    }
-    for line in lines:
-        lower = line.lower()
-        if lower.startswith(("headline:", "finding:")):
-            fields["headline"] = line.split(":", 1)[1].strip() or fields["headline"]
-            parsed_any = True
-        elif lower.startswith(("data:", "what the data shows:")):
-            fields["data"] = line.split(":", 1)[1].strip()
-            parsed_any = True
-        elif lower.startswith(("interpretation:", "what it suggests:")):
-            fields["interpretation"] = line.split(":", 1)[1].strip()
-            parsed_any = True
-        elif lower.startswith(("implication:", "why it matters:")):
-            fields["implication"] = line.split(":", 1)[1].strip()
-            parsed_any = True
-
-    if parsed_any:
-        residue = []
-        for line in lines:
-            label = line.split(":", 1)[0].strip().lower() if ":" in line else ""
-            if label not in valid_labels:
-                residue.append(line)
-        if residue and fields["interpretation"] == raw:
-            fields["interpretation"] = " ".join(residue)
-    return fields
-
-
-def opening_evidence_tags(report_data, index):
-    inputs = report_data.get("synthesis_inputs") or {}
-    if index == 0:
-        most = inputs.get("most_distinctive_variable") or {}
-        tags = [
-            most.get("dimension_label"),
-            most.get("percentile_label") or (f"{pct(most.get('percentile'))} / 100" if most.get("percentile") is not None else None),
-        ]
-    elif index == 1:
-        gap = inputs.get("largest_perception_gap") or {}
-        magnitude = gap.get("gap") or gap.get("gap_magnitude") or gap.get("difference") or gap.get("magnitude")
-        tags = ["Perception gap", f"{magnitude}-point difference" if magnitude not in (None, "") else None]
-    else:
-        combo = inputs.get("top_rare_combination") or {}
-        if combo:
-            tags = ["Combination", f"{combo.get('rarity_percent')}% rarity" if combo.get("rarity_percent") not in (None, "") else None]
+    raw = str(text).strip()
+    blocks = [b.strip() for b in raw.split("\n\n") if b.strip()]
+    html = '<div class="opening-synthesis narrative">'
+    for block in blocks:
+        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+        if not lines:
+            continue
+        first = lines[0]
+        clean_first = first.lstrip("#").strip().strip("*").strip()
+        if (first.startswith("#") or (len(clean_first) <= 95 and len(lines) > 1 and not clean_first.endswith("."))):
+            html += f'<h3>{esc(clean_first)}</h3>'
+            body = " ".join(lines[1:]).strip()
+            if body:
+                html += f'<p>{esc(body)}</p>'
         else:
-            tags = ["Pattern coherence", "No rare pairing"]
-    return [str(tag) for tag in tags if tag not in (None, "")]
-
-
-def render_finding_cards(findings, report_data):
-    defaults = [
-        "Your relationship with AI has become load-bearing",
-        "Your self-perception lags behind your actual pattern",
-        "Your dimensions move together as a coherent whole",
-    ]
-    parts = split_opening_findings(findings)
-    cards = ""
-    for i in range(3):
-        text = parts[i] if i < len(parts) else ""
-        fields = extract_finding_fields(text, defaults[i])
-        tags = "".join(f'<span>{esc(tag)}</span>' for tag in opening_evidence_tags(report_data, i))
-        data_html = f'<p class="finding-data"><strong>Data:</strong> {esc(fields["data"])}</p>' if fields.get("data") else ""
-        implication_html = f'<p class="finding-implication"><strong>Why it matters:</strong> {esc(fields["implication"])}</p>' if fields.get("implication") else ""
-        cards += f'''
-        <article class="finding-card finding-card-{i+1}">
-          <div class="finding-label">Behavioural finding</div>
-          <h3>{esc(fields["headline"])}</h3>
-          {data_html}
-          <p>{esc(fields.get("interpretation") or text)}</p>
-          {implication_html}
-          <div class="evidence-tags">{tags}</div>
-        </article>'''
-    return cards
+            html += f'<p>{esc(" ".join(lines))}</p>'
+    html += '</div>'
+    return html
 
 
 def dim_key(value):
@@ -440,15 +374,10 @@ def render_opening(x, report_data=None, age="", country="", date=""):
     report_data = report_data or {}
     statement = x.get("statement") or (
         "Your relationship with AI is beginning to form a behavioural pattern.\n\n"
-        "This report compares that pattern with more than 10,500 participants across 21 Human Clarity Institute research studies, helping you understand where your AI use is typical, where it is distinctive, and which aspects of your relationship with AI are changing most rapidly.\n\n"
-        "Rather than measuring behaviour as good or bad, this report maps how you currently work with AI and provides evidence you can use to make more informed decisions as that relationship evolves."
+        "This report compares that pattern with more than 10,500 participants across 21 Human Clarity Institute research studies, helping identify where your AI use is typical, where it is distinctive, and which aspects of your relationship with AI are changing most rapidly.\n\n"
+        "Rather than judging behaviour as good or bad, this report maps how you currently work with AI and provides evidence you can use to make more informed decisions as that relationship evolves."
     )
-    details = "".join([
-        participant_detail("Age", age),
-        participant_detail("Country", country),
-        participant_detail("Assessment date", date),
-    ])
-    findings = x.get("findings")
+    findings = x.get("findings") or ""
 
     return f'''
     <section class="page-section opening-section report-opening">
@@ -460,25 +389,23 @@ def render_opening(x, report_data=None, age="", country="", date=""):
         </div>
       </div>
 
-      <div class="opening-hero">
-        <p class="eyebrow">AI Identity &amp; Behaviour Report</p>
-        <h1>Your AI Identity Report</h1>
-        <div class="opening-lede">{paras(statement)}</div>
-      </div>
-
-      <div class="participant-details">
-        <div class="participant-title">Participant Details</div>
-        <div class="participant-grid">{details}</div>
-      </div>
-
-      <div class="executive-summary">
-        {section_kicker('Executive summary')}
-        <h2>Three behavioural findings</h2>
-        <p class="summary-intro">This opening summarises the strongest behavioural signals in your profile before the report explores the evidence behind them.</p>
-        <div class="finding-grid">
-          {render_finding_cards(findings, report_data)}
+      <div class="opening-title-row">
+        <div>
+          <p class="eyebrow">AI Identity &amp; Behaviour Report</p>
+          <h1>AI Identity &amp; Behaviour Report</h1>
         </div>
-        <p class="opening-transition">These findings provide the context for everything that follows. The next section shows how the same pattern appears across all nine HCI behavioural dimensions.</p>
+        {participant_meta(age, country, date)}
+      </div>
+
+      <div class="opening-intro">
+        {paras(statement)}
+      </div>
+
+      <div class="opening-analysis">
+        {section_kicker('Initial analysis')}
+        <h2>What stands out immediately</h2>
+        {opening_synthesis_html(findings)}
+        <p class="opening-transition">Together, these patterns provide the context for the rest of the report. The next section shows how the same profile appears across the nine HCI behavioural dimensions, before later sections unpack the question-level evidence behind it.</p>
       </div>
     </section>'''
 
@@ -931,141 +858,115 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 
 
 
-/* Opening section V1 — integrated premium report opening */
+/* Opening section V2 — editorial HCI report opening */
 .hci-report .report-opening{
-  margin-bottom:72px;
-  padding-bottom:48px;
+  margin-bottom:58px;
+  padding-bottom:38px;
   border-bottom:1px solid var(--line);
 }
-.hci-report .opening-brand{margin-bottom:54px}
-.hci-report .opening-hero{max-width:900px;margin-bottom:34px}
-.hci-report .opening-hero h1{max-width:780px;margin-bottom:28px}
-.hci-report .opening-lede{max-width:820px}
-.hci-report .opening-lede p{
-  font-size:19px;
-  line-height:1.62;
-  color:#253044;
-  margin-bottom:18px;
-}
-.hci-report .opening-lede p:first-child{
-  font-family:Georgia,"Times New Roman",serif;
-  font-size:28px;
-  line-height:1.32;
-  letter-spacing:-.015em;
-  color:#101828;
-  margin-bottom:18px;
-}
-.hci-report .participant-details{
-  border-top:1px solid var(--line);
-  border-bottom:1px solid var(--line);
-  padding:16px 0;
-  margin:34px 0 48px;
-}
-.hci-report .participant-title{
-  font-size:11px;
-  letter-spacing:.14em;
-  text-transform:uppercase;
-  font-weight:800;
-  color:#667085;
-  margin-bottom:12px;
-}
-.hci-report .participant-grid{
+.hci-report .opening-brand{margin-bottom:34px}
+.hci-report .opening-title-row{
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:22px;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:28px;
+  align-items:start;
+  margin-bottom:24px;
 }
-.hci-report .participant-detail span{
-  display:block;
-  color:#667085;
-  font-size:12px;
-  margin-bottom:2px;
+.hci-report .opening-title-row h1{
+  font-size:48px;
+  line-height:1.04;
+  letter-spacing:-.04em;
+  margin:0;
+  max-width:760px;
 }
-.hci-report .participant-detail strong{
-  display:block;
-  color:#101828;
-  font-size:15px;
-  font-weight:650;
-}
-.hci-report .executive-summary{margin-top:0}
-.hci-report .summary-intro{
-  color:#475467;
-  font-size:16px;
-  max-width:780px;
-  margin:0 0 24px;
-}
-.hci-report .finding-grid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:18px;
-}
-.hci-report .finding-card{
-  border:1px solid var(--line);
-  background:#fff;
-  padding:22px;
-  min-height:330px;
+.hci-report .participant-meta{
+  align-self:start;
   display:flex;
-  flex-direction:column;
-  box-shadow:0 1px 0 rgba(16,24,40,.04);
-}
-.hci-report .finding-card-1{border-top:3px solid #174EA6}
-.hci-report .finding-card-2{border-top:3px solid #5B6B7A}
-.hci-report .finding-card-3{border-top:3px solid #344054}
-.hci-report .finding-label{
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:7px;
+  max-width:420px;
   color:#667085;
+  font-size:11px;
+  line-height:1.5;
+  padding-top:6px;
+}
+.hci-report .participant-meta-label{
+  width:100%;
+  text-align:right;
+  text-transform:uppercase;
+  letter-spacing:.12em;
   font-size:10px;
   font-weight:800;
-  letter-spacing:.12em;
-  text-transform:uppercase;
-  margin-bottom:12px;
+  color:#98A2B3;
+  margin-bottom:2px;
 }
-.hci-report .finding-card h3{
-  font-family:Georgia,"Times New Roman",serif;
-  font-size:24px;
-  line-height:1.2;
-  letter-spacing:-.015em;
-  font-weight:500;
-  margin:0 0 16px;
+.hci-report .participant-meta strong{
+  color:#667085;
+  font-weight:700;
 }
-.hci-report .finding-card p{
-  font-size:14px;
-  line-height:1.55;
+.hci-report .meta-sep{color:#D0D5DD}
+.hci-report .opening-intro{
+  max-width:840px;
+  margin:0 0 34px 0;
+  padding-bottom:26px;
+  border-bottom:1px solid var(--line);
+}
+.hci-report .opening-intro p{
+  font-size:16px;
+  line-height:1.58;
   color:#344054;
   margin-bottom:12px;
 }
-.hci-report .finding-data,
-.hci-report .finding-implication{
-  background:#fbfaf7;
-  border-left:3px solid #d0d5dd;
-  padding:10px 12px;
+.hci-report .opening-intro p:first-child{
+  font-family:Georgia,"Times New Roman",serif;
+  font-size:24px;
+  line-height:1.28;
+  letter-spacing:-.012em;
+  color:#101828;
+  margin-bottom:14px;
 }
-.hci-report .evidence-tags{
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px;
-  margin-top:auto;
-  padding-top:14px;
+.hci-report .opening-analysis{
+  max-width:900px;
 }
-.hci-report .evidence-tags span{
-  display:inline-flex;
-  border:1px solid var(--line);
-  background:#f9fafb;
-  border-radius:999px;
-  padding:5px 8px;
-  font-size:10px;
-  font-weight:700;
-  color:#475467;
+.hci-report .opening-analysis h2{
+  margin-bottom:16px;
+}
+.hci-report .opening-synthesis{
+  max-width:840px;
+  padding-left:22px;
+  border-left:3px solid var(--accent);
+}
+.hci-report .opening-synthesis h3{
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  font-size:15px;
+  line-height:1.35;
+  letter-spacing:.01em;
+  font-weight:800;
+  color:#0f2f63;
+  margin:22px 0 8px;
+}
+.hci-report .opening-synthesis h3:first-child{margin-top:0}
+.hci-report .opening-synthesis p{
+  font-size:16px;
+  line-height:1.62;
+  color:#253044;
+  margin-bottom:16px;
 }
 .hci-report .opening-transition{
   margin:26px 0 0;
-  max-width:820px;
+  max-width:840px;
   color:#344054;
-  font-size:16px;
-  padding-left:18px;
+  font-size:15px;
+  line-height:1.58;
+  padding:16px 18px;
+  background:#fbfaf7;
   border-left:3px solid var(--accent);
 }
 @media(max-width:900px){
-  .hci-report .participant-grid,
-  .hci-report .finding-grid{grid-template-columns:1fr}
+  .hci-report .opening-title-row{grid-template-columns:1fr}
+  .hci-report .participant-meta{justify-content:flex-start;max-width:none}
+  .hci-report .participant-meta-label{text-align:left}
 }
 
 /* Section 6 locked V1 — premium benchmark intelligence cards */
