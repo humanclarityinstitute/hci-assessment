@@ -105,9 +105,7 @@ class BenchmarkBuilder:
         # Age group percentile (if demographics provided)
         if demographics and 'age_group' in demographics:
             age_group = demographics['age_group']
-            age_segments = dim_data.get('by_age_group', {})
-            age_key = self._match_segment_key(age_group, age_segments.keys())
-            age_data = age_segments.get(age_key) if age_key else None
+            age_data = self._get_segment_data(dim_data, ('age_group', age_group))
             if age_data and age_data.get('n', 0) >= self.min_sample_size:
                 values = age_data.get('values', [])
                 percentile = self._calculate_percentile_from_distribution(score, values)
@@ -117,9 +115,7 @@ class BenchmarkBuilder:
         # Frequency user percentile (if demographics provided)
         if demographics and 'ai_tool_use_frequency' in demographics:
             frequency = demographics['ai_tool_use_frequency']
-            freq_segments = dim_data.get('by_frequency', {})
-            freq_key = self._match_segment_key(frequency, freq_segments.keys())
-            freq_data = freq_segments.get(freq_key) if freq_key else None
+            freq_data = self._get_segment_data(dim_data, ('frequency', frequency))
             if freq_data and freq_data.get('n', 0) >= self.min_sample_size:
                 values = freq_data.get('values', [])
                 percentile = self._calculate_percentile_from_distribution(score, values)
@@ -254,15 +250,38 @@ class BenchmarkBuilder:
         except Exception:
             return None
 
-        segment_key = f'by_{segment_type}'
-        segments = item_data.get(segment_key) or {}
-        if not isinstance(segments, dict):
-            return None
+        # Support both schemas currently present in benchmark_tables.json:
+        # - dimensions: by_age_group
+        # - variables:  by_age
+        # This keeps the benchmark JSON as the source of truth while making lookups robust.
+        possible_segment_keys = [f'by_{segment_type}']
 
-        actual_key = self._match_segment_key(segment_value, segments.keys())
-        if actual_key is None:
-            return None
-        return segments.get(actual_key)
+        if segment_type == 'age_group':
+            possible_segment_keys.extend(['by_age', 'by_age_group'])
+        elif segment_type == 'age':
+            possible_segment_keys.extend(['by_age_group', 'by_age'])
+        elif segment_type == 'frequency':
+            possible_segment_keys.extend(['by_frequency', 'by_ai_tool_use_frequency'])
+        elif segment_type == 'ai_tool_use_frequency':
+            possible_segment_keys.extend(['by_frequency', 'by_ai_tool_use_frequency'])
+
+        # De-duplicate while preserving order.
+        seen = set()
+        possible_segment_keys = [
+            k for k in possible_segment_keys
+            if not (k in seen or seen.add(k))
+        ]
+
+        for segment_key in possible_segment_keys:
+            segments = item_data.get(segment_key) or {}
+            if not isinstance(segments, dict) or not segments:
+                continue
+
+            actual_key = self._match_segment_key(segment_value, segments.keys())
+            if actual_key is not None:
+                return segments.get(actual_key)
+
+        return None
 
     def get_percentile(self, variable_key, response_value, segment=None):
         """
