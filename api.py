@@ -1041,8 +1041,8 @@ def premium():
         try:
             db.update_assessment(
                 session_id=session_id,
-                premium_report=report_dict,        # Store dict in existing premium_report column
-                report_pdf_url=pdf_url          # Public PDF URL (may be None if upload failed)
+                premium_report=report_dict,        
+                report_pdf_url=pdf_url          
             )
             print(f'Report and PDF URL cached for session {session_id}')
         
