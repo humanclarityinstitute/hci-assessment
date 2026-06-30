@@ -171,10 +171,10 @@ def build_percentiles_dict(responses: Dict, demographics: Dict, benchmark) -> Di
         
         try:
             # Query benchmark for percentiles
-            percentile_data = benchmark.get_percentiles(
+            percentile_data = benchmark.get_percentile(
                 question_key,
                 response_value,
-                demographics
+                segment=demographics.get('ai_tool_use_frequency') if demographics else None
             )
             
             if percentile_data:
