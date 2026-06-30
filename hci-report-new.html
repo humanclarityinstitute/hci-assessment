@@ -689,7 +689,7 @@ function renderHowTypical(howTypical) {
     if (data) {
       html += `
         <div class="typicality-card">
-          <div class="typicality-title">${data.dimension.replace(/_/g, ' ').toUpperCase()}</div>
+          <div class="typicality-title">${dim.replace(/_/g, ' ').toUpperCase()}</div>
           <div class="typicality-positioning">${data.positioning || ''}</div>
           <div class="typicality-signal">${data.signal_text || ''}</div>
         </div>
