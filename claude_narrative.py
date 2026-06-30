@@ -3,20 +3,9 @@ claude_narrative.py
 
 Claude narrative layer for the clean HCI report system.
 
-Claude writes ONLY the narrative blocks required by the locked report spec.
-All deterministic/static content remains in report_templates.py/report_sections.py.
-
-Outputs:
-report_data["narrative_blocks"] = {
-    "opening_findings": "...",
-    "rare_combinations_narrative": "...",
-    "behaviour_story": "...",
-    "deep_dive": "...",
-    "perception_gap_narrative": "...",
-    "distinctive_responses_narrative": "...",
-    "likely_to_continue": "...",
-    "overall_outlook": "..."
-}
+This version uses Anthropic tool calls for structured output instead of asking
+Claude to return raw JSON. This avoids JSONDecodeError failures caused by
+unescaped quotes/newlines in long narrative text.
 """
 
 from __future__ import annotations
@@ -27,6 +16,7 @@ import json
 import os
 import traceback
 import urllib.request
+import urllib.error
 
 from narrative_context_builder import build_context_for_claude_section
 
@@ -42,7 +32,7 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
     Safe:
     - If no API key, returns report_data unchanged with status.
     - If one call fails, other calls still run.
-    - Renderer can always fall back to deterministic sections.
+    - Renderer falls back to deterministic text where blocks are missing.
     """
     report_data = deepcopy(report_data)
     api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
@@ -59,6 +49,7 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
 
     status = {
         "status": "started",
+        "model": CLAUDE_MODEL,
         "calls": {},
     }
 
@@ -84,8 +75,20 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
     return report_data
 
 
+def compact_context(context: Any, max_chars: int = 26000) -> str:
+    """
+    Keep prompts smaller and faster.
+
+    Anthropic receives complete enough context, but we avoid huge prompt bloat.
+    """
+    text = json.dumps(context, ensure_ascii=False, indent=2, default=str)
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "\n\n[CONTEXT TRUNCATED FOR PROMPT SIZE]"
+
+
 # ---------------------------------------------------------------------
-# Call 1: Opening + Section 4 + Section 5 + Section 8
+# Call 1: Opening + Section 4 + Section 5
 # ---------------------------------------------------------------------
 
 def generate_profile_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
@@ -96,16 +99,16 @@ def generate_profile_narrative(report_data: Dict[str, Any], api_key: str) -> Dic
     }
 
     prompt = f"""
-You are writing selected narrative blocks for a Human Clarity Institute premium report.
+Write selected narrative blocks for a Human Clarity Institute premium report.
 
-The report structure is locked. You are NOT creating sections, deciding layout, scoring, or adding advice.
-You are filling only these three narrative blocks:
-1. opening_findings
-2. rare_combinations_narrative
-3. behaviour_story
+The report structure is locked. Do not create sections, score anything, or give advice.
 
-Use only the provided report data and HCI context.
-The tone must be:
+Fill exactly these blocks:
+- opening_findings
+- rare_combinations_narrative
+- behaviour_story
+
+Tone:
 - observational
 - research-grounded
 - plain English
@@ -117,76 +120,26 @@ The tone must be:
 - no diagnosis
 - no unsupported predictions
 
-Avoid percentile jargon except where unavoidable. Convert statistics into meaning.
-Use "HCI's research" or "the data shows" lightly and only when grounded in the context.
-
-CONTEXT:
-{json.dumps(context, ensure_ascii=False, indent=2)}
-
-Return VALID JSON ONLY with these exact keys:
-{{
-  "opening_findings": "Three paragraphs, 50-75 words each. Finding 1: most distinctive response. Finding 2: perception gap or alignment. Finding 3: rare combination or coherent/no-combo fallback.",
-  "rare_combinations_narrative": "If rare combinations exist, explain top 1-2 combinations in 350-500 words total. If none exist, write 120-180 words explaining that no rare combination means the pattern is less defined by tension and more by the score distribution.",
-  "behaviour_story": "300-400 word flowing narrative portrait. Anchor in the highest dimension. Explain cross-dimensional relationships. Ground in HCI observed patterns. No prescriptions."
-}}
+Use only this context:
+{compact_context(context)}
 """
-    return call_claude_json(
-        api_key,
-        prompt,
-        expected_keys=[
-            "opening_findings",
-            "rare_combinations_narrative",
-            "behaviour_story",
-        ],
-    )
 
+    schema = {
+        "opening_findings": {
+            "type": "string",
+            "description": "Three paragraphs, 50-75 words each. Finding 1: most distinctive response. Finding 2: perception gap or alignment. Finding 3: rare combination or coherent/no-combo fallback."
+        },
+        "rare_combinations_narrative": {
+            "type": "string",
+            "description": "If rare combinations exist, explain top 1-2 in 350-500 words total. If none exist, write 120-180 words explaining what no rare combo means."
+        },
+        "behaviour_story": {
+            "type": "string",
+            "description": "300-400 word flowing narrative portrait anchored in the highest dimension and cross-dimensional relationships."
+        },
+    }
 
-# ---------------------------------------------------------------------
-# Call 2: Section 7
-# ---------------------------------------------------------------------
-
-# ---------------------------------------------------------------------
-# Call 4: Final Deep Dive
-# ---------------------------------------------------------------------
-
-def generate_deep_dive_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    context = build_context_for_claude_section(report_data, "deep_dive")
-
-    prompt = f"""
-You are writing the final HCI report Deep Dive.
-
-This is the capstone section at the end of the report. It should be the most valuable interpretive insight in the report.
-
-The Deep Dive should synthesize the whole report, including earlier narrative blocks when available, while focusing on the single most information-rich pattern selected in the context:
-- rare combination if present,
-- otherwise the most distinctive response,
-- otherwise the largest perception gap,
-- otherwise the highest dimension / overall pattern.
-
-Rules:
-- Write one coherent 600-800 word final section.
-- Explain why this pattern matters.
-- Explain how it connects to the wider profile.
-- Ground the explanation in HCI signals, human reference framing, and benchmark context.
-- Do not prescribe action.
-- Do not diagnose.
-- Do not exaggerate uniqueness.
-- Do not turn this into generic self-help.
-- Use direct plain English and speak to "you".
-
-CONTEXT:
-{json.dumps(context, ensure_ascii=False, indent=2)}
-
-Return VALID JSON ONLY:
-{{
-  "deep_dive": "600-800 word final capstone deep dive. Use 4-6 short paragraphs. Synthesize the report while focusing on the selected pattern. Observational, research-grounded, specific, and autonomy-preserving."
-}}
-"""
-    return call_claude_json(
-        api_key,
-        prompt,
-        expected_keys=["deep_dive"],
-    )
+    return call_claude_structured(api_key, prompt, schema)
 
 
 # ---------------------------------------------------------------------
@@ -200,14 +153,14 @@ def generate_distinctive_and_perception_narrative(report_data: Dict[str, Any], a
     }
 
     prompt = f"""
-You are writing two HCI report narrative blocks:
+Write two HCI report narrative blocks:
 1. Section 7: Your Most Distinctive Responses
 2. Section 8: Perception Gap Analysis
 
-The raw data lists/tables already exist. Your job is to explain what they mean.
+The raw data lists/tables already exist. Explain what they mean.
 
 For Section 7:
-- Write an intro paragraph, then 7 clearly separated response explanations.
+- Intro paragraph, then 7 clearly separated response explanations.
 - For each response, explain what is distinctive, why it matters in HCI behavioural terms, and how it connects to the wider profile.
 
 For Section 8:
@@ -222,22 +175,23 @@ Rules:
 - No diagnosis.
 - No prescriptions.
 - No unsupported claims.
-- Use provided HCI context only.
 
-CONTEXT:
-{json.dumps(context, ensure_ascii=False, indent=2)}
-
-Return VALID JSON ONLY:
-{{
-  "distinctive_responses_narrative": "Intro paragraph plus 7 clearly separated response explanations. 40-70 words per response. Use bold response labels if helpful.",
-  "perception_gap_narrative": "250-300 words comparing self-perception to benchmark positioning. If no significant gaps, explain alignment as meaningful. Illuminating, not corrective."
-}}
+Use only this context:
+{compact_context(context)}
 """
-    return call_claude_json(
-        api_key,
-        prompt,
-        expected_keys=["distinctive_responses_narrative", "perception_gap_narrative"],
-    )
+
+    schema = {
+        "distinctive_responses_narrative": {
+            "type": "string",
+            "description": "Intro paragraph plus 7 clearly separated response explanations. 40-70 words per response."
+        },
+        "perception_gap_narrative": {
+            "type": "string",
+            "description": "250-300 words comparing self-perception to benchmark positioning. Illuminating, not corrective."
+        },
+    }
+
+    return call_claude_structured(api_key, prompt, schema)
 
 
 # ---------------------------------------------------------------------
@@ -248,16 +202,16 @@ def generate_trajectory_narrative(report_data: Dict[str, Any], api_key: str) -> 
     context = build_context_for_claude_section(report_data, "trajectory")
 
     prompt = f"""
-You are writing HCI report Section 10: "If Nothing Changes".
+Write HCI report Section 10 narrative blocks: "If Nothing Changes".
 
 This is not prediction, advice, urgency, or self-help.
-It is an observational synthesis based on what tends to remain stable or shift when current usage patterns hold.
+It is observational synthesis based on what tends to remain stable or shift when current usage patterns hold.
 
 Write only:
-1. likely_to_continue
-2. overall_outlook
+- likely_to_continue
+- overall_outlook
 
-The deterministic parts of Section 10 — strengths likely to deepen and areas worth monitoring — are handled elsewhere. Do not rewrite those lists.
+The deterministic parts of Section 10 are handled elsewhere. Do not rewrite those lists.
 
 Rules:
 - No timeline predictions.
@@ -267,31 +221,89 @@ Rules:
 - Ground observations in the provided HCI context.
 - Speak directly to "you".
 
-CONTEXT:
-{json.dumps(context, ensure_ascii=False, indent=2)}
-
-Return VALID JSON ONLY:
-{{
-  "likely_to_continue": "100-160 words. What pattern is most likely to remain stable if usage and behaviour stay similar.",
-  "overall_outlook": "90-140 words. Coherent closing: main strength, main monitoring area, and autonomy-preserving ending."
-}}
+Use only this context:
+{compact_context(context)}
 """
-    return call_claude_json(
-        api_key,
-        prompt,
-        expected_keys=["likely_to_continue", "overall_outlook"],
-    )
+
+    schema = {
+        "likely_to_continue": {
+            "type": "string",
+            "description": "100-160 words. What pattern is most likely to remain stable if usage and behaviour stay similar."
+        },
+        "overall_outlook": {
+            "type": "string",
+            "description": "90-140 words. Coherent closing: main strength, main monitoring area, and autonomy-preserving ending."
+        },
+    }
+
+    return call_claude_structured(api_key, prompt, schema)
 
 
 # ---------------------------------------------------------------------
-# Anthropic API wrapper
+# Call 4: Final Deep Dive
 # ---------------------------------------------------------------------
 
-def call_claude_json(api_key: str, prompt: str, expected_keys: List[str]) -> Dict[str, str]:
+def generate_deep_dive_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
+    context = build_context_for_claude_section(report_data, "deep_dive")
+
+    prompt = f"""
+Write the final HCI report Deep Dive.
+
+This is the capstone section at the end of the report. It should be the most valuable interpretive insight in the report.
+
+The Deep Dive should synthesize the whole report, including earlier narrative blocks when available, while focusing on the single most information-rich pattern selected in the context.
+
+Rules:
+- Write one coherent 600-800 word final section.
+- Explain why this pattern matters.
+- Explain how it connects to the wider profile.
+- Ground the explanation in HCI signals, human reference framing, and benchmark context.
+- Do not prescribe action.
+- Do not diagnose.
+- Do not exaggerate uniqueness.
+- Do not turn this into generic self-help.
+- Use direct plain English and speak to "you".
+
+Use only this context:
+{compact_context(context, max_chars=32000)}
+"""
+
+    schema = {
+        "deep_dive": {
+            "type": "string",
+            "description": "600-800 word final capstone deep dive. Use 4-6 short paragraphs. Synthesize the report while focusing on the selected pattern."
+        },
+    }
+
+    return call_claude_structured(api_key, prompt, schema)
+
+
+# ---------------------------------------------------------------------
+# Anthropic structured-output wrapper
+# ---------------------------------------------------------------------
+
+def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict[str, str]]) -> Dict[str, str]:
+    """
+    Force Claude to return a tool_use block with structured fields.
+    This avoids freeform JSON parsing errors.
+    """
+    tool_schema = {
+        "name": "write_hci_report_blocks",
+        "description": "Return HCI report narrative blocks.",
+        "input_schema": {
+            "type": "object",
+            "properties": properties,
+            "required": list(properties.keys()),
+            "additionalProperties": False,
+        },
+    }
+
     payload = {
         "model": CLAUDE_MODEL,
-        "max_tokens": 4096,
-        "temperature": 0.35,
+        "max_tokens": 5000,
+        "temperature": 0.25,
+        "tools": [tool_schema],
+        "tool_choice": {"type": "tool", "name": "write_hci_report_blocks"},
         "messages": [
             {
                 "role": "user",
@@ -311,51 +323,16 @@ def call_claude_json(api_key: str, prompt: str, expected_keys: List[str]) -> Dic
         method="POST",
     )
 
-    with urllib.request.urlopen(req, timeout=120) as response:
-        raw = json.loads(response.read().decode("utf-8"))
-
-    text = extract_text_from_anthropic_response(raw)
-    data = parse_json_from_text(text)
-
-    missing = [k for k in expected_keys if k not in data]
-    if missing:
-        raise ValueError(f"Claude JSON missing keys: {missing}. Got keys: {list(data.keys())}")
-
-    return {k: str(data.get(k, "")).strip() for k in expected_keys}
-
-
-def extract_text_from_anthropic_response(raw: Dict[str, Any]) -> str:
-    parts = []
-    for block in raw.get("content", []):
-        if isinstance(block, dict) and block.get("type") == "text":
-            parts.append(block.get("text", ""))
-    text = "\n".join(parts).strip()
-    if not text:
-        raise ValueError("No text content returned from Claude")
-    return text
-
-
-def parse_json_from_text(text: str) -> Dict[str, Any]:
-    text = text.strip()
-
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
+        with urllib.request.urlopen(req, timeout=90) as response:
+            raw = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Anthropic HTTP {e.code}: {body[:500]}")
 
-    if "```" in text:
-        stripped = text.replace("```json", "```")
-        for part in stripped.split("```"):
-            candidate = part.strip()
-            if candidate.startswith("{") and candidate.endswith("}"):
-                try:
-                    return json.loads(candidate)
-                except json.JSONDecodeError:
-                    continue
+    for block in raw.get("content", []):
+        if isinstance(block, dict) and block.get("type") == "tool_use":
+            data = block.get("input") or {}
+            return {k: str(data.get(k, "")).strip() for k in properties.keys()}
 
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        return json.loads(text[start:end + 1])
-
-    raise ValueError(f"Could not parse JSON from Claude response: {text[:500]}")
+    raise RuntimeError(f"No tool_use block returned by Claude. Raw keys: {list(raw.keys())}")
