@@ -161,15 +161,78 @@ Use only this context:
     return call_claude_structured(api_key, prompt, schema)
 
 
+
+def build_compact_distinctive_perception_context(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Compact, guaranteed-complete context for Sections 7 and 8.
+
+    This intentionally removes raw variable keys from the Claude-facing context,
+    so codes like del_q3 never appear in the generated report.
+    """
+    dimensions = report_data.get("dimensions") or {}
+    distinctive = report_data.get("distinctive_responses") or []
+
+    cleaned_responses = []
+    for i, q in enumerate(distinctive[:7], 1):
+        dim = q.get("dimension")
+        dim_data = dimensions.get(dim, {})
+        cleaned_responses.append({
+            "rank": i,
+            "dimension_label": q.get("dimension_label") or dim_data.get("label"),
+            "question_text": q.get("question_text"),
+            "answer_display": q.get("answer_display"),
+            "percentile": q.get("percentile"),
+            "percentile_label": q.get("percentile_label"),
+            "age_group_percentile": q.get("percentile_age_group"),
+            "comparison_statement": q.get("comparison_statement"),
+            "dimension_percentile": dim_data.get("percentile"),
+            "dimension_position": dim_data.get("position"),
+            "dimension_research_signal": dim_data.get("research_insight"),
+            "is_reverse_scored": q.get("is_reverse_scored"),
+        })
+
+    perception = report_data.get("perception_gap") or {}
+    cleaned_perception = {
+        "self_perception": perception.get("self_perception", []),
+        "gaps": perception.get("gaps", []),
+        "largest_gap": perception.get("largest_gap"),
+        "has_significant_gap": perception.get("has_significant_gap"),
+    }
+
+    top_dims = []
+    for d in sorted(dimensions.values(), key=lambda x: x.get("percentile", 50), reverse=True)[:5]:
+        top_dims.append({
+            "label": d.get("label"),
+            "percentile": d.get("percentile"),
+            "position": d.get("position"),
+            "research_signal": d.get("research_insight"),
+        })
+
+    low_dims = []
+    for d in sorted(dimensions.values(), key=lambda x: x.get("percentile", 50))[:3]:
+        low_dims.append({
+            "label": d.get("label"),
+            "percentile": d.get("percentile"),
+            "position": d.get("position"),
+            "research_signal": d.get("research_insight"),
+        })
+
+    return {
+        "distinctive_response_count": len(cleaned_responses),
+        "distinctive_responses": cleaned_responses,
+        "perception_gap": cleaned_perception,
+        "top_dimensions": top_dims,
+        "lowest_dimensions": low_dims,
+        "instruction": "Use only plain labels and question text. Never output variable IDs.",
+    }
+
+
 # ---------------------------------------------------------------------
 # Call 2: Section 7 + Section 8
 # ---------------------------------------------------------------------
 
 def generate_distinctive_and_perception_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    context = {
-        "distinctive_responses": build_context_for_claude_section(report_data, "distinctive_responses"),
-        "perception_gap": build_context_for_claude_section(report_data, "perception_gap"),
-    }
+    context = build_compact_distinctive_perception_context(report_data)
 
     prompt = f"""
 Write two HCI report narrative blocks:
@@ -179,7 +242,9 @@ Write two HCI report narrative blocks:
 The raw data lists/tables already exist. Explain what they mean.
 
 For Section 7:
-- Intro paragraph, then 7 clearly separated response explanations.
+- You MUST explain all 7 distinctive responses provided.
+- Do NOT use raw variable names or codes such as del_q3, agency_q1, trust_q3, rel_q1.
+- Label each response by its plain question text or a short human-readable label.
 - For each response, explain what is distinctive, why it matters in HCI behavioural terms, and how it connects to the wider profile.
 
 For Section 8:
@@ -194,15 +259,17 @@ Rules:
 - No diagnosis.
 - No prescriptions.
 - No unsupported claims.
+- Never write "[context truncated]" or imply any response data was unavailable.
+- If all 7 responses are present in context, write all 7.
 
-Use only this context:
-{compact_context(context)}
+Use only this compact context:
+{compact_context(context, max_chars=18000)}
 """
 
     schema = {
         "distinctive_responses_narrative": {
             "type": "string",
-            "description": "Intro paragraph plus 7 clearly separated response explanations. 40-70 words per response."
+            "description": "Intro paragraph plus exactly 7 clearly separated response explanations. 40-70 words per response. Never include variable IDs."
         },
         "perception_gap_narrative": {
             "type": "string",
@@ -297,6 +364,46 @@ Use only this context:
     return call_claude_structured(api_key, prompt, schema)
 
 
+
+def clean_narrative_text(text: str) -> str:
+    """
+    Final safety cleanup for model output.
+
+    Removes raw variable-code labels if Claude accidentally includes them.
+    It does not remove question text or substantive content.
+    """
+    if not text:
+        return text
+
+    import re
+
+    # Remove markdown labels like **1. del_q3 — "...":
+    text = re.sub(
+        r'(\*\*\s*\d+\.\s+)([a-z]+_q\d+\s*[—-]\s*)',
+        r'\1',
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove standalone variable-code prefixes at line starts.
+    text = re.sub(
+        r'(?m)^(\s*(?:\*\*)?\d+\.\s+)([a-z]+_q\d+\s*[—-]\s*)',
+        r'\1',
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Remove bracketed placeholder failure text.
+    text = re.sub(
+        r'\n?\s*\*\*?\s*\d+\.\s*\[Seventh distinctive response[^\]]*\].*?(?=\n\s*\*\*?\s*\d+\.|\Z)',
+        '',
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    return text.strip()
+
+
 # ---------------------------------------------------------------------
 # Anthropic structured-output wrapper
 # ---------------------------------------------------------------------
@@ -352,6 +459,6 @@ def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict
     for block in raw.get("content", []):
         if isinstance(block, dict) and block.get("type") == "tool_use":
             data = block.get("input") or {}
-            return {k: str(data.get(k, "")).strip() for k in properties.keys()}
+            return {k: clean_narrative_text(str(data.get(k, "")).strip()) for k in properties.keys()}
 
     raise RuntimeError(f"No tool_use block returned by Claude. Raw keys: {list(raw.keys())}")
