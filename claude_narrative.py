@@ -31,7 +31,7 @@ import urllib.request
 from narrative_context_builder import build_context_for_claude_section
 
 
-CLAUDE_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+CLAUDE_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
 
