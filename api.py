@@ -927,7 +927,9 @@ def premium():
         )
 
         # CLEAN PREMIUM REPORT FLOW
-        # Ensure report_data exists, render final HTML from report_data, cache it, and return report_url.
+        # Ensure report_data exists, render final HTML from report_data,
+        # cache it, and return report_url.
+
         assessment = db.get_assessment(session_id)
         report_data = assessment.get('report_data') if assessment else None
 
@@ -939,56 +941,68 @@ def premium():
                 email=report_email or assessment.get('report_email'),
                 session_id=session_id
             )
+
             assert_report_data_contract(report_data)
+
             db.update_assessment(
                 session_id=session_id,
                 report_data=report_data,
                 report_email=report_email or assessment.get('report_email')
             )
 
-       # Add Claude narrative blocks before rendering.
-# This writes only the API sections: opening findings, rare combinations,
-# behaviour story, distinctive responses, perception gap, trajectory, and final deep dive.
-api_key = os.environ.get('ANTHROPIC_API_KEY')
+        # ------------------------------------------------------------
+        # Add Claude narrative blocks
+        # ------------------------------------------------------------
 
-report_data = add_claude_narratives(
-    report_data=report_data,
-    api_key=api_key
-)
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
 
-db.update_assessment(
-    session_id=session_id,
-    report_data=report_data,
-    report_email=report_email or assessment.get('report_email')
-)
+        report_data = add_claude_narratives(
+            report_data=report_data,
+            api_key=api_key
+        )
 
-report_html_str = render_report(report_data)
+        db.update_assessment(
+            session_id=session_id,
+            report_data=report_data,
+            report_email=report_email or assessment.get('report_email')
+        )
 
-db.update_report(
-    session_id=session_id,
-    report_html=report_html_str,
-    report_generated_at=datetime.utcnow().isoformat()
-)
+        # ------------------------------------------------------------
+        # Render final HTML
+        # ------------------------------------------------------------
 
-return jsonify({
-    'success': True,
-    'message': 'Premium report ready',
-    'report_url': make_report_url(session_id),
-    'narrative_generation': report_data.get('narrative_generation', {})
-}), 200
+        report_html_str = render_report(report_data)
 
+        db.update_report(
+            session_id=session_id,
+            report_html=report_html_str,
+            report_generated_at=datetime.utcnow().isoformat()
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'Premium report ready',
+            'report_url': make_report_url(session_id),
+            'narrative_generation': report_data.get('narrative_generation', {})
+        }), 200
+
+        # ------------------------------------------------------------
         # LEGACY BELOW DISABLED BY RETURN ABOVE
+        # ------------------------------------------------------------
+
         # Step 6: Generate premium report (Layer 3)
         # This calls report_generator which makes 9 Claude API calls
+
         try:
             api_key = os.environ.get('ANTHROPIC_API_KEY')
+
             if not api_key:
                 print('ANTHROPIC_API_KEY not configured')
                 return jsonify({
                     'success': False,
                     'error': 'Report generation not available'
                 }), 503
-            
+
             print(f'Generating premium report for session {session_id}')
             
             # PHASE 1: Enrich full_results with calculated data
