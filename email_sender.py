@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 RESEND_API_ENDPOINT = 'https://api.resend.com/emails'
 
 # Email configuration
-FROM_EMAIL = 'reports@humanclarityinstitute.com'
+FROM_EMAIL = 'reports@updates.humanclarityinstitute.com'
 FROM_NAME = 'Human Clarity Institute'
 
 # ============================================================
