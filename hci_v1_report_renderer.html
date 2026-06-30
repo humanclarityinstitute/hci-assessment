@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your AI Behaviour Report — Human Clarity Institute</title>
+  <style>
+    :root{
+      --ink:#111827;
+      --muted:#5f6673;
+      --soft:#eef1f4;
+      --line:#d9dde3;
+      --paper:#ffffff;
+      --wash:#f7f8fa;
+      --accent:#0b5c6b;
+      --accent-2:#9fb8bf;
+      --danger:#8a3b2f;
+      --max:1080px;
+      --serif: Georgia, 'Times New Roman', serif;
+      --sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;background:var(--wash);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55}
+    .page{max-width:var(--max);margin:0 auto;background:var(--paper);min-height:100vh;box-shadow:0 24px 80px rgba(17,24,39,.08)}
+    .inner{padding:64px 76px}
+    .topline{display:flex;justify-content:space-between;gap:24px;border-bottom:1px solid var(--line);padding:22px 76px 18px;color:var(--muted);font-size:13px;letter-spacing:.02em}
+    .brand{font-family:var(--serif);font-size:22px;color:var(--ink);letter-spacing:-.02em}
+    .meta{text-align:right}
+    h1,h2,h3{margin:0;color:var(--ink);font-weight:500;letter-spacing:-.035em}
+    h1{font-family:var(--serif);font-size:72px;line-height:.95;max-width:820px;margin-top:54px}
+    h2{font-family:var(--serif);font-size:42px;line-height:1.05;margin-bottom:20px}
+    h3{font-size:22px;line-height:1.2;margin-bottom:10px}
+    p{margin:0 0 16px}.lede{font-size:22px;line-height:1.45;color:#2b313a;max-width:760px;margin-top:28px}
+    .rule{height:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));margin:44px 0 0;width:100%}
+    .section{padding:56px 76px;border-top:1px solid var(--line)}
+    .section.kickered{padding-top:46px}.kicker{display:inline-block;background:var(--accent);color:#fff;padding:5px 10px;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin-bottom:24px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.grid.two{grid-template-columns:repeat(2,1fr)}
+    .card{border:1px solid var(--line);background:#fff;padding:24px;min-height:160px}.card.soft{background:var(--wash)}
+    .metric{font-family:var(--serif);font-size:56px;line-height:1;color:var(--accent);letter-spacing:-.04em;margin:8px 0}.label{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:700}
+    .bar{height:10px;background:var(--soft);position:relative;margin:18px 0 10px}.bar span{display:block;height:100%;background:var(--accent);width:0}.bar-marker{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
+    .evidence{border-left:4px solid var(--accent);padding:18px 22px;background:var(--wash);margin:22px 0;color:#2b313a}.evidence strong{color:var(--ink)}
+    .dimension{display:grid;grid-template-columns:220px 1fr;gap:28px;padding:30px 0;border-top:1px solid var(--line)}
+    .dimension:first-child{border-top:0}.dimension-name{font-family:var(--serif);font-size:30px;line-height:1.05}.dimension .metric{font-size:48px}.comparison-list{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.comparison{background:var(--wash);padding:12px;border:1px solid var(--line);font-size:13px}.comparison b{display:block;color:var(--accent);font-size:20px}
+    .quote{font-family:var(--serif);font-size:30px;line-height:1.25;color:var(--accent);margin:24px 0}.note{color:var(--muted);font-size:14px}.toc{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:34px}.toc a{display:block;border-top:1px solid var(--line);padding:14px 0;color:var(--ink);text-decoration:none}.toc span{color:var(--muted);font-size:13px;margin-right:8px}.footer{padding:40px 76px;color:var(--muted);font-size:13px;border-top:1px solid var(--line)}
+    .state{min-height:70vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:40px}.state h2{font-size:34px}.hidden{display:none!important}.spinner{width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin:22px auto}@keyframes spin{to{transform:rotate(360deg)}}
+    @media(max-width:820px){.topline,.inner,.section,.footer{padding-left:26px;padding-right:26px}h1{font-size:48px}.grid,.grid.two,.comparison-list{grid-template-columns:1fr}.dimension{grid-template-columns:1fr;gap:10px}.meta{text-align:left}.topline{flex-direction:column}.section{padding-top:40px;padding-bottom:40px}}
+    @media print{body{background:#fff}.page{box-shadow:none}.section{break-inside:avoid}.card,.dimension{break-inside:avoid}a{text-decoration:none;color:inherit}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div id="loading" class="state"><div><div class="brand">Human Clarity Institute</div><h2>Preparing your report</h2><div class="spinner"></div><p class="note">Loading your assessment data.</p></div></div>
+    <div id="error" class="state hidden"><div><div class="brand">Human Clarity Institute</div><h2>Report data could not be loaded</h2><p class="note" id="errorMessage">Please check the report link or try again shortly.</p></div></div>
+    <article id="report" class="hidden"></article>
+  </main>
+
+  <script>
+  (function(){
+    'use strict';
+
+    const CONFIG = {
+      // Same-origin only. No Railway redirect. Change this path only if your live API route differs.
+      reportDataEndpoint: '/api/report-data',
+      storageKeys: ['hci_report_data','report_data','hciReportData']
+    };
+
+    const $ = id => document.getElementById(id);
+    const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    const clamp = n => Math.max(0, Math.min(100, Number(n) || 0));
+    const titleCase = s => String(s||'').replace(/_/g,' ').replace(/\b\w/g,m=>m.toUpperCase());
+    const paragraphs = text => String(text||'').split(/\n\s*\n/).filter(Boolean).map(p=>`<p>${esc(p)}</p>`).join('');
+
+    function show(which, message){
+      ['loading','error','report'].forEach(id => $(id).classList.toggle('hidden', id !== which));
+      if(message) $('errorMessage').textContent = message;
+    }
+
+    async function loadReportData(){
+      if (window.report_data) return window.report_data;
+      if (window.hciReportData) return window.hciReportData;
+      const script = document.querySelector('script[type="application/json"]#report-data');
+      if (script?.textContent?.trim()) return JSON.parse(script.textContent);
+      for (const key of CONFIG.storageKeys){
+        const raw = sessionStorage.getItem(key) || localStorage.getItem(key);
+        if(raw) return JSON.parse(raw);
+      }
+      const params = new URLSearchParams(location.search);
+      const session_id = params.get('session_id') || params.get('session') || params.get('id');
+      if(!session_id) throw new Error('Missing session_id.');
+      const url = `${CONFIG.reportDataEndpoint}?session_id=${encodeURIComponent(session_id)}`;
+      const res = await fetch(url, {headers:{'Accept':'application/json'}, credentials:'same-origin'});
+      if(!res.ok) throw new Error(`Report API returned ${res.status}.`);
+      const data = await res.json();
+      return data.report_data || data;
+    }
+
+    function normalize(raw){
+      const d = raw || {};
+      const dimsObj = d.dimensions || d.dimension_scores || d.scores || {};
+      const dimensions = Array.isArray(dimsObj)
+        ? dimsObj
+        : Object.entries(dimsObj).map(([key,val]) => ({key, ...(val||{})}));
+      return {
+        title: d.title || d.report_title || 'Your AI Behaviour Report',
+        subtitle: d.subtitle || d.report_subtitle || 'A personalised benchmark of how your AI use compares with others.',
+        participant: d.participant || d.user || d.metadata?.participant || {},
+        metadata: d.metadata || {},
+        summary: d.executive_summary || d.summary || d.opening || {},
+        perception: d.perception_alignment || d.perception || {},
+        dimensions,
+        patterns: d.cross_dimension_patterns || d.patterns || [],
+        protect: d.protect_these_skills || d.what_to_protect || [],
+        nothingChanges: d.if_nothing_changes || d.trajectory || {},
+        deepDive: d.deep_dive || d.dimension_deep_dives || [],
+        reflection: d.human_flourishing_reflection || d.reflection || {},
+        methodology: d.methodology || {}
+      };
+    }
+
+    function metricCard(label, value, note){
+      if(value === undefined || value === null || value === '') return '';
+      return `<div class="card"><div class="label">${esc(label)}</div><div class="metric">${esc(value)}</div>${note ? `<p class="note">${esc(note)}</p>`:''}</div>`;
+    }
+
+    function percentileBar(value){
+      const v = clamp(value);
+      return `<div class="bar"><span style="width:${v}%"></span></div><div class="bar-marker"><span>Lower</span><span>Higher than ${Math.round(v)} of 100</span></div>`;
+    }
+
+    function renderHero(d){
+      const p = d.participant || {}, m = d.metadata || {};
+      const meta = [p.name || m.name, p.age_group || m.age_group, p.country || m.country, m.generated_at || new Date().toLocaleDateString('en-NZ',{year:'numeric',month:'long',day:'numeric'})].filter(Boolean).join(' • ');
+      return `<div class="topline"><div class="brand">Human Clarity Institute</div><div class="meta">${esc(meta)}</div></div>
+      <section class="inner"><span class="kicker">Personal Benchmark Report</span><h1>${esc(d.title)}</h1><p class="lede">${esc(d.subtitle)}</p><div class="rule"></div>
+      <nav class="toc"><a href="#summary"><span>01</span>Executive summary</a><a href="#dimensions"><span>02</span>Behaviour dimensions</a><a href="#patterns"><span>03</span>Pattern analysis</a><a href="#protect"><span>04</span>What to protect</a><a href="#outlook"><span>05</span>If nothing changes</a><a href="#method"><span>06</span>Methodology</a></nav></section>`;
+    }
+
+    function renderSummary(d){
+      const s = d.summary || {};
+      const text = typeof s === 'string' ? s : (s.text || s.narrative || s.most_striking_finding || '');
+      const cards = [
+        metricCard('Overall position', s.overall_position || s.position, s.position_note),
+        metricCard('Most elevated signal', s.most_elevated_signal || s.highest_dimension, s.highest_note),
+        metricCard('Most protected signal', s.most_protected_signal || s.lowest_dimension, s.lowest_note)
+      ].join('');
+      return `<section class="section kickered" id="summary"><span class="kicker">01</span><h2>Executive summary</h2>${text ? `<div class="evidence">${paragraphs(text)}</div>`:''}<div class="grid">${cards}</div></section>`;
+    }
+
+    function renderPerception(d){
+      const p = d.perception || {};
+      if(!Object.keys(p).length) return '';
+      const text = p.text || p.narrative || p.summary || '';
+      return `<section class="section"><h2>Perception alignment</h2>${text ? paragraphs(text) : ''}${p.label ? `<p class="quote">${esc(p.label)}</p>`:''}</section>`;
+    }
+
+    function renderDimensions(d){
+      const dims = d.dimensions || [];
+      if(!dims.length) return '';
+      const html = dims.map(dim => {
+        const name = dim.name || dim.dimension || titleCase(dim.key);
+        const percentile = dim.percentile ?? dim.overall_percentile ?? dim.score_percentile;
+        const definition = dim.definition || dim.description || '';
+        const insight = dim.insight || dim.narrative || dim.interpretation || '';
+        const comps = dim.comparisons || dim.cohort_comparisons || [];
+        const compHtml = Array.isArray(comps) ? comps.slice(0,3).map(c=>`<div class="comparison"><span>${esc(c.label || c.name || 'Comparison')}</span><b>${esc(c.percentile ?? c.value ?? '')}</b></div>`).join('') : '';
+        return `<div class="dimension"><div><div class="label">Dimension</div><div class="dimension-name">${esc(name)}</div></div><div><div class="metric">${Math.round(clamp(percentile))}</div>${percentileBar(percentile)}${definition ? `<p class="note">${esc(definition)}</p>`:''}${insight ? `<div class="evidence">${paragraphs(insight)}</div>`:''}${compHtml ? `<div class="comparison-list">${compHtml}</div>`:''}</div></div>`;
+      }).join('');
+      return `<section class="section kickered" id="dimensions"><span class="kicker">02</span><h2>Your AI behaviour dimensions</h2>${html}</section>`;
+    }
+
+    function renderListSection(id,kicker,title,items,emptyText){
+      if(!items || (Array.isArray(items) && !items.length)) return '';
+      const arr = Array.isArray(items) ? items : [items];
+      const cards = arr.map(item => {
+        if(typeof item === 'string') return `<div class="card soft">${paragraphs(item)}</div>`;
+        return `<div class="card soft"><h3>${esc(item.title || item.name || item.heading || '')}</h3>${paragraphs(item.text || item.narrative || item.content || item.summary || emptyText || '')}</div>`;
+      }).join('');
+      return `<section class="section kickered" id="${id}"><span class="kicker">${kicker}</span><h2>${esc(title)}</h2><div class="grid two">${cards}</div></section>`;
+    }
+
+    function renderOutlook(d){
+      const n = d.nothingChanges || {};
+      const r = d.reflection || {};
+      const nText = typeof n === 'string' ? n : (n.text || n.narrative || n.summary || '');
+      const rText = typeof r === 'string' ? r : (r.text || r.narrative || r.summary || '');
+      if(!nText && !rText) return '';
+      return `<section class="section kickered" id="outlook"><span class="kicker">05</span><h2>If nothing changes</h2>${nText ? `<div class="evidence">${paragraphs(nText)}</div>`:''}${rText ? `<h2 style="margin-top:34px">Human flourishing reflection</h2>${paragraphs(rText)}`:''}</section>`;
+    }
+
+    function renderMethod(d){
+      const m = d.methodology || {};
+      const text = typeof m === 'string' ? m : (m.text || m.summary || m.narrative || 'This report compares your responses with Human Clarity Institute benchmark data and interprets behavioural patterns across multiple AI-use dimensions.');
+      return `<section class="section kickered" id="method"><span class="kicker">06</span><h2>Methodology</h2>${paragraphs(text)}</section><footer class="footer"><strong>Human Clarity Institute</strong><br>This report is informational and reflective. It is not medical, psychological, legal, or financial advice.</footer>`;
+    }
+
+    function render(raw){
+      const d = normalize(raw);
+      $('report').innerHTML = [
+        renderHero(d),
+        renderSummary(d),
+        renderPerception(d),
+        renderDimensions(d),
+        renderListSection('patterns','03','Cross-dimension pattern analysis',d.patterns),
+        renderListSection('protect','04','What to protect',d.protect),
+        renderOutlook(d),
+        renderListSection('deep-dive','','Deep dive',d.deepDive),
+        renderMethod(d)
+      ].join('');
+      show('report');
+    }
+
+    async function init(){
+      try{ show('loading'); render(await loadReportData()); }
+      catch(err){ console.error(err); show('error', err.message || 'Unable to load report data.'); }
+    }
+    document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', init) : init();
+  })();
+  </script>
+</body>
+</html>
