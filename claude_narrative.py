@@ -1,12 +1,12 @@
 """
 claude_narrative.py
 
-Three-call Claude narrative layer for the clean HCI report system.
+Claude narrative layer for the clean HCI report system.
 
-Purpose
--------
-Takes canonical report_data and fills:
+Claude writes ONLY the narrative blocks required by the locked report spec.
+All deterministic/static content remains in report_templates.py/report_sections.py.
 
+Outputs:
 report_data["narrative_blocks"] = {
     "opening_findings": "...",
     "rare_combinations_narrative": "...",
@@ -16,14 +16,6 @@ report_data["narrative_blocks"] = {
     "likely_to_continue": "...",
     "overall_outlook": "..."
 }
-
-Design
-------
-- Claude writes narrative only.
-- Claude does NOT decide report structure.
-- Dashboard, question cards, What To Protect, and Next Steps stay deterministic.
-- Each call receives HCI Signals + Human Reference Layer context.
-- If a Claude call fails, deterministic fallbacks still render.
 """
 
 from __future__ import annotations
@@ -32,83 +24,58 @@ from copy import deepcopy
 from typing import Any, Dict, List
 import json
 import os
-import urllib.request
 import traceback
+import urllib.request
 
-
-try:
-    from hci_signals_library import SIGNALS
-except Exception:
-    SIGNALS = {"dimensions": {}, "trends": {}, "combinations": {}, "human_reference": {}}
-
-try:
-    import human_reference_layer as HRL
-except Exception:
-    HRL = None
+from narrative_context_builder import build_context_for_claude_section
 
 
 CLAUDE_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
 
-# ---------------------------------------------------------------------
-# Public entry point
-# ---------------------------------------------------------------------
-
 def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = None) -> Dict[str, Any]:
     """
-    Add HCI-grounded Claude narrative blocks to report_data.
+    Fill report_data["narrative_blocks"] with HCI-grounded Claude output.
 
-    Safe behaviour:
-    - Returns original report_data with existing deterministic fallback if no key.
-    - Never mutates structure outside report_data["narrative_blocks"].
-    - Does not fail the report if Claude fails.
+    Safe:
+    - If no API key, returns report_data unchanged with status.
+    - If one call fails, other calls still run.
+    - Renderer can always fall back to deterministic sections.
     """
     report_data = deepcopy(report_data)
     api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
 
+    report_data.setdefault("narrative_blocks", {})
+    report_data.setdefault("narrative_generation", {})
+
     if not api_key:
-        print("[CLAUDE] No ANTHROPIC_API_KEY. Rendering deterministic fallback narratives.")
-        report_data.setdefault("narrative_blocks", {})
-        report_data.setdefault("narrative_generation", {})
-        report_data["narrative_generation"]["status"] = "skipped_no_api_key"
+        report_data["narrative_generation"] = {
+            "status": "skipped_no_api_key",
+            "calls": {},
+        }
         return report_data
 
-    report_data.setdefault("narrative_blocks", {})
     status = {
         "status": "started",
         "calls": {},
     }
 
-    # Call 1: profile narrative
-    try:
-        profile_blocks = generate_profile_narrative(report_data, api_key)
-        report_data["narrative_blocks"].update(profile_blocks)
-        status["calls"]["profile_narrative"] = "success"
-    except Exception as e:
-        print(f"[CLAUDE] profile_narrative failed: {e}")
-        traceback.print_exc()
-        status["calls"]["profile_narrative"] = f"failed: {str(e)}"
+    calls = [
+        ("profile_narrative", generate_profile_narrative),
+        ("distinctive_responses", generate_distinctive_responses_narrative),
+        ("trajectory", generate_trajectory_narrative),
+    ]
 
-    # Call 2: top 7 distinctive responses
-    try:
-        response_blocks = generate_distinctive_responses_narrative(report_data, api_key)
-        report_data["narrative_blocks"].update(response_blocks)
-        status["calls"]["distinctive_responses"] = "success"
-    except Exception as e:
-        print(f"[CLAUDE] distinctive_responses failed: {e}")
-        traceback.print_exc()
-        status["calls"]["distinctive_responses"] = f"failed: {str(e)}"
-
-    # Call 3: trajectory / if nothing changes
-    try:
-        trajectory_blocks = generate_trajectory_narrative(report_data, api_key)
-        report_data["narrative_blocks"].update(trajectory_blocks)
-        status["calls"]["trajectory"] = "success"
-    except Exception as e:
-        print(f"[CLAUDE] trajectory failed: {e}")
-        traceback.print_exc()
-        status["calls"]["trajectory"] = f"failed: {str(e)}"
+    for name, fn in calls:
+        try:
+            blocks = fn(report_data, api_key)
+            report_data["narrative_blocks"].update(blocks)
+            status["calls"][name] = "success"
+        except Exception as e:
+            print(f"[CLAUDE] {name} failed: {e}")
+            traceback.print_exc()
+            status["calls"][name] = f"failed: {str(e)}"
 
     status["status"] = "complete"
     report_data["narrative_generation"] = status
@@ -116,145 +83,138 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
 
 
 # ---------------------------------------------------------------------
-# Claude calls
+# Call 1: Opening + Section 4 + Section 5 + Section 8
 # ---------------------------------------------------------------------
 
 def generate_profile_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    """
-    Call 1:
-    - opening_findings
-    - rare_combinations_narrative
-    - behaviour_story
-    - perception_gap_narrative
-    """
-    brief = build_profile_brief(report_data)
-    hci_context = build_hci_context(report_data)
+    context = {
+        "opening": build_context_for_claude_section(report_data, "opening"),
+        "rare_combinations": build_context_for_claude_section(report_data, "rare_combinations"),
+        "behaviour_story": build_context_for_claude_section(report_data, "behaviour_story"),
+        "perception_gap": build_context_for_claude_section(report_data, "perception_gap"),
+    }
 
     prompt = f"""
-You are writing HCI premium report narrative blocks.
+You are writing selected narrative blocks for a Human Clarity Institute premium report.
 
-You are NOT creating report structure. The structure already exists.
-You are filling exactly four narrative blocks.
+The report structure is locked. You are NOT creating sections, deciding layout, scoring, or adding advice.
+You are filling only these four narrative blocks:
+1. opening_findings
+2. rare_combinations_narrative
+3. behaviour_story
+4. perception_gap_narrative
 
-Use the HCI Signals and Human Reference Layer below as grounding.
-Write in the Human Clarity Institute voice:
+Use only the provided report data and HCI context.
+The tone must be:
 - observational
 - research-grounded
 - plain English
 - direct to "you"
+- curious, not dramatic
 - not clinical
 - not self-help
-- not alarming
 - not prescriptive
 - no diagnosis
-- no exaggerated claims
 - no unsupported predictions
 
-Avoid bare percentile jargon. You may mention positioning sparingly when useful.
-Use "HCI's research" or "the data shows" lightly where appropriate.
+Avoid percentile jargon except where unavoidable. Convert statistics into meaning.
+Use "HCI's research" or "the data shows" lightly and only when grounded in the context.
 
-HCI CONTEXT:
-{json.dumps(hci_context, ensure_ascii=False, indent=2)}
-
-USER REPORT BRIEF:
-{json.dumps(brief, ensure_ascii=False, indent=2)}
+CONTEXT:
+{json.dumps(context, ensure_ascii=False, indent=2)}
 
 Return VALID JSON ONLY with these exact keys:
 {{
   "opening_findings": "Three paragraphs, 50-75 words each. Finding 1: most distinctive response. Finding 2: perception gap or alignment. Finding 3: rare combination or coherent/no-combo fallback.",
-  "rare_combinations_narrative": "If rare combinations exist, explain top 1-2 combinations in 350-500 words total. If none exist, write 120-180 words explaining that no rare combination means the pattern is less defined by tension and more by overall score distribution.",
+  "rare_combinations_narrative": "If rare combinations exist, explain top 1-2 combinations in 350-500 words total. If none exist, write 120-180 words explaining that no rare combination means the pattern is less defined by tension and more by the score distribution.",
   "behaviour_story": "300-400 word flowing narrative portrait. Anchor in the highest dimension. Explain cross-dimensional relationships. Ground in HCI observed patterns. No prescriptions.",
   "perception_gap_narrative": "250-300 words comparing self-perception to benchmark positioning. If no significant gaps, explain alignment as meaningful. Illuminating, not corrective."
 }}
 """
-    return call_claude_json(api_key, prompt, expected_keys=[
-        "opening_findings",
-        "rare_combinations_narrative",
-        "behaviour_story",
-        "perception_gap_narrative",
-    ])
+    return call_claude_json(
+        api_key,
+        prompt,
+        expected_keys=[
+            "opening_findings",
+            "rare_combinations_narrative",
+            "behaviour_story",
+            "perception_gap_narrative",
+        ],
+    )
 
+
+# ---------------------------------------------------------------------
+# Call 2: Section 7
+# ---------------------------------------------------------------------
 
 def generate_distinctive_responses_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    """
-    Call 2:
-    - distinctive_responses_narrative
-    """
-    brief = build_distinctive_responses_brief(report_data)
-    hci_context = build_hci_context(report_data)
+    context = build_context_for_claude_section(report_data, "distinctive_responses")
 
     prompt = f"""
-You are writing the HCI report section "Your Most Distinctive Responses".
+You are writing HCI report Section 7: "Your Most Distinctive Responses".
 
-Write response-by-response explanations for the top 7 individual answers.
-Do not collapse them into one general essay.
+This section already has the raw data list. Your job is to explain why each of the top 7 responses is distinctive and what it reveals.
 
-Use the HCI Signals and Human Reference Layer below as grounding.
-For each response:
-1. State what is distinctive.
-2. Explain why it matters in HCI behavioural terms.
-3. Connect it to the person's wider pattern when useful.
-4. Keep it observational and research-grounded.
+Rules:
+- Do not collapse all responses into one generic essay.
+- Write an intro paragraph, then 7 clearly separated response explanations.
+- For each response, state what is distinctive, why it matters in HCI behavioural terms, and how it connects to the wider profile if relevant.
+- Ground each explanation in the provided HCI signals/context.
+- Do not prescribe action.
+- Do not diagnose.
+- Do not overclaim.
 
 Tone:
-- curious
-- precise
-- plain English
+- observational
+- research-grounded
 - direct to "you"
-- not clinical
-- not diagnostic
-- not alarmist
-- not prescriptive
+- precise
+- curious
 
-HCI CONTEXT:
-{json.dumps(hci_context, ensure_ascii=False, indent=2)}
-
-TOP 7 RESPONSE BRIEF:
-{json.dumps(brief, ensure_ascii=False, indent=2)}
+CONTEXT:
+{json.dumps(context, ensure_ascii=False, indent=2)}
 
 Return VALID JSON ONLY:
 {{
-  "distinctive_responses_narrative": "Intro paragraph plus 7 clearly separated response explanations. 40-70 words per response. Use markdown-style bold response labels if helpful."
+  "distinctive_responses_narrative": "Intro paragraph plus 7 clearly separated response explanations. 40-70 words per response. Use bold response labels if helpful."
 }}
 """
-    return call_claude_json(api_key, prompt, expected_keys=[
-        "distinctive_responses_narrative",
-    ])
+    return call_claude_json(
+        api_key,
+        prompt,
+        expected_keys=["distinctive_responses_narrative"],
+    )
 
+
+# ---------------------------------------------------------------------
+# Call 3: Section 10
+# ---------------------------------------------------------------------
 
 def generate_trajectory_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    """
-    Call 3:
-    - likely_to_continue
-    - overall_outlook
-    """
-    brief = build_trajectory_brief(report_data)
-    hci_context = build_hci_context(report_data)
+    context = build_context_for_claude_section(report_data, "trajectory")
 
     prompt = f"""
 You are writing HCI report Section 10: "If Nothing Changes".
 
-This is NOT prediction, advice, urgency, or self-help.
-It is an observational synthesis based on patterns that tend to hold or shift when usage stays similar.
+This is not prediction, advice, urgency, or self-help.
+It is an observational synthesis based on what tends to remain stable or shift when current usage patterns hold.
 
-Use the HCI Signals and Human Reference Layer as grounding.
-Do not make timeline predictions.
-Do not say "you should".
-Do not make claims that are not supported by the provided data/context.
+Write only:
+1. likely_to_continue
+2. overall_outlook
 
-Tone:
-- grounded
-- reassuring
-- observational
-- direct to "you"
-- research-aware
-- autonomy-preserving
+The deterministic parts of Section 10 — strengths likely to deepen and areas worth monitoring — are handled elsewhere. Do not rewrite those lists.
 
-HCI CONTEXT:
-{json.dumps(hci_context, ensure_ascii=False, indent=2)}
+Rules:
+- No timeline predictions.
+- No "you should".
+- No alarmism.
+- No optimization language.
+- Ground observations in the provided HCI context.
+- Speak directly to "you".
 
-TRAJECTORY BRIEF:
-{json.dumps(brief, ensure_ascii=False, indent=2)}
+CONTEXT:
+{json.dumps(context, ensure_ascii=False, indent=2)}
 
 Return VALID JSON ONLY:
 {{
@@ -262,213 +222,11 @@ Return VALID JSON ONLY:
   "overall_outlook": "90-140 words. Coherent closing: main strength, main monitoring area, and autonomy-preserving ending."
 }}
 """
-    return call_claude_json(api_key, prompt, expected_keys=[
-        "likely_to_continue",
-        "overall_outlook",
-    ])
-
-
-# ---------------------------------------------------------------------
-# Brief builders
-# ---------------------------------------------------------------------
-
-def build_profile_brief(report_data: Dict[str, Any]) -> Dict[str, Any]:
-    dimensions = list((report_data.get("dimensions") or {}).values())
-    ranked_high = sorted(dimensions, key=lambda d: d.get("percentile", 50), reverse=True)
-    ranked_low = sorted(dimensions, key=lambda d: d.get("percentile", 50))
-
-    perception = report_data.get("perception_gap") or {}
-
-    return {
-        "demographics": report_data.get("demographics", {}),
-        "highest_dimensions": slim_dimensions(ranked_high[:5]),
-        "lowest_dimensions": slim_dimensions(ranked_low[:3]),
-        "most_distinctive_variable": slim_question(
-            (report_data.get("synthesis_inputs") or {}).get("most_distinctive_variable")
-        ),
-        "rare_combinations": report_data.get("rare_combinations", [])[:2],
-        "perception_gap": {
-            "self_perception": perception.get("self_perception", []),
-            "gaps": perception.get("gaps", []),
-            "has_significant_gap": perception.get("has_significant_gap", False),
-            "largest_gap": perception.get("largest_gap"),
-        },
-        "typicality": report_data.get("typicality", {}),
-    }
-
-
-def build_distinctive_responses_brief(report_data: Dict[str, Any]) -> Dict[str, Any]:
-    responses = report_data.get("distinctive_responses") or []
-    dimensions = report_data.get("dimensions") or {}
-
-    return {
-        "demographics": report_data.get("demographics", {}),
-        "top_7_responses": [slim_question(q) for q in responses[:7]],
-        "dimension_context": {
-            k: {
-                "label": v.get("label"),
-                "definition": v.get("definition"),
-                "percentile": v.get("percentile"),
-                "position": v.get("position"),
-                "research_insight": v.get("research_insight"),
-                "hrl_context": v.get("hrl_context"),
-            }
-            for k, v in dimensions.items()
-        },
-    }
-
-
-def build_trajectory_brief(report_data: Dict[str, Any]) -> Dict[str, Any]:
-    data = report_data.get("if_nothing_changes") or {}
-    return {
-        "demographics": report_data.get("demographics", {}),
-        "usage_frequency": data.get("usage_frequency"),
-        "highest_dimension": slim_dimension(data.get("highest_dimension")),
-        "monitoring_anchor": slim_dimension(data.get("monitoring_anchor")),
-        "strengths_likely_to_deepen": slim_dimensions(data.get("strengths_likely_to_deepen", [])),
-        "areas_worth_monitoring": slim_dimensions(data.get("areas_worth_monitoring", [])),
-        "all_dimensions": slim_dimensions((report_data.get("dimensions") or {}).values()),
-        "what_to_protect": report_data.get("what_to_protect", []),
-    }
-
-
-def slim_dimension(d: Any) -> Dict[str, Any] | None:
-    if not isinstance(d, dict):
-        return None
-    return {
-        "key": d.get("key"),
-        "label": d.get("label"),
-        "definition": d.get("definition"),
-        "percentile": d.get("percentile"),
-        "position": d.get("position"),
-        "research_insight": d.get("research_insight"),
-        "hrl_context": d.get("hrl_context"),
-    }
-
-
-def slim_dimensions(items: Any) -> List[Dict[str, Any]]:
-    return [x for x in (slim_dimension(i) for i in list(items or [])) if x]
-
-
-def slim_question(q: Any) -> Dict[str, Any] | None:
-    if not isinstance(q, dict):
-        return None
-    return {
-        "key": q.get("key"),
-        "dimension": q.get("dimension"),
-        "dimension_label": q.get("dimension_label"),
-        "question_text": q.get("question_text"),
-        "answer": q.get("answer"),
-        "answer_display": q.get("answer_display"),
-        "percentile": q.get("percentile"),
-        "percentile_label": q.get("percentile_label"),
-        "percentile_age_group": q.get("percentile_age_group"),
-        "comparison_statement": q.get("comparison_statement"),
-    }
-
-
-# ---------------------------------------------------------------------
-# HCI context builder
-# ---------------------------------------------------------------------
-
-def build_hci_context(report_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Compact HCI grounding context for Claude.
-
-    Pulls from:
-    - hci_signals_library.SIGNALS
-    - human_reference_layer.py if available
-    - dimension-specific hrl_context already attached in report_data
-    """
-    relevant_dimensions = set()
-
-    for d in (report_data.get("dimensions") or {}).keys():
-        relevant_dimensions.add(d)
-
-    compact_dimensions = {}
-    signal_dims = SIGNALS.get("dimensions", {}) if isinstance(SIGNALS, dict) else {}
-
-    for dim in relevant_dimensions:
-        signal = signal_dims.get(dim) or signal_dims.get(dim.replace("_", " ").title()) or {}
-        if not isinstance(signal, dict):
-            signal = {"text": str(signal)}
-        compact_dimensions[dim] = {
-            "signal": signal,
-            "human_reference": get_human_reference_for_dimension(dim),
-        }
-
-    return {
-        "principles": {
-            "do": [
-                "Explain behavioural patterns, not personality types.",
-                "Use HCI's human reference framing: why the behaviour matters for judgement, agency, verification, emotional boundaries, disclosure, and thought partnership.",
-                "Frame scores as awareness and choice, not diagnosis.",
-                "Preserve user autonomy.",
-                "Use plain English.",
-            ],
-            "do_not": [
-                "Do not prescribe actions.",
-                "Do not use therapy language.",
-                "Do not say a score is good or bad.",
-                "Do not overclaim from a percentile.",
-                "Do not invent statistics not present in the data.",
-            ],
-        },
-        "signals_dimensions": compact_dimensions,
-        "signals_trends": SIGNALS.get("trends", {}) if isinstance(SIGNALS, dict) else {},
-        "signals_combinations": SIGNALS.get("combinations", {}) if isinstance(SIGNALS, dict) else {},
-        "signals_human_reference": SIGNALS.get("human_reference", {}) if isinstance(SIGNALS, dict) else {},
-        "human_reference_layer": get_global_hrl_context(),
-    }
-
-
-def get_human_reference_for_dimension(dim: str) -> Dict[str, Any]:
-    if HRL is None:
-        return {}
-
-    out = {}
-    for attr in ["HBE_FRAMEWORK", "VALUES_SIGNALS", "HUMAN_REFERENCE_LAYER", "REFRAME_LIBRARY", "RESEARCH_INSIGHTS"]:
-        source = getattr(HRL, attr, None)
-        if isinstance(source, dict):
-            value = source.get(dim)
-            if value is None:
-                value = source.get(dim.replace("_", " ").title())
-            if value is not None:
-                out[attr] = value
-
-    for fn_name in ["get_values_reframe", "get_cohort_reframe", "apply_research_insight"]:
-        fn = getattr(HRL, fn_name, None)
-        if callable(fn):
-            try:
-                out[fn_name] = fn(dim)
-            except TypeError:
-                try:
-                    out[fn_name] = fn(dim, "moderate")
-                except Exception:
-                    pass
-            except Exception:
-                pass
-
-    return out
-
-
-def get_global_hrl_context() -> Dict[str, Any]:
-    if HRL is None:
-        return {}
-
-    out = {}
-    for attr in [
-        "HBE_FRAMEWORK",
-        "VALUES_SIGNALS",
-        "HBE_COHORT_REFRAMES",
-        "REFRAME_LIBRARY",
-        "RESEARCH_INSIGHTS",
-    ]:
-        value = getattr(HRL, attr, None)
-        if isinstance(value, dict):
-            # Keep it compact enough for prompt use.
-            out[attr] = value
-    return out
+    return call_claude_json(
+        api_key,
+        prompt,
+        expected_keys=["likely_to_continue", "overall_outlook"],
+    )
 
 
 # ---------------------------------------------------------------------
@@ -499,7 +257,7 @@ def call_claude_json(api_key: str, prompt: str, expected_keys: List[str]) -> Dic
         method="POST",
     )
 
-    with urllib.request.urlopen(req, timeout=90) as response:
+    with urllib.request.urlopen(req, timeout=120) as response:
         raw = json.loads(response.read().decode("utf-8"))
 
     text = extract_text_from_anthropic_response(raw)
@@ -509,7 +267,6 @@ def call_claude_json(api_key: str, prompt: str, expected_keys: List[str]) -> Dic
     if missing:
         raise ValueError(f"Claude JSON missing keys: {missing}. Got keys: {list(data.keys())}")
 
-    # Ensure all values are strings.
     return {k: str(data.get(k, "")).strip() for k in expected_keys}
 
 
@@ -527,17 +284,14 @@ def extract_text_from_anthropic_response(raw: Dict[str, Any]) -> str:
 def parse_json_from_text(text: str) -> Dict[str, Any]:
     text = text.strip()
 
-    # Best case: exact JSON.
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # Common case: fenced code block.
     if "```" in text:
         stripped = text.replace("```json", "```")
-        parts = stripped.split("```")
-        for part in parts:
+        for part in stripped.split("```"):
             candidate = part.strip()
             if candidate.startswith("{") and candidate.endswith("}"):
                 try:
@@ -545,11 +299,9 @@ def parse_json_from_text(text: str) -> Dict[str, Any]:
                 except json.JSONDecodeError:
                     continue
 
-    # Last resort: extract outer braces.
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
-        candidate = text[start:end + 1]
-        return json.loads(candidate)
+        return json.loads(text[start:end + 1])
 
     raise ValueError(f"Could not parse JSON from Claude response: {text[:500]}")
