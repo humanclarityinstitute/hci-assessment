@@ -137,6 +137,17 @@ PROTECT_DIMENSIONS = [
     "thought_partnership",
 ]
 
+COUNTRY_DISPLAY_NAMES = {
+    "NZ": "New Zealand",
+    "AU": "Australia",
+    "US": "United States",
+    "USA": "United States",
+    "GB": "United Kingdom",
+    "UK": "United Kingdom",
+    "IE": "Ireland",
+    "CA": "Canada",
+}
+
 
 # ---------------------------------------------------------------------
 # Basic helpers
@@ -258,6 +269,13 @@ def canonical_lookup(value: Any, available_keys: List[str]) -> Optional[str]:
     return None
 
 
+def country_display_name(value: Any) -> str:
+    if value is None or value == "":
+        return ""
+    text = str(value).strip()
+    return COUNTRY_DISPLAY_NAMES.get(text.upper(), text)
+
+
 def infer_available_segment_keys(benchmark: Any, segment_key: str) -> List[str]:
     """
     Collect available segment keys across dimensions and variables.
@@ -298,8 +316,11 @@ def normalise_demographics_for_benchmark(demographics: Dict[str, Any], benchmark
 
     age_original = demographics.get("age_group")
     freq_original = demographics.get("ai_tool_use_frequency") or demographics.get("frequency")
+    country_original = demographics.get("country")
 
     demographics["_age_group_original"] = age_original
+    demographics["_country_original"] = country_original
+    demographics["country_display"] = country_display_name(country_original)
     demographics["_frequency_original"] = freq_original
     demographics["_age_group_benchmark"] = canonical_lookup(age_original, age_keys) or age_original
     demographics["_frequency_benchmark"] = canonical_lookup(freq_original, freq_keys) or freq_original
