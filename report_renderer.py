@@ -74,6 +74,36 @@ def safe_ordinal(v):
         return str(pct(v))
 
 
+def response_dots(answer, total=7):
+    """Premium filled/unfilled response indicator for 1-7 answers."""
+    try:
+        a = int(round(float(answer)))
+    except Exception:
+        a = 0
+    a = max(0, min(total, a))
+    return "".join(
+        f'<span class="{"filled" if i <= a else "empty"}"></span>'
+        for i in range(1, total + 1)
+    )
+
+
+def compact_position_label(item):
+    text = str(item.get("position") or "benchmark range").lower()
+    if "exceptionally high" in text:
+        return "Very high"
+    if "notably high" in text:
+        return "High"
+    if "above" in text:
+        return "Elevated"
+    if "exceptionally low" in text:
+        return "Very low"
+    if "notably low" in text:
+        return "Low"
+    if "below" in text:
+        return "Lower"
+    return "Benchmark range"
+
+
 def inline_text(text):
     """Render safe inline text and tolerate simple Claude Markdown bold if it appears."""
     if text is None:
@@ -577,19 +607,27 @@ def render_typicality(x):
         "and where it remains broadly aligned. Looking across dimensions rather than individual scores reveals the overall shape of your relationship with AI."
     )
 
-    def rows(items, empty):
+    def signal_items(items, empty, show_position=True):
         if not items:
             return f'<p class="muted">{esc(empty)}</p>'
-        return ''.join(
-            f'<div class="stand-row" style="--stand-accent:{esc(dim_accent(i.get("dimension") or i.get("key") or i.get("label")))};">'
-            f'<span>{esc(i.get("label"))}</span>'
-            f'<strong>{esc(position_without_percentile(i)).title()}</strong>'
-            f'</div>'
-            for i in items
-        )
+        html = ''
+        for i in items:
+            key = i.get("dimension") or i.get("key") or i.get("label")
+            p = pct(i.get("percentile"))
+            label = compact_position_label(i)
+            html += f"""
+              <div class="shape-signal" style="--shape-accent:{esc(dim_accent(key))}; --shape-fill:{p}%">
+                <div class="shape-signal-main">
+                  <span class="shape-dot"></span>
+                  <strong>{esc(i.get("label"))}</strong>
+                  {f'<em>{esc(label)}</em>' if show_position else ''}
+                </div>
+                <div class="shape-mini-bar"><span></span></div>
+              </div>"""
+        return html
 
-    distinctive_rows = rows(distinctive, "No dimensions fall cleanly into a strongly distinctive range.")
-    benchmark_rows = rows(benchmark_range, "No dimensions sit close to the benchmark range.")
+    distinctive_rows = signal_items(distinctive, "No dimensions fall cleanly into a strongly distinctive range.", True)
+    benchmark_rows = signal_items(benchmark_range, "No dimensions sit close to the benchmark range.", False)
 
     return f"""
     <section class="page-section standing-section profile-shape-section">
@@ -597,20 +635,22 @@ def render_typicality(x):
       <h2>{esc(x.get('title') or 'The Shape of Your Profile')}</h2>
       <p class="section-intro compact">{esc(section_intro)}</p>
 
-      <div class="standing-grid">
-        <article class="standing-card">
-          <h3>Dimensions that stand out</h3>
-          <div class="stand-list">{distinctive_rows}</div>
+      <div class="profile-shape-layout">
+        <article class="shape-panel shape-panel-primary">
+          <h3>Strongest behavioural signals</h3>
+          <p class="shape-panel-note">These dimensions carry the clearest signal in your profile.</p>
+          <div class="shape-signal-list">{distinctive_rows}</div>
         </article>
 
-        <article class="standing-card">
-          <h3>Closer to the benchmark</h3>
-          <div class="stand-list">{benchmark_rows}</div>
+        <article class="shape-panel">
+          <h3>Other measured dimensions</h3>
+          <p class="shape-panel-note">These sit closer to the benchmark pattern and add context.</p>
+          <div class="shape-signal-list compact">{benchmark_rows}</div>
         </article>
       </div>
 
       <article class="profile-shape-summary">
-        <h3>Overall profile shape</h3>
+        <h3>How these dimensions work together</h3>
         {paras(x.get('profile_shape_summary')) or render_empty('No profile shape summary was available.')}
       </article>
     </section>"""
@@ -717,18 +757,25 @@ def render_questions(x, demo):
 
 
 def render_distinctive(x):
-    cards = "".join(
-        f'''
-        <article class="evidence-card">
+    cards = ""
+    for q in x.get("responses", []):
+        percentile = q.get('percentile')
+        accent = dim_accent(q.get('dimension') or q.get('dimension_label'))
+        cards += f"""
+        <article class="evidence-card distinctive-card" style="--evidence-accent:{esc(accent)};">
           <div class="card-topline">{esc(q.get('dimension_label'))}</div>
-          <p>“{esc(q.get('question_text'))}”</p>
-          <div class="evidence-meta"><span>Your answer</span><strong>{esc(q.get('answer_display'))}</strong></div>
-          <div class="evidence-meta"><span>Position</span><strong>{esc(q.get('percentile_label') or safe_ordinal(q.get('percentile')))} %ile</strong></div>
-        </article>'''
-        for q in x.get("responses", [])
-    )
-    return f'<section class="page-section">{section_kicker("Distinctive responses")}<h2>{esc(x.get("title") or "Your Most Distinctive Responses")}</h2><div class="evidence-grid">{cards or render_empty("No distinctive responses were available.")}</div><div class="narrative narrow">{paras(x.get("narrative"))}</div></section>'
-
+          <p class="distinctive-question">“{esc(q.get('question_text'))}”</p>
+          <div class="response-metric">
+            <span>Your response</span>
+            <div class="response-dots">{response_dots(q.get('answer'))}</div>
+            <strong>{esc(q.get('answer_display'))}</strong>
+          </div>
+          <div class="benchmark-metric">
+            <span>Higher than</span>
+            <strong>{pct(percentile)} of 100 participants</strong>
+          </div>
+        </article>"""
+    return f'<section class="page-section distinctive-section">{section_kicker("Distinctive responses")}<h2>{esc(x.get("title") or "Your Most Distinctive Responses")}</h2><div class="evidence-grid distinctive-grid">{cards or render_empty("No distinctive responses were available.")}</div><div class="narrative narrow distinctive-narrative">{paras(x.get("narrative"))}</div></section>'
 
 def render_perception(x):
     rows = "".join(
@@ -1318,8 +1365,27 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
   color:#344054;
 }
 
+
+
+/* Profile Shape V2 — summary, not repeated table */
+.hci-report .profile-shape-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;max-width:960px;margin-top:20px}
+.hci-report .shape-panel{border:1px solid var(--line);background:#fff;padding:22px}
+.hci-report .shape-panel h3{margin:0 0 6px;font-size:16px;color:#101828}
+.hci-report .shape-panel-note{margin:0 0 16px;color:#667085;font-size:13px;line-height:1.45}
+.hci-report .shape-signal-list{display:grid;gap:13px}.hci-report .shape-signal-list.compact{gap:11px}.hci-report .shape-signal{display:grid;gap:7px}
+.hci-report .shape-signal-main{display:flex;align-items:center;gap:10px;min-height:23px}.hci-report .shape-dot{width:4px;height:22px;border-radius:999px;background:var(--shape-accent,var(--accent));display:inline-block;flex:0 0 auto}
+.hci-report .shape-signal-main strong{font-size:15px;color:#101828}.hci-report .shape-signal-main em{margin-left:auto;font-style:normal;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:800;color:#475467;background:#f8fafc;border:1px solid var(--line);border-radius:999px;padding:4px 8px;white-space:nowrap}
+.hci-report .shape-mini-bar{height:5px;background:#eef2f6;border-radius:999px;overflow:hidden;margin-left:14px}.hci-report .shape-mini-bar span{display:block;height:100%;width:var(--shape-fill,50%);background:var(--shape-accent,var(--accent));border-radius:999px;opacity:.9}
+.hci-report .shape-signal-list.compact .shape-mini-bar{display:none}.hci-report .shape-signal-list.compact .shape-signal-main{border-top:1px solid var(--line);padding-top:9px}.hci-report .shape-signal-list.compact .shape-signal:first-child .shape-signal-main{border-top:0;padding-top:0}
+
+/* Distinctive responses V2 */
+.hci-report .distinctive-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.hci-report .distinctive-card{border-left:3px solid var(--evidence-accent,var(--accent));padding:22px 23px;display:flex;flex-direction:column;min-height:230px}.hci-report .distinctive-card .card-topline{color:var(--evidence-accent,var(--accent));margin-bottom:14px}
+.hci-report .distinctive-question{font-size:15px;line-height:1.5;color:#253044;margin:0 0 18px;min-height:68px}.hci-report .response-metric{border-top:1px solid var(--line);padding-top:12px;display:grid;grid-template-columns:1fr auto;gap:7px 12px;align-items:center;margin-top:auto}
+.hci-report .response-metric span,.hci-report .benchmark-metric span{font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.08em;font-weight:700}.hci-report .response-metric strong{font-size:13px;color:#101828;text-align:right}.hci-report .response-dots{display:flex;gap:5px;grid-column:1/2}.hci-report .response-dots span{width:9px;height:9px;border-radius:50%;border:1px solid color-mix(in srgb, var(--evidence-accent) 35%, #d0d5dd);background:#fff}.hci-report .response-dots span.filled{background:var(--evidence-accent,var(--accent));border-color:var(--evidence-accent,var(--accent))}
+.hci-report .benchmark-metric{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;display:flex;justify-content:space-between;gap:14px;align-items:baseline}.hci-report .benchmark-metric strong{font-size:13px;color:#101828;text-align:right}.hci-report .distinctive-narrative{margin-top:28px}.hci-report .distinctive-narrative p{font-size:15.5px;line-height:1.58}
+
 @media(max-width:900px){.hci-report .protect-grid.four{grid-template-columns:1fr}}
 
-@media(max-width:900px){.hci-report{padding:36px 22px}.cover-grid,.dimension-grid,.standing-grid,.two-col,.evidence-grid,.protect-grid,.question-grid,.histogram-grid{grid-template-columns:1fr}h1{font-size:44px}h2{font-size:30px}.brand-row{margin-bottom:42px}}
-@media print{body{background:#fff}.hci-report{max-width:none;padding:34px}.page-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:42px}.dimension-grid{grid-template-columns:repeat(3,1fr);gap:14px}.dimension-card{padding:17px 17px 15px}.percentile-block{margin:11px 0}.insight{font-size:12.5px}.dimension-definition{font-size:12.5px}.question-grid{grid-template-columns:repeat(2,1fr)}.cover-panel,.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{box-shadow:none}a{color:inherit}}
+@media(max-width:900px){.hci-report{padding:36px 22px}.cover-grid,.dimension-grid,.standing-grid,.profile-shape-layout,.two-col,.evidence-grid,.distinctive-grid,.protect-grid,.question-grid,.histogram-grid{grid-template-columns:1fr}h1{font-size:44px}h2{font-size:30px}.brand-row{margin-bottom:42px}}
+@media print{body{background:#fff}.hci-report{max-width:none;padding:34px}.page-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:42px}.dimension-grid{grid-template-columns:repeat(3,1fr);gap:14px}.profile-shape-layout{gap:14px}.shape-panel{padding:17px}.distinctive-grid{gap:14px}.distinctive-card{padding:17px;min-height:200px}.dimension-card{padding:17px 17px 15px}.percentile-block{margin:11px 0}.insight{font-size:12.5px}.dimension-definition{font-size:12.5px}.question-grid{grid-template-columns:repeat(2,1fr)}.cover-panel,.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{box-shadow:none}a{color:inherit}}
 </style>'''
