@@ -346,22 +346,43 @@ def generate_trajectory_narrative(report_data: Dict[str, Any], api_key: str) -> 
     prompt = f"""
 Write HCI report Section 10 narrative blocks: "If Nothing Changes".
 
-This is not prediction, advice, urgency, or self-help.
-It is observational synthesis based on what tends to remain stable or shift when current usage patterns hold.
+This is not prediction, advice, urgency, optimisation, or self-help.
+It is observational synthesis based on what typically remains stable or shifts when current AI usage patterns hold.
 
 Write only:
 - likely_to_continue
 - overall_outlook
 
-The deterministic parts of Section 10 are handled elsewhere. Do not rewrite those lists.
+The deterministic parts of Section 10 are handled elsewhere. Do not rewrite the strengths list or monitoring list.
+
+For likely_to_continue:
+- Write 120-160 words.
+- Begin with one broad framing sentence about the overall pattern, such as: "People with profiles like yours tend to retain the overall shape of their relationship with AI unless usage frequency changes significantly."
+- Then explain the single strongest stable behavioural interaction in the profile.
+- Use softened, observational language: "can", "tends to", "often", "may", "typically".
+- Do not say a behaviour definitely will continue or deepen.
+- End with one sentence about what tends to remain stable: the internal logic, behavioural rhythm, or profile shape.
+
+For overall_outlook:
+- Write 90-130 words.
+- Summarise the overall profile in one sentence.
+- Identify one area most worth monitoring and explain why in research-grounded language.
+- Balance that with one strength that suggests thoughtful adaptation.
+- End with a reassuring, non-prescriptive closing.
+- Prefer this closing shape where appropriate: "Research consistently shows that people's sense of identity remains remarkably stable, even as the way they think with AI gradually evolves. What this report offers is not a prediction, but a clearer view of the pattern you have today. How that relationship develops from here remains entirely yours to shape."
 
 Rules:
 - No timeline predictions.
 - No "you should".
 - No alarmism.
-- No optimization language.
+- No optimisation language.
+- No urgency.
+- Do not imply decline is inevitable.
+- Do not use hard numerical statistics unless absolutely necessary.
+- Avoid phrases like "over the next 3-6 months", "within a year", or percentage-change predictions.
 - Ground observations in the provided HCI context.
 - Speak directly to "you".
+- Keep the tone grounded, reassuring, observational, and premium.
 
 Use only this context:
 {compact_context(context)}
@@ -370,11 +391,11 @@ Use only this context:
     schema = {
         "likely_to_continue": {
             "type": "string",
-            "description": "100-160 words. What pattern is most likely to remain stable if usage and behaviour stay similar."
+            "description": "120-160 words. Broad framing sentence first, then the strongest stable behavioural interaction, then what tends to remain stable. Observational, no predictions, no prescriptions, no timeline language."
         },
         "overall_outlook": {
             "type": "string",
-            "description": "90-140 words. Coherent closing: main strength, main monitoring area, and autonomy-preserving ending."
+            "description": "90-130 words. Summarise the profile, identify one monitoring area, balance it with one strength, and close with reassurance. No urgency, no prescriptions, no predictions."
         },
     }
 
