@@ -74,12 +74,24 @@ def safe_ordinal(v):
         return str(pct(v))
 
 
+def inline_text(text):
+    """Render safe inline text and tolerate simple Claude Markdown bold if it appears."""
+    if text is None:
+        return ""
+    safe = esc(text)
+    # Convert escaped **bold** markers to real bold text.
+    # Content is already escaped, so this remains safe.
+    import re
+    safe = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", safe)
+    return safe
+
+
 def paras(text):
-    """Render plain text into safe paragraphs."""
+    """Render plain text into safe paragraphs, with minimal Markdown-bold cleanup."""
     if not text:
         return ""
     return "".join(
-        f"<p>{esc(p.strip())}</p>"
+        f"<p>{inline_text(p.strip())}</p>"
         for p in str(text).split("\n\n")
         if p.strip()
     )
