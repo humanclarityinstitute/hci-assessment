@@ -778,25 +778,74 @@ def render_distinctive(x):
     return f'<section class="page-section distinctive-section">{section_kicker("Distinctive responses")}<h2>{esc(x.get("title") or "Your Most Distinctive Responses")}</h2><div class="evidence-grid distinctive-grid">{cards or render_empty("No distinctive responses were available.")}</div><div class="narrative narrow distinctive-narrative">{paras(x.get("narrative"))}</div></section>'
 
 def render_perception(x):
-    rows = "".join(
+    def benchmark_text(item):
+        percentile = item.get('actual_percentile')
+        pct_label = item.get('actual_percentile_label') or safe_ordinal(percentile)
+        return f"{esc(pct_label)} percentile"
+
+    cards = "".join(
         f'''
-        <article class="evidence-card">
-          <p>“{esc(i.get('question'))}”</p>
-          <div class="evidence-meta"><span>Your answer</span><strong>{esc(i.get('answer'))}</strong></div>
-          <div class="evidence-meta"><span>{esc(i.get('primary_dimension_label'))}</span><strong>{esc(safe_ordinal(i.get('actual_percentile')))} %ile · {esc(i.get('actual_position'))}</strong></div>
+        <article class="perception-card">
+          <div class="perception-question-label">Question</div>
+          <p class="perception-question">“{esc(i.get('question'))}”</p>
+
+          <div class="perception-answer-block">
+            <span>Your answer</span>
+            <strong>{esc(i.get('answer'))}</strong>
+          </div>
+
+          <div class="perception-divider"></div>
+
+          <div class="perception-benchmark">
+            <span>Actual benchmark</span>
+            <h3>{esc(i.get('primary_dimension_label') or 'Benchmark position')}</h3>
+            <strong>{benchmark_text(i)}</strong>
+            <em>{esc(i.get('actual_position') or 'Benchmark position')}</em>
+          </div>
         </article>'''
         for i in x.get("self_perception", [])
     )
-    return f'''
-    <section class="page-section">
-      {section_kicker('Self-perception')}
-      <h2>{esc(x.get('title') or 'Perception Gap Analysis')}</h2>
-      <h3>How you see yourself</h3>
-      <div class="evidence-grid">{rows or render_empty('No self-perception answers were available.')}</div>
-      <h3>What the data shows</h3>
-      <div class="narrative narrow">{paras(x.get('narrative'))}</div>
-    </section>'''
 
+    summary_rows = "".join(
+        f'''
+        <div class="perception-row">
+          <span>{esc(r.get('label'))}</span>
+          <strong>{esc(r.get('self'))}</strong>
+          <em>{esc(r.get('benchmark_label') or safe_ordinal(r.get('benchmark')))} percentile</em>
+        </div>'''
+        for r in x.get("comparison_summary", [])
+    )
+
+    summary = f'''
+      <article class="perception-summary">
+        <h3>Comparison summary</h3>
+        <div class="perception-row perception-row-head">
+          <span>Question</span>
+          <strong>Self</strong>
+          <em>Benchmark</em>
+        </div>
+        {summary_rows or '<p class="muted">No comparison summary was available.</p>'}
+      </article>'''
+
+    return f'''
+    <section class="page-section perception-section">
+      {section_kicker('Self-perception')}
+      <h2>{esc(x.get('title') or 'How You See Yourself')}</h2>
+      <p class="section-intro compact">{esc(x.get('subtitle') or 'Comparing your self-perception with your benchmark profile.')}</p>
+
+      <div class="perception-heading-row">
+        <h3>How you see yourself</h3>
+        <h3>What the benchmark shows</h3>
+      </div>
+
+      <div class="perception-grid">{cards or render_empty('No self-perception answers were available.')}</div>
+      {summary}
+
+      <div class="perception-narrative-block">
+        <h3>{esc(x.get('narrative_heading') or 'What this comparison suggests')}</h3>
+        <div class="narrative narrow">{paras(x.get('narrative'))}</div>
+      </div>
+    </section>'''
 
 def render_protect(x, report_data=None):
     """Render locked What to Protect section.
@@ -1377,6 +1426,139 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .hci-report .shape-signal-main strong{font-size:15px;color:#101828}.hci-report .shape-signal-main em{margin-left:auto;font-style:normal;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:800;color:#475467;background:#f8fafc;border:1px solid var(--line);border-radius:999px;padding:4px 8px;white-space:nowrap}
 .hci-report .shape-mini-bar{height:5px;background:#eef2f6;border-radius:999px;overflow:hidden;margin-left:14px}.hci-report .shape-mini-bar span{display:block;height:100%;width:var(--shape-fill,50%);background:var(--shape-accent,var(--accent));border-radius:999px;opacity:.9}
 .hci-report .shape-signal-list.compact .shape-mini-bar{display:none}.hci-report .shape-signal-list.compact .shape-signal-main{border-top:1px solid var(--line);padding-top:9px}.hci-report .shape-signal-list.compact .shape-signal:first-child .shape-signal-main{border-top:0;padding-top:0}
+
+
+
+/* Section 8 — Perception Gap premium layout */
+.hci-report .perception-section{padding-top:72px}
+.hci-report .perception-heading-row{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:22px;
+  max-width:1040px;
+  margin:34px 0 14px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--line);
+}
+.hci-report .perception-heading-row h3{
+  margin:0;
+  font-size:13px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:#475467;
+}
+.hci-report .perception-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:22px;
+  max-width:1040px;
+}
+.hci-report .perception-card{
+  background:#fff;
+  border:1px solid var(--line);
+  box-shadow:0 1px 0 rgba(16,24,40,.04);
+  padding:25px 26px 27px;
+  min-height:300px;
+  display:flex;
+  flex-direction:column;
+}
+.hci-report .perception-question-label,
+.hci-report .perception-answer-block span,
+.hci-report .perception-benchmark span{
+  display:block;
+  font-size:10px;
+  line-height:1.2;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  color:#667085;
+  font-weight:800;
+}
+.hci-report .perception-question{
+  margin:9px 0 22px;
+  font-family:Georgia,"Times New Roman",serif;
+  font-size:17px;
+  line-height:1.38;
+  color:#101828;
+}
+.hci-report .perception-answer-block{
+  margin-top:auto;
+}
+.hci-report .perception-answer-block strong{
+  display:block;
+  margin-top:7px;
+  font-size:16px;
+  line-height:1.35;
+  color:#101828;
+}
+.hci-report .perception-divider{
+  height:1px;
+  background:var(--line);
+  margin:21px 0 20px;
+}
+.hci-report .perception-benchmark h3{
+  margin:10px 0 8px;
+  font-size:15px;
+  color:#0f2f63;
+}
+.hci-report .perception-benchmark strong{
+  display:block;
+  font-size:20px;
+  line-height:1.15;
+  color:#101828;
+  letter-spacing:-.01em;
+}
+.hci-report .perception-benchmark em{
+  display:block;
+  margin-top:7px;
+  font-size:13px;
+  line-height:1.4;
+  color:#475467;
+  font-style:normal;
+}
+.hci-report .perception-summary{
+  max-width:920px;
+  margin:34px 0 0;
+  padding:24px 26px;
+  background:#fbfaf7;
+  border:1px solid var(--line);
+  border-left:3px solid var(--accent);
+}
+.hci-report .perception-summary h3{
+  margin:0 0 15px;
+  font-size:17px;
+  color:#101828;
+}
+.hci-report .perception-row{
+  display:grid;
+  grid-template-columns:minmax(180px,1.4fr) minmax(110px,.8fr) minmax(130px,.8fr);
+  gap:18px;
+  align-items:center;
+  padding:12px 0;
+  border-top:1px solid rgba(208,213,221,.7);
+}
+.hci-report .perception-row-head{
+  padding-top:0;
+  border-top:0;
+  color:#667085;
+  text-transform:uppercase;
+  letter-spacing:.1em;
+  font-size:10px;
+}
+.hci-report .perception-row span{font-size:14px;color:#253044;font-weight:700}
+.hci-report .perception-row strong{font-size:14px;color:#101828}
+.hci-report .perception-row em{font-style:normal;font-size:14px;color:#0f2f63;font-weight:800}
+.hci-report .perception-narrative-block{
+  margin-top:70px;
+}
+.hci-report .perception-narrative-block h3{
+  margin:0 0 18px;
+  font-size:22px;
+  color:#101828;
+}
+@media(max-width:900px){
+  .hci-report .perception-heading-row,.hci-report .perception-grid{grid-template-columns:1fr}
+  .hci-report .perception-row{grid-template-columns:1fr;gap:6px}
+}
 
 /* Distinctive responses V2 */
 .hci-report .distinctive-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.hci-report .distinctive-card{border-left:3px solid var(--evidence-accent,var(--accent));padding:22px 23px;display:flex;flex-direction:column;min-height:230px}.hci-report .distinctive-card .card-topline{color:var(--evidence-accent,var(--accent));margin-bottom:14px}
