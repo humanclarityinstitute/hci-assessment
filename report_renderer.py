@@ -961,19 +961,148 @@ def render_protect(x, report_data=None):
     </section>'''
 
 
+def trajectory_card_percentile(item):
+    return f"{esc(safe_ordinal(item.get('percentile')))} percentile"
+
+
+def trajectory_research_text(item):
+    return (
+        item.get("research_summary")
+        or (item.get("strength_deepening") or {}).get("research")
+        or item.get("research_insight")
+        or "Research shows this pattern can become more fluent when it is already part of a person's AI relationship."
+    )
+
+
+def trajectory_deepening_text(item):
+    return (
+        item.get("deepening_summary")
+        or (item.get("strength_deepening") or {}).get("deepening")
+        or (item.get("strength_deepening") or {}).get("looks_like")
+        or "The behaviour becomes easier, more fluent, and more automatic within the existing pattern."
+    )
+
+
+def trajectory_monitor_text(item):
+    return (
+        item.get("why_monitor")
+        or (item.get("monitoring") or {}).get("research")
+        or item.get("research_insight")
+        or "This area is worth noticing because it is one of the places AI behaviour can shift quietly with repeated use."
+    )
+
+
+def trajectory_monitor_position(item):
+    return (
+        item.get("current_position")
+        or item.get("positioning")
+        or position_without_percentile(item)
+        or "This dimension is part of your current benchmark profile."
+    )
+
+
+def trajectory_monitor_early_sign(item):
+    return (
+        item.get("early_sign")
+        or (item.get("monitoring") or {}).get("early_sign")
+        or "Noticing the behaviour becoming more automatic than deliberate."
+    )
+
+
 def render_trajectory(x):
-    strengths = "".join(f'<li><strong>{esc(d.get("label"))}</strong> — {esc(safe_ordinal(d.get("percentile")))} %ile. {esc(d.get("research_insight", ""))}</li>' for d in x.get("strengths_likely_to_deepen", []))
-    monitor = "".join(f'<li><strong>{esc(d.get("label"))}</strong> — {esc(safe_ordinal(d.get("percentile")))} %ile. Worth noticing as usage evolves.</li>' for d in x.get("areas_worth_monitoring", []))
+    summary_rows = "".join(
+        f'''
+        <div class="trajectory-summary-row">
+          <span>{esc(r.get('label'))}</span>
+          <strong>{esc(r.get('position'))}</strong>
+          <em>{esc(r.get('direction'))}</em>
+        </div>'''
+        for r in x.get("summary", [])
+    )
+
+    summary = f'''
+      <article class="trajectory-summary">
+        <h3>At a glance</h3>
+        <div class="trajectory-summary-row trajectory-summary-head">
+          <span>Pattern</span>
+          <strong>Current position</strong>
+          <em>Typical direction</em>
+        </div>
+        {summary_rows or '<p class="muted">No trajectory summary was available.</p>'}
+      </article>'''
+
+    strengths = ""
+    for d in x.get("strengths_likely_to_deepen", []):
+        strengths += f'''
+        <article class="trajectory-card strength-card">
+          <div class="card-topline">Strength likely to deepen</div>
+          <h3>{esc(d.get("label"))}</h3>
+          <p class="trajectory-percentile">{trajectory_card_percentile(d)}</p>
+
+          <div class="trajectory-divider"></div>
+
+          <h4>What research shows</h4>
+          <p>{esc(trajectory_research_text(d))}</p>
+
+          <div class="trajectory-divider"></div>
+
+          <h4>What deepening typically looks like</h4>
+          <p>{esc(trajectory_deepening_text(d))}</p>
+        </article>'''
+
+    monitors = ""
+    for d in x.get("areas_worth_monitoring", []):
+        monitors += f'''
+        <article class="trajectory-card monitor-card">
+          <div class="card-topline">Area worth monitoring</div>
+          <h3>{esc(d.get("label"))}</h3>
+          <p class="trajectory-percentile">{trajectory_card_percentile(d)}</p>
+
+          <div class="trajectory-divider"></div>
+
+          <h4>Current position</h4>
+          <p>{esc(trajectory_monitor_position(d))}</p>
+
+          <div class="trajectory-divider"></div>
+
+          <h4>Worth noticing</h4>
+          <p>{esc(trajectory_monitor_text(d))}</p>
+
+          <div class="trajectory-divider"></div>
+
+          <h4>Early sign</h4>
+          <p>{esc(trajectory_monitor_early_sign(d))}</p>
+        </article>'''
+
     return f'''
-    <section class="page-section">
+    <section class="page-section trajectory-section">
       {section_kicker('Trajectory')}
-      <h2>{esc(x.get('title') or 'Your Trajectory & Outlook')}</h2>
-      <div class="narrative narrow">
-        <h3>Likely to continue</h3>{paras(x.get('likely_to_continue'))}
-        <h3>Strengths likely to deepen</h3><ul>{strengths}</ul>
-        <h3>Areas worth monitoring</h3><ul>{monitor}</ul>
-        <h3>Overall outlook</h3>{paras(x.get('overall_outlook'))}
+      <h2>{esc(x.get('title') or 'If Nothing Changes')}</h2>
+      <p class="section-intro compact">{esc(x.get('subtitle') or 'Observable patterns from HCI research, not predictions or prescriptions.')}</p>
+
+      {summary}
+
+      <article class="trajectory-narrative-block">
+        <h3>Likely to continue</h3>
+        <div class="narrative narrow">{paras(x.get('likely_to_continue'))}</div>
+      </article>
+
+      <div class="trajectory-subsection">
+        <h3>Strengths likely to deepen</h3>
+        <p class="trajectory-note">If current patterns hold, these strengths are the most likely to become more fluent with continued exposure.</p>
+        <div class="trajectory-grid">{strengths or render_empty('No strengths were available for this section.')}</div>
       </div>
+
+      <div class="trajectory-subsection">
+        <h3>Areas worth monitoring</h3>
+        <p class="trajectory-note">{esc(x.get('monitoring_intro') or 'These are not concerns or predictions. They are simply the parts of a profile that research shows are most likely to shift as AI becomes more integrated into everyday life.')}</p>
+        <div class="trajectory-grid">{monitors or render_empty('No monitoring areas were available for this section.')}</div>
+      </div>
+
+      <article class="trajectory-narrative-block outlook">
+        <h3>Overall outlook</h3>
+        <div class="narrative narrow">{paras(x.get('overall_outlook'))}</div>
+      </article>
     </section>'''
 
 
@@ -1094,6 +1223,33 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .comparison-list{display:grid;gap:6px;margin:12px 0}.comparison,.evidence-meta,.typical-row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid var(--line);padding-top:7px;color:#475467;font-size:13px}.comparison strong,.evidence-meta strong,.typical-row strong{color:#101828;text-align:right}.standing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:960px}.standing-card{border:1px solid var(--line);background:#fff;padding:22px;max-width:860px}.standing-card h3{margin-top:0;font-size:16px}.stand-list{display:grid;gap:8px;margin:12px 0 0}.stand-row{display:flex;justify-content:space-between;gap:22px;border-top:1px solid var(--line);padding-top:8px;position:relative}.stand-row:before{content:"";position:absolute;left:0;top:8px;bottom:0;width:3px;background:var(--stand-accent,var(--accent));border-radius:999px}.stand-row span{font-weight:700;padding-left:12px}.stand-row strong{color:#344054;text-align:right}.standing-section .section-intro.compact{font-size:16px;line-height:1.5;margin-bottom:18px}.profile-shape-summary{max-width:960px;margin-top:18px;background:#fbfaf7;border-left:3px solid var(--accent);padding:20px 24px}.profile-shape-summary h3{margin:0 0 8px;font-size:16px}.profile-shape-summary p{font-size:15px;line-height:1.58;color:#344054;margin:0}.two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.split-card h3{margin-top:0}.rarity strong{font-size:20px;color:var(--accent-dark)}
 .evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.evidence-card p{font-size:15px;color:#344054}.protect-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.protect-card{background:#fcfcfd}.protect-card h3{font-family:Georgia,"Times New Roman",serif;font-size:25px;font-weight:500;margin-top:0}.positioning,.research-note{background:var(--cream);padding:12px;border-left:3px solid var(--accent)}ul{margin:8px 0 0 20px;padding:0}li{margin-bottom:8px}
 .question-group{margin-top:40px}.group-definition{max-width:820px}.question-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.question-card h4{font-size:16px;color:#111827}.answer{color:#344054}.scale{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:12px 0 6px}.scale span{text-align:center;border:1px solid var(--line-strong);padding:7px 0;font-size:12px;color:#475467}.scale .selected{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff;font-weight:700}.scale-label{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}.histogram-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}.dist{height:112px;display:flex;align-items:flex-end;gap:7px;background:#f9fafb;border:1px solid var(--line);padding:26px 10px 22px;border-radius:2px}.dist-bar{flex:1;background:#cfd6df;position:relative;min-height:4px;border-radius:2px 2px 0 0}.dist-bar.answer{background:var(--accent-dark)}.dist-value{position:absolute;top:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#475467}.dist-index{position:absolute;bottom:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#667085}.dist-empty{background:#f2f4f7;border:1px solid var(--line);padding:14px;color:var(--muted);font-size:13px}.comparison-note{font-size:14px;color:#475467;margin-top:14px}.empty-state{background:#f9fafb;border:1px dashed var(--line-strong);padding:18px;color:var(--muted)}
+
+/* Section 10: If Nothing Changes */
+.trajectory-section .section-intro.compact{font-size:16px;line-height:1.5;margin-bottom:20px}
+.trajectory-summary{max-width:960px;background:#fff;border:1px solid var(--line);padding:22px 24px;margin:24px 0 34px}
+.trajectory-summary h3{margin:0 0 14px;font-size:18px}
+.trajectory-summary-row{display:grid;grid-template-columns:1.2fr .8fr 1fr;gap:18px;align-items:center;border-top:1px solid var(--line);padding:11px 0;color:#344054}
+.trajectory-summary-row:first-of-type{border-top:0}
+.trajectory-summary-row span{font-weight:700;color:#111827}
+.trajectory-summary-row strong{font-size:14px;color:#344054}
+.trajectory-summary-row em{font-style:normal;color:#475467;font-size:14px;text-align:right}
+.trajectory-summary-head{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#667085;padding-top:0}
+.trajectory-summary-head span,.trajectory-summary-head strong,.trajectory-summary-head em{font-size:11px;color:#667085;font-weight:700}
+.trajectory-narrative-block{max-width:900px;margin:38px 0}
+.trajectory-narrative-block h3,.trajectory-subsection h3{font-family:Georgia,"Times New Roman",serif;font-size:28px;font-weight:500;margin:0 0 12px;color:#111827}
+.trajectory-narrative-block .narrative p{font-size:17px;line-height:1.62;color:#253044}
+.trajectory-subsection{margin-top:42px}
+.trajectory-note{max-width:820px;color:#475467;font-size:15px;margin:0 0 18px}
+.trajectory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:1040px}
+.trajectory-card{background:#fff;border:1px solid var(--line);padding:24px;break-inside:avoid;page-break-inside:avoid;box-shadow:0 1px 0 rgba(16,24,40,.04)}
+.trajectory-card h3{font-family:Georgia,"Times New Roman",serif;font-size:26px;font-weight:500;margin:2px 0 4px;color:#111827}
+.trajectory-percentile{font-size:15px;font-weight:700;color:#344054;margin:0 0 16px}
+.trajectory-divider{border-top:1px solid var(--line);margin:18px 0}
+.trajectory-card h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#174EA6;margin:0 0 8px}
+.trajectory-card p{font-size:15px;line-height:1.58;color:#344054;margin:0}
+.trajectory-narrative-block.outlook{background:var(--cream);border-left:3px solid var(--accent);padding:24px 28px;margin-top:44px}
+.trajectory-narrative-block.outlook h3{font-size:26px}
+
 .deep-dive{background:#101828;color:#fff;padding:42px}.deep-dive h2,.deep-dive h3{color:#fff}.deep-dive .section-kicker{color:#9cc2ff}.deep-dive p{color:#e4e7ec}.quality{background:#fff7ed;border:1px solid #fed7aa;padding:20px}.report-footer{border-top:1px solid var(--line);padding-top:24px;color:var(--muted);font-size:13px}
 
 /* V1 structure fixes */
