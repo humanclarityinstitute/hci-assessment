@@ -822,15 +822,55 @@ def build_perception_gap(scoring_results: Dict[str, Any], responses: Dict[str, A
     }
 
 
-def combo_signal(d1: str, d2: str) -> str:
+def combo_signal(d1: str, d2: str, item: Optional[Dict[str, Any]] = None) -> str:
+    """Return the best available research signal for a dimension combination.
+
+    The signals library uses semantic keys such as
+    high_reliance_high_agency, while scoring outputs also include generic
+    dimension pairs. This helper supports both so Section 4 gets the
+    intended HCI research language whenever possible.
+    """
     combos = SIGNALS.get("combinations", {}) if isinstance(SIGNALS, dict) else {}
-    for key in [f"{d1}+{d2}", f"{d2}+{d1}", f"{d1}_{d2}", f"{d2}_{d1}"]:
+    item = item or {}
+
+    candidate_keys = []
+    for key in [
+        item.get("combination_id"),
+        item.get("research_key"),
+        item.get("signal_type"),
+        f"{d1}+{d2}",
+        f"{d2}+{d1}",
+        f"{d1}_{d2}",
+        f"{d2}_{d1}",
+    ]:
+        if key:
+            candidate_keys.append(str(key))
+
+    # Directional fallback keys from bands, e.g. high_reliance_low_verification.
+    b1 = item.get("band_dim1")
+    b2 = item.get("band_dim2")
+    if b1 and b2:
+        candidate_keys.extend([
+            f"{b1}_{d1}_{b2}_{d2}",
+            f"{b2}_{d2}_{b1}_{d1}",
+        ])
+
+    for key in candidate_keys:
         val = combos.get(key)
         if isinstance(val, str):
             return val
         if isinstance(val, dict):
-            return str(val.get("insight") or val.get("series") or val.get("text") or "")
-    return ""
+            parts = [
+                val.get("why_unusual"),
+                val.get("what_it_reveals"),
+                val.get("research_signal"),
+                val.get("insight"),
+                val.get("series"),
+                val.get("text"),
+            ]
+            return " ".join(str(x) for x in parts if x)
+
+    return str(item.get("research_signal") or "")
 
 
 def build_rare_combinations(scoring_results: Dict[str, Any], dimensions: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -854,7 +894,12 @@ def build_rare_combinations(scoring_results: Dict[str, Any], dimensions: Dict[st
             "percentile_2": clean_int(item.get("percentile_dim2") or (item.get("percentiles") or [None, None])[1] or dimensions.get(d2, {}).get("percentile")),
             "rarity_percent": clean_float(item.get("rarity_percent") or item.get("frequency_pct") or 5),
             "description": item.get("description") or f"{DIMENSION_LABELS.get(d1, d1)} + {DIMENSION_LABELS.get(d2, d2)}",
-            "research_signal": combo_signal(d1, d2),
+            "combo_classification": item.get("combo_classification") or item.get("classification") or ("true_rare" if clean_float(item.get("rarity_percent") or item.get("frequency_pct") or 5) <= 5 else "notable"),
+            "combination_id": item.get("combination_id"),
+            "signal_type": item.get("signal_type"),
+            "band_dim1": item.get("band_dim1"),
+            "band_dim2": item.get("band_dim2"),
+            "research_signal": combo_signal(d1, d2, item),
         })
 
     return out
