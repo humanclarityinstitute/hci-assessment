@@ -1143,12 +1143,28 @@ def build_what_to_protect(dimensions: Dict[str, Dict[str, Any]]) -> List[Dict[st
 
 def build_if_nothing_changes(dimensions: Dict[str, Dict[str, Any]], demographics: Dict[str, Any]) -> Dict[str, Any]:
     ranked = sorted(dimensions.values(), key=lambda d: d["percentile"], reverse=True)
-    strengths = [d for d in ranked if d["percentile"] > 71][:3]
+
+    # Prefer clearly elevated dimensions, but never leave the section empty.
+    # If no dimension reaches the high-strength threshold, use the strongest
+    # two current dimensions so Section 10 still reflects the participant's
+    # most developed patterns rather than displaying a missing-data message.
+    threshold_strengths = [d for d in ranked if d["percentile"] >= 71]
+    strengths = threshold_strengths[:3]
+    using_fallback_strengths = len(strengths) == 0
+
+    if len(strengths) < 2:
+        for dim in ranked:
+            if dim not in strengths:
+                strengths.append(dim)
+            if len(strengths) >= 2:
+                break
+
     monitor = [dimensions[d] for d in ["verification", "reliance", "human_agency"] if d in dimensions]
 
     return {
         "usage_frequency": demographics.get("_frequency_benchmark") or demographics.get("ai_tool_use_frequency") or demographics.get("frequency"),
         "strengths_likely_to_deepen": strengths,
+        "using_fallback_strengths": using_fallback_strengths,
         "areas_worth_monitoring": monitor[:3],
         "highest_dimension": ranked[0] if ranked else None,
         "monitoring_anchor": monitor[0] if monitor else None,
