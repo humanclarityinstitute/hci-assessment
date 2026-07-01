@@ -205,6 +205,20 @@ PERCEPTION_QUESTIONS = {
     'perceived_dependence': 'Compared to most people, how dependent on AI are you?'
 }
 
+# Derived dependence comparison for perception-gap reporting.
+# These items capture dependence more directly than the full Reliance dimension.
+DEPENDENCE_VARIABLES = ['rel_q1', 'rel_q2', 'rel_q5']
+
+FREQUENCY_ORDER = [
+    'Never',
+    'Rarely',
+    'Occasionally',
+    'Sometimes',
+    'Often',
+    'Very often',
+    'Everyday',
+]
+
 # Combination detection thresholds
 # The old engine only detected >75/<25 extremes across six pairs, which meant
 # many meaningful profiles produced no combination signal. These thresholds are
@@ -517,63 +531,210 @@ class ScoringEngine:
         
         return results
     
+    def _frequency_percentile(self, demographics):
+        """
+        Estimate percentile position from reported AI-use frequency using
+        benchmark frequency cohort sample sizes.
+        """
+        frequency = (demographics or {}).get('ai_tool_use_frequency')
+        if not frequency:
+            return None
+
+        def norm(value):
+            text = str(value).strip().lower().replace(' ', '')
+            aliases = {
+                'everyday': 'everyday',
+                'every day': 'everyday',
+                'daily': 'everyday',
+                'veryoften': 'veryoften',
+                'very often': 'veryoften',
+                'often': 'often',
+                'sometimes': 'sometimes',
+                'occasionally': 'occasionally',
+                'rarely': 'rarely',
+                'never': 'never',
+            }
+            return aliases.get(text, text)
+
+        data = getattr(self.benchmark, 'data', {}) or {}
+        frequency_counts = {}
+
+        for dim_data in (data.get('dimensions') or {}).values():
+            by_frequency = dim_data.get('by_frequency') if isinstance(dim_data, dict) else None
+            if not isinstance(by_frequency, dict) or not by_frequency:
+                continue
+            frequency_counts = {
+                str(k): int(v.get('n') or 0)
+                for k, v in by_frequency.items()
+                if isinstance(v, dict)
+            }
+            if frequency_counts:
+                break
+
+        if not frequency_counts:
+            fallback = {
+                'never': 5,
+                'rarely': 20,
+                'sometimes': 45,
+                'occasionally': 45,
+                'often': 70,
+                'veryoften': 82,
+                'everyday': 90,
+                'daily': 90,
+            }
+            return fallback.get(norm(frequency))
+
+        requested = norm(frequency)
+        actual_key = None
+        for key in frequency_counts:
+            if norm(key) == requested:
+                actual_key = key
+                break
+        if actual_key is None:
+            return None
+
+        order = [key for key in FREQUENCY_ORDER if key in frequency_counts]
+        for key in frequency_counts:
+            if key not in order:
+                order.append(key)
+
+        total = sum(frequency_counts.values())
+        current_n = frequency_counts.get(actual_key, 0)
+        if total <= 0 or current_n <= 0:
+            return None
+
+        below = 0
+        for key in order:
+            if key == actual_key:
+                break
+            below += frequency_counts.get(key, 0)
+
+        return max(1, min(99, round(((below + (current_n / 2)) / total) * 100)))
+
+    def _variable_percentile(self, key, answer):
+        """Calculate item-level percentile from benchmark variable values."""
+        if answer is None:
+            return None
+
+        data = getattr(self.benchmark, 'data', {}) or {}
+        variable = (data.get('variables') or {}).get(key) or {}
+        overall = variable.get('overall') if isinstance(variable, dict) else None
+        values = overall.get('values') if isinstance(overall, dict) else None
+
+        try:
+            score = float(answer)
+        except (TypeError, ValueError):
+            return None
+
+        if isinstance(values, list) and values:
+            nums = []
+            for value in values:
+                try:
+                    nums.append(float(value))
+                except (TypeError, ValueError):
+                    continue
+            if nums:
+                below = sum(1 for value in nums if value < score)
+                pct = int((below / len(nums)) * 100)
+                return max(1, min(99, pct))
+
+        if hasattr(self.benchmark, 'get_percentile'):
+            try:
+                return int(self.benchmark.get_percentile(key, answer))
+            except Exception:
+                pass
+
+        return None
+
+    def _dependence_percentile(self, responses):
+        """
+        Derived dependence percentile based on dependence-specific reliance items:
+        rel_q1, rel_q2, rel_q5.
+        """
+        percentiles = []
+        for key in DEPENDENCE_VARIABLES:
+            pct = self._variable_percentile(key, responses.get(key))
+            if pct is not None:
+                percentiles.append(pct)
+
+        if not percentiles:
+            return None
+
+        return max(1, min(99, round(sum(percentiles) / len(percentiles))))
+
+    def _perception_actual_percentile(self, perception_key, responses, dimension_scores, demographics):
+        """
+        Resolve the correct comparison target for each perception question.
+        """
+        if perception_key == 'perceived_usage':
+            return self._frequency_percentile(demographics)
+
+        if perception_key == 'perceived_reliance':
+            reliance = dimension_scores.get('reliance') or {}
+            return reliance.get('percentile_overall')
+
+        if perception_key == 'perceived_dependence':
+            return self._dependence_percentile(responses)
+
+        return None
+
     def _detect_perception_gaps(self, responses, dimension_scores, demographics):
         """
         Detect perception gaps (self-estimate vs actual percentile).
-        
-        Args:
-            responses (dict): All responses (including perception questions)
-            dimension_scores (dict): Calculated dimension percentiles
-            demographics (dict): Participant demographics
-        
-        Returns:
-            list: Perception gaps with magnitude
+
+        Each self-perception question is compared with its intended target:
+        - perceived_usage -> reported usage-frequency percentile
+        - perceived_reliance -> Reliance dimension percentile
+        - perceived_dependence -> derived Dependence percentile
         """
         gaps = []
-        
-        # Map perception questions to dimensions for analysis
-        perception_to_dimension = {
-            'perceived_usage': 'reliance',
-            'perceived_reliance': 'reliance',
-            'perceived_dependence': 'reliance'
+
+        perceived_percentiles = {
+            'Much less than most people': 20,
+            'Somewhat less than most people': 35,
+            'Less than most people': 35,
+            'About the same as most people': 50,
+            'Somewhat more than most people': 65,
+            'More than most people': 65,
+            'Much more than most people': 80
         }
-        
-        for perception_key, dimension_name in perception_to_dimension.items():
+
+        perception_sources = {
+            'perceived_usage': 'usage_frequency',
+            'perceived_reliance': 'reliance',
+            'perceived_dependence': 'dependence_derived'
+        }
+
+        for perception_key, comparison_source in perception_sources.items():
             perceived_answer = responses.get(perception_key)
-            
-            if not perceived_answer or dimension_name not in dimension_scores:
+            if not perceived_answer:
                 continue
-            
-            actual_percentile = dimension_scores[dimension_name].get('percentile_overall')
+
+            actual_percentile = self._perception_actual_percentile(
+                perception_key,
+                responses,
+                dimension_scores,
+                demographics,
+            )
             if actual_percentile is None:
                 continue
-            
-            # Estimate perceived percentile from their answer
-            # "Much less" ≈ 20th, "Somewhat less" ≈ 35th, "About same" ≈ 50th,
-            # "Somewhat more" ≈ 65th, "Much more" ≈ 80th
-            perceived_percentiles = {
-                'Much less than most people': 20,
-                'Somewhat less than most people': 35,
-                'About the same as most people': 50,
-                'Somewhat more than most people': 65,
-                'Much more than most people': 80
-            }
-            
+
             perceived_percentile = perceived_percentiles.get(str(perceived_answer), 50)
             gap_magnitude = abs(perceived_percentile - actual_percentile)
-            
+
             if gap_magnitude > 8:  # Only include significant gaps
                 gaps.append({
                     'question': perception_key,
+                    'comparison_source': comparison_source,
                     'perceived_answer': str(perceived_answer),
                     'actual_percentile': actual_percentile,
                     'perceived_percentile': perceived_percentile,
                     'gap_magnitude': round(gap_magnitude, 1)
                 })
-        
+
         # Sort by gap magnitude (largest first)
         return sorted(gaps, key=lambda x: x['gap_magnitude'], reverse=True)
-    
+
     def _detect_rare_combinations(self, dimension_scores, demographics):
         """
         Detect combination signals across the nine dimensions.
