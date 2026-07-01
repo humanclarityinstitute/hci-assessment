@@ -124,6 +124,7 @@ The report structure is locked. Do not create sections, score anything, or give 
 
 Fill exactly these blocks:
 - opening_findings
+- profile_shape_summary
 - rare_combinations_narrative
 - behaviour_story
 
@@ -138,6 +139,8 @@ The three subheadings should cover:
 1. The most distinctive signal in the profile.
 2. How the participant's self-perception compares with the benchmark, or alignment if there is no gap.
 3. The wider pattern shape: rare combination if present, otherwise coherent/no-combo interpretation.
+
+Also write profile_shape_summary as one separate 60-90 word paragraph for the later section titled "The Shape of Your Profile". This paragraph should summarise the overall shape created by all nine dimensions. Do not repeat the opening findings. Do not discuss every dimension individually. Describe whether the profile is concentrated around a few distinctive dimensions or broadly aligned with the benchmark population. Avoid percentages and percentile language.
 
 Style the subheadings like a premium research report, for example:
 Your most distinctive signal
@@ -167,6 +170,10 @@ Use only this context:
         "opening_findings": {
             "type": "string",
             "description": "330-430 word opening synthesis with exactly three short editorial subheadings, each followed by one substantial paragraph. No bullets, no numbering, no 'Behavioural finding', no Data/Interpretation/Why-it-matters labels, and no means/averages/statistical shorthand."
+        },
+        "profile_shape_summary": {
+            "type": "string",
+            "description": "60-90 word paragraph for The Shape of Your Profile. Summarise the overall profile shape across all nine dimensions. Do not repeat the opening findings, do not list every dimension, and avoid percentages/percentiles."
         },
         "rare_combinations_narrative": {
             "type": "string",
