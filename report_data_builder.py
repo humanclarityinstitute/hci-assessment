@@ -408,6 +408,29 @@ def calculate_percentile_from_values(score: Any, values: List[Any]) -> Optional[
     return min(pct, 99)
 
 
+def calculate_question_percentile_from_values(score: Any, values: List[Any]) -> Optional[int]:
+    """
+    Calculate question-level standing for discrete 1-7 responses.
+
+    For individual question cards, include participants who gave the same
+    response as the user. This keeps the displayed standing aligned with the
+    histogram: if 18% of respondents selected 1, an answer of 1 should display
+    around 18/100 rather than 1/100.
+    """
+    score_f = clean_float(score)
+    if score_f is None or not values:
+        return None
+
+    nums = [clean_float(v) for v in values]
+    nums = [v for v in nums if v is not None]
+    if not nums:
+        return None
+
+    at_or_below = sum(1 for v in nums if v <= score_f)
+    pct = int(round((at_or_below / len(nums)) * 100))
+    return max(1, min(pct, 99))
+
+
 def safe_dimension_percentiles(benchmark: Any, dim: str, raw_score: Any, demographics: Dict[str, Any]) -> Dict[str, Any]:
     """
     Calculate overall/age/frequency dimension percentiles directly from benchmark.
@@ -528,11 +551,11 @@ def safe_question_percentile(benchmark: Any, key: str, answer: Any, segment: Opt
             return None
         if clean_int(source.get("n"), 0) < min_n:
             return None
-        return calculate_percentile_from_values(answer, source.get("values") or [])
+        return calculate_question_percentile_from_values(answer, source.get("values") or [])
 
     # Overall percentile.
     if isinstance(source, dict):
-        pct = calculate_percentile_from_values(answer, source.get("values") or [])
+        pct = calculate_question_percentile_from_values(answer, source.get("values") or [])
         if pct is not None:
             return pct
 
@@ -787,10 +810,10 @@ def build_question_comparison_statement(answer: Any, pct: Optional[int], pct_age
         return f"You answered {answer}/7. Benchmark comparison is unavailable for this item."
 
     if pct is not None and pct_age is not None:
-        return f"You answered {answer}/7 — higher than {pct} of 100 people overall, and higher than {pct_age} of 100 people your age."
+        return f"You answered {answer}/7 — at or above {pct} of 100 people overall, and at or above {pct_age} of 100 people your age."
 
     if pct is not None:
-        return f"You answered {answer}/7 — higher than {pct} of 100 people overall. Age-group comparison is unavailable."
+        return f"You answered {answer}/7 — at or above {pct} of 100 people overall. Age-group comparison is unavailable."
 
     return f"You answered {answer}/7. Overall comparison is unavailable, but your age-group percentile is {pct_age}."
 
