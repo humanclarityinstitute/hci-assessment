@@ -640,7 +640,56 @@ def overall_outlook_fallback(data: Dict[str, Any]) -> str:
 # ---------------------------------------------------------------------
 
 def build_next_steps(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Section 11 is intentionally deterministic.
+
+    It closes the report by moving from benchmark awareness to user ownership
+    without adding prescription, optimisation language, or another API call.
+    """
     return {
         "title": "Your Next Steps",
-        "items": NEXT_STEPS,
+        "subtitle": "Use this report as a mirror for awareness, clarity, and choice.",
+        "action": {
+            "step": "STEP 1",
+            "title": "Test this report with your AI",
+            "intro": "Upload this full report to whichever AI you use most.",
+            "prompt_label": "Ask your AI",
+            "prompt": (
+                "Does this report ring true to how we work together? "
+                "Where does it match your sense of how I use you? "
+                "Where does it miss?"
+            ),
+            "reflection_intro": "Then simply compare:",
+            "reflection_points": [
+                "What AI agrees with",
+                "What surprises you",
+                "What you disagree with",
+            ],
+            "privacy_note": "Your data stays with you. Nothing from that conversation returns to HCI.",
+        },
+        "awareness": {
+            "title": "What This Awareness Does",
+            "body": [
+                "Awareness creates clarity. Clarity makes intentional choices possible.",
+                "This report shows where you sit — how you use AI, what you rely on it for, where you are distinctive, and where you are typical. That positioning is neutral. What matters is what you do with it.",
+                "The people who flourish with AI are the ones who stay aware of their own pattern and adjust their relationship as it evolves — not through willpower or rigid rules, but through genuine understanding of what serves them.",
+            ],
+        },
+        "alignment": {
+            "title": "Stay Aligned With Your Pattern",
+            "body": [
+                "Return to this assessment whenever your relationship with AI feels like it has shifted significantly.",
+                "Retesting lets you notice what has actually changed in your pattern, not only what you think has changed. It is the clearest way to stay within the boundaries that help you flourish.",
+            ],
+        },
+        "mirror": {
+            "title": "This Report As A Mirror",
+            "intro": "This report is intended to be a mirror rather than a judgement.",
+            "points": [
+                "your benchmark positioning",
+                "your distinctive patterns",
+                "your behavioural relationships",
+            ],
+            "closing": "What you do with that clarity is entirely yours.",
+        },
     }
