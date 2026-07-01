@@ -1107,53 +1107,94 @@ def render_trajectory(x):
 
 
 def render_next(x):
-    supplied = x.get("items", []) if isinstance(x, dict) else []
-    if supplied:
-        items = "".join(
-            f'<article class="split-card"><h3>{esc(i.get("title"))}</h3>' + "".join(f"<p>{esc(p)}</p>" for p in i.get("body", [])) + '</article>'
-            for i in supplied
-        )
-    else:
-        locked = [
-            {
-                "title": "Step 1: test this report with your AI",
-                "body": [
-                    "Upload this full report to whichever AI you use most.",
-                    'Ask it: "Does this report ring true to how we work together? Where does it match your sense of how I use you? Where does it miss?"',
-                    "Listen for where it confirms and where it challenges. This conversation can deepen your clarity about your actual pattern.",
-                    "Your data stays with you. Nothing about that conversation returns to HCI.",
-                ],
-            },
-            {
-                "title": "What this awareness does",
-                "body": [
-                    "Knowing your pattern is the foundation for clarity. And clarity is what lets you make intentional choices about your boundaries with AI.",
-                    "This report shows where you sit — how you use AI, what you rely on it for, where you are distinctive, and where you are typical. That positioning is neutral. What matters is what you do with it.",
-                    "The people who flourish with AI are the ones who stay aware of their own pattern and adjust their relationship as it evolves.",
-                ],
-            },
-            {
-                "title": "Stay within your boundaries",
-                "body": [
-                    "Return to this assessment periodically — quarterly, annually, or whenever your relationship with AI feels like it is shifting significantly.",
-                    "Retesting lets you notice what has actually changed in your pattern, not only what you think has changed.",
-                ],
-            },
-            {
-                "title": "This report as a mirror",
-                "body": [
-                    "This report is a mirror. What it shows is real — your positioning in a benchmark population, your rare combinations, and your observable patterns.",
-                    "What you do with that clarity is entirely yours.",
-                ],
-            },
-        ]
-        items = "".join(
-            '<article class="split-card"><h3>' + esc(i["title"]) + '</h3>' + "".join(f"<p>{esc(p)}</p>" for p in i["body"]) + '</article>'
-            for i in locked
-        )
-    title = x.get("title") if isinstance(x, dict) else ""
-    return f'<section class="page-section next-section">{section_kicker("Next steps")}<h2>{esc(title or "Your Next Steps")}</h2><div class="two-col">{items}</div></section>'
+    x = x if isinstance(x, dict) else {}
 
+    action = x.get("action") or {
+        "step": "STEP 1",
+        "title": "Test this report with your AI",
+        "intro": "Upload this full report to whichever AI you use most.",
+        "prompt_label": "Ask your AI",
+        "prompt": "Does this report ring true to how we work together? Where does it match your sense of how I use you? Where does it miss?",
+        "reflection_intro": "Then simply compare:",
+        "reflection_points": ["What AI agrees with", "What surprises you", "What you disagree with"],
+        "privacy_note": "Your data stays with you. Nothing from that conversation returns to HCI.",
+    }
+    awareness = x.get("awareness") or {
+        "title": "What This Awareness Does",
+        "body": [
+            "Awareness creates clarity. Clarity makes intentional choices possible.",
+            "This report shows where you sit — how you use AI, what you rely on it for, where you are distinctive, and where you are typical. That positioning is neutral. What matters is what you do with it.",
+            "The people who flourish with AI are the ones who stay aware of their own pattern and adjust their relationship as it evolves — not through willpower or rigid rules, but through genuine understanding of what serves them.",
+        ],
+    }
+    alignment = x.get("alignment") or {
+        "title": "Stay Aligned With Your Pattern",
+        "body": [
+            "Return to this assessment whenever your relationship with AI feels like it has shifted significantly.",
+            "Retesting lets you notice what has actually changed in your pattern, not only what you think has changed. It is the clearest way to stay within the boundaries that help you flourish.",
+        ],
+    }
+    mirror = x.get("mirror") or {
+        "title": "This Report As A Mirror",
+        "intro": "This report is intended to be a mirror rather than a judgement.",
+        "points": ["your benchmark positioning", "your distinctive patterns", "your behavioural relationships"],
+        "closing": "What you do with that clarity is entirely yours.",
+    }
+
+    reflection_points = "".join(f"<li>{esc(p)}</li>" for p in action.get("reflection_points", []))
+    awareness_paras = "".join(f"<p>{esc(p)}</p>" for p in awareness.get("body", []))
+    alignment_paras = "".join(f"<p>{esc(p)}</p>" for p in alignment.get("body", []))
+    mirror_points = "".join(f"<li>{esc(p)}</li>" for p in mirror.get("points", []))
+
+    return f'''
+    <section class="page-section next-section">
+      {section_kicker("Next steps")}
+      <h2>{esc(x.get("title") or "Your Next Steps")}</h2>
+      <p class="section-intro compact">{esc(x.get("subtitle") or "Use this report as a mirror for awareness, clarity, and choice.")}</p>
+
+      <article class="next-action-card">
+        <div class="next-step-label">{esc(action.get("step") or "STEP 1")}</div>
+        <h3>{esc(action.get("title") or "Test this report with your AI")}</h3>
+        <p>{esc(action.get("intro"))}</p>
+
+        <div class="ai-prompt-callout">
+          <span>{esc(action.get("prompt_label") or "Ask your AI")}</span>
+          <blockquote>“{esc(action.get("prompt"))}”</blockquote>
+        </div>
+
+        <div class="next-compare">
+          <p>{esc(action.get("reflection_intro") or "Then simply compare:")}</p>
+          <ul>{reflection_points}</ul>
+        </div>
+
+        <p class="next-privacy-note">{esc(action.get("privacy_note"))}</p>
+      </article>
+
+      <div class="next-component-grid">
+        <article class="next-component">
+          <h3>{esc(awareness.get("title") or "What This Awareness Does")}</h3>
+          {awareness_paras}
+        </article>
+
+        <article class="next-component">
+          <h3>{esc(alignment.get("title") or "Stay Aligned With Your Pattern")}</h3>
+          {alignment_paras}
+        </article>
+      </div>
+
+      <article class="next-mirror-card">
+        <h3>{esc(mirror.get("title") or "This Report As A Mirror")}</h3>
+        <p>{esc(mirror.get("intro"))}</p>
+        <ul>{mirror_points}</ul>
+        <p class="mirror-closing">{esc(mirror.get("closing"))}</p>
+      </article>
+
+      <div class="next-final-brand">
+        <div class="next-brand-rule"></div>
+        <strong>Human Clarity Institute</strong>
+        <span>AI Behaviour Benchmarking</span>
+      </div>
+    </section>'''
 
 def render_deep_dive(x):
     return f'''<section class="page-section deep-dive">{section_kicker("Deep dive")}
@@ -1263,7 +1304,169 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .hci-report .dist-bar{transition:none}
 .hci-report .dist-value{white-space:nowrap}
 .hci-report .protect-card h4{margin-top:18px}
-.hci-report .next-section .split-card{background:#fcfcfd}
+
+/* Section 11 — premium closing */
+.hci-report .next-section{
+  margin-top:18px;
+  margin-bottom:96px;
+}
+.hci-report .next-section h2{
+  margin-bottom:10px;
+}
+.hci-report .next-action-card{
+  border:1px solid var(--line);
+  background:#fcfcfd;
+  padding:34px 36px;
+  margin-top:28px;
+  margin-bottom:26px;
+  break-inside:avoid;
+  page-break-inside:avoid;
+}
+.hci-report .next-step-label{
+  color:var(--accent-dark);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  margin-bottom:12px;
+}
+.hci-report .next-action-card h3,
+.hci-report .next-component h3,
+.hci-report .next-mirror-card h3{
+  font-family:Georgia,"Times New Roman",serif;
+  font-weight:500;
+  letter-spacing:-.02em;
+  margin:0 0 14px;
+}
+.hci-report .next-action-card h3{
+  font-size:30px;
+  line-height:1.14;
+}
+.hci-report .ai-prompt-callout{
+  margin:26px 0;
+  padding:24px 26px;
+  background:#fff;
+  border-left:3px solid var(--accent);
+  box-shadow:0 1px 0 rgba(16,24,40,.04);
+}
+.hci-report .ai-prompt-callout span{
+  display:block;
+  color:var(--accent-dark);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  margin-bottom:10px;
+}
+.hci-report .ai-prompt-callout blockquote{
+  margin:0;
+  font-family:Georgia,"Times New Roman",serif;
+  font-size:24px;
+  line-height:1.36;
+  letter-spacing:-.015em;
+  color:#101828;
+}
+.hci-report .next-compare{
+  margin-top:8px;
+}
+.hci-report .next-compare p{
+  margin-bottom:8px;
+  color:#344054;
+  font-weight:700;
+}
+.hci-report .next-compare ul,
+.hci-report .next-mirror-card ul{
+  margin:0;
+  padding-left:20px;
+}
+.hci-report .next-privacy-note{
+  margin-top:22px;
+  padding-top:18px;
+  border-top:1px solid var(--line);
+  color:#667085;
+  font-size:14px;
+}
+.hci-report .next-component-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:22px;
+  margin-top:24px;
+}
+.hci-report .next-component{
+  border:1px solid var(--line);
+  background:#fff;
+  padding:28px;
+  break-inside:avoid;
+  page-break-inside:avoid;
+}
+.hci-report .next-component h3{
+  font-size:25px;
+  line-height:1.18;
+}
+.hci-report .next-component p{
+  color:#344054;
+  font-size:15px;
+}
+.hci-report .next-mirror-card{
+  margin-top:26px;
+  padding:34px 38px;
+  background:var(--cream);
+  border:1px solid var(--line);
+  text-align:left;
+  break-inside:avoid;
+  page-break-inside:avoid;
+}
+.hci-report .next-mirror-card h3{
+  font-size:30px;
+  line-height:1.16;
+}
+.hci-report .next-mirror-card p{
+  max-width:760px;
+  color:#344054;
+}
+.hci-report .next-mirror-card ul{
+  margin-top:12px;
+  margin-bottom:18px;
+  color:#344054;
+}
+.hci-report .mirror-closing{
+  margin-top:18px;
+  font-family:Georgia,"Times New Roman",serif;
+  font-size:24px;
+  line-height:1.35;
+  color:#101828!important;
+}
+.hci-report .next-final-brand{
+  margin-top:54px;
+  text-align:center;
+  color:#667085;
+}
+.hci-report .next-brand-rule{
+  width:160px;
+  height:1px;
+  background:var(--line-strong);
+  margin:0 auto 22px;
+}
+.hci-report .next-final-brand strong{
+  display:block;
+  font-size:13px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:#101828;
+}
+.hci-report .next-final-brand span{
+  display:block;
+  margin-top:4px;
+  font-size:12px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.hci-report .report-footer{
+  margin-top:34px;
+  padding-top:22px;
+  color:#98A2B3;
+}
+
 
 
 
