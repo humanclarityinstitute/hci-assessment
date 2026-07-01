@@ -374,36 +374,54 @@ def build_perception_gap(report_data: Dict[str, Any]) -> Dict[str, Any]:
     self_perception = source.get("self_perception", [])
 
     fallback = (
-        "What this section ultimately shows is that your intuition about your AI relationship is broadly accurate, "
-        "but the benchmark reveals where that distinctiveness actually sits. Rather than being defined by reliance alone, "
-        "your profile is characterised by the way you think with AI, trust it, and incorporate it into important decisions."
+        "This section compares what you said about yourself with your measured pattern across the assessment. "
+        "It is a comparison between self-perception and behavioural evidence, not a judgement."
     )
 
-    def perceived_direction(answer: Any) -> str:
-        text = str(answer or "").lower()
-        if any(term in text for term in ["much more", "somewhat more", "more than", "higher", "above"]):
-            return "Higher"
-        if any(term in text for term in ["much less", "somewhat less", "less than", "lower", "below"]):
-            return "Lower"
-        if any(term in text for term in ["same", "average", "about the same", "similar"]):
-            return "About the same"
-        return str(answer or "Not stated")
+    def area_from_question(item: Dict[str, Any]) -> Dict[str, str]:
+        text = str(item.get("question") or "").lower()
+        if "dependent" in text or "dependence" in text:
+            return {"area": "AI Dependence", "construct": "Dependence construct", "copy": "Based on your responses across the assessment mapped to AI dependence."}
+        if "rely" in text or "reliance" in text:
+            return {"area": "AI Reliance", "construct": "Reliance dimension", "copy": "Based on your responses across the assessment mapped to AI reliance."}
+        return {"area": "AI Use", "construct": "Usage frequency", "copy": "Based on your reported usage frequency and wider assessment pattern."}
 
-    comparison_summary = []
-    for item in self_perception:
-        comparison_summary.append({
-            "label": item.get("comparison_label") or item.get("short_label") or item.get("primary_dimension_label") or item.get("question") or "AI relationship",
-            "self": perceived_direction(item.get("answer")),
-            "benchmark": item.get("actual_percentile"),
-            "benchmark_label": item.get("actual_percentile_label"),
-            "position": item.get("actual_position"),
-        })
+    def direction(answer: Any) -> str:
+        text = str(answer or "").lower()
+        if any(t in text for t in ["much more", "somewhat more", "more than", "higher", "above"]): return "higher"
+        if any(t in text for t in ["much less", "somewhat less", "less than", "lower", "below"]): return "lower"
+        if any(t in text for t in ["same", "average", "about the same", "similar"]): return "about average"
+        return "not stated"
+
+    def measured_direction(percentile: Any) -> str:
+        try: p = float(percentile)
+        except Exception: return "not available"
+        if p >= 71: return "higher"
+        if p <= 40: return "lower"
+        return "about average"
+
+    def interpretation(area: str, self_dir: str, measured_dir: str) -> str:
+        lower = area.lower()
+        if self_dir == measured_dir:
+            return f"Your self-view broadly matches your measured {lower}."
+        if self_dir in ("lower", "about average") and measured_dir == "higher":
+            return "Your measured pattern suggests this area is more elevated than it feels from the inside."
+        if self_dir == "higher" and measured_dir in ("lower", "about average"):
+            return "Your measured pattern suggests this area is less elevated than it feels from the inside."
+        return f"Your self-view and measured {lower} sit in different places."
+
+    cards = []
+    for idx, item in enumerate(self_perception, 1):
+        area = area_from_question(item)
+        self_dir = direction(item.get("answer"))
+        measured_dir = measured_direction(item.get("actual_percentile"))
+        cards.append({**item, "index": idx, "area": area["area"], "construct": area["construct"], "measured_copy": area["copy"], "assessment_response_count": 39, "self_direction": self_dir, "measured_direction": measured_dir, "interpretation": interpretation(area["area"], self_dir, measured_dir)})
 
     return {
         "title": "How You See Yourself",
-        "subtitle": "Comparing your self-perception with your benchmark profile.",
-        "self_perception": self_perception,
-        "comparison_summary": comparison_summary,
+        "subtitle": "Comparing your self-perception with your measured AI behaviour.",
+        "intro": "You rated how you think you compare with most people. Below, that self-view is compared with your measured pattern across the 39 assessment responses mapped to each area.",
+        "self_perception": cards,
         "gaps": source.get("gaps", []),
         "largest_gap": source.get("largest_gap"),
         "has_significant_gap": source.get("has_significant_gap", False),
@@ -420,16 +438,62 @@ def build_what_to_protect(report_data: Dict[str, Any]) -> Dict[str, Any]:
     source = {x.get("dimension"): x for x in report_data.get("what_to_protect", [])}
     items = []
 
+    # Section 9 is intentionally deterministic. These short introductions keep
+    # the four universal capacity cards scannable while preserving the locked
+    # research meaning from the templates.
+    short_intros = {
+        "verification": (
+            "Most people verify AI outputs before acting. Over time, however, checking can become mentally demanding, "
+            "leading many people to verify only what feels important or high-risk."
+        ),
+        "human_agency": (
+            "Agency usually remains strong at the identity level, but the process can still drift. Small suggestions, "
+            "defaults, and framings can quietly shape decisions before you fully notice."
+        ),
+        "emotional_regulation": (
+            "AI can offer a useful space for relief, support, or reflection. The key distinction is whether it supplements "
+            "human connection or gradually begins to replace it."
+        ),
+        "thought_partnership": (
+            "AI works best as a thinking partner: something to develop ideas with, not instead of your own thinking. "
+            "The important question is whether it is challenging your thought or quietly replacing it."
+        ),
+    }
+
+    def clean_title(title: Any) -> str:
+        text = str(title or "").strip()
+        lower = text.lower()
+        prefix = "what to notice:"
+        if lower.startswith(prefix):
+            return text[len(prefix):].strip()
+        return text
+
+    def position_badge(positioning: Any) -> str:
+        text = str(positioning or "").lower()
+        if "high" in text:
+            return "HIGH"
+        if "middle" in text or "centre" in text or "center" in text:
+            return "MIDDLE"
+        if "low" in text:
+            return "LOW"
+        return "CURRENT"
+
     for dim, template in WHAT_TO_PROTECT_TEMPLATES.items():
         data = source.get(dim, {})
         percentile = data.get("percentile")
+        positioning = data.get("positioning") or protect_position(percentile)
+        title = clean_title(template.get("title"))
         items.append({
             "dimension": dim,
-            "label": DIMENSION_LABELS[dim],
-            "definition": DIMENSION_DEFINITIONS[dim],
+            "title": title,
+            "capacity": DIMENSION_LABELS[dim],
             "percentile": percentile,
-            "positioning": data.get("positioning") or protect_position(percentile),
-            **template,
+            "positioning": positioning,
+            "position_badge": position_badge(positioning),
+            "intro": short_intros.get(dim) or template.get("intro", ""),
+            "watch": template.get("watch", []),
+            "research": template.get("research", ""),
+            "closing": template.get("closing", ""),
         })
 
     return {
