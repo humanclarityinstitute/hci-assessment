@@ -142,7 +142,17 @@ The three subheadings should cover:
 
 Also write profile_shape_summary as one separate 60-90 word paragraph for the later section titled "The Shape of Your Profile". This paragraph should summarise the overall shape created by all nine dimensions. Do not repeat the opening findings. Do not discuss every dimension individually. Describe whether the profile is concentrated around a few distinctive dimensions or broadly aligned with the benchmark population. Avoid percentages and percentile language.
 
-Style the subheadings like a premium research report, for example:
+For behaviour_story, write an observational behavioural profile, not a dramatic narrative.
+This section should feel like an HCI researcher reflecting the participant's pattern back to them.
+Write 300-350 words total, in 3-4 flowing paragraphs, with no internal headings or bullets.
+Begin with the single strongest behavioural signal or organising feature in the participant's profile, but do not spend the whole opening explaining one question. Use that anchor to explain what it reveals about the wider pattern.
+Identify the 2-3 underlying mechanisms that best account for the profile. Do not try to cover every dimension. Do not list all nine dimensions. Do not restate the dashboard.
+Use HCI research as supporting evidence, not as the main subject of the section. Suitable phrasing includes "Across HCI's benchmark studies...", "HCI's research consistently shows...", or "Looking across the measured behaviours..." but only where it adds clarity.
+Avoid repeating comparisons already shown earlier in the report, such as age-group comparisons, everyday-user comparisons, or bare percentile rankings.
+Do not use means, averages, statistical shorthand, or technical language. Do not predict what will happen. Do not give advice.
+End with a clear concluding observation that naturally leads into the rest of the report, for example by pointing to the tension, alignment, or mechanism the following sections will examine more closely.
+
+Style the opening_findings subheadings like a premium research report, for example:
 Your most distinctive signal
 How your self-perception compares
 The shape of the wider pattern
@@ -181,7 +191,7 @@ Use only this context:
         },
         "behaviour_story": {
             "type": "string",
-            "description": "300-400 word flowing narrative portrait anchored in the highest dimension and cross-dimensional relationships."
+            "description": "300-350 word observational behavioural profile in 3-4 flowing paragraphs. Begin with the strongest behavioural signal or organising feature, explain the 2-3 mechanisms that best account for the profile, use HCI research lightly as support, avoid dashboard repetition, no predictions, no advice, no means/averages/statistical shorthand."
         },
     }
 
