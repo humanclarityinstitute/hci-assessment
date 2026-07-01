@@ -279,10 +279,21 @@ Write two HCI report narrative blocks:
 The raw data lists/tables already exist. Explain what they mean.
 
 For Section 7:
+- Treat this as research annotation beside the benchmark data, not seven mini-essays.
 - You MUST explain all 7 distinctive responses provided.
+- Write one short introductory paragraph of 35-55 words.
+- Then write exactly 7 concise annotations, one per response.
+- Each annotation must be 45-70 words.
+- Do NOT use Markdown, bold markers, bullets, numbered lists, tables, or headings with **.
 - Do NOT use raw variable names or codes such as del_q3, agency_q1, trust_q3, rel_q1.
-- Label each response by its plain question text or a short human-readable label.
-- For each response, explain what is distinctive, why it matters in HCI behavioural terms, and how it connects to the wider profile.
+- Start each annotation with a short plain-language label or the question text, followed by a colon.
+- For each response, explain only:
+  1. why it is distinctive,
+  2. why it matters in HCI behavioural terms,
+  3. how it supports or complicates the wider profile.
+- Do not over-explain automation bias, skill fade, emotional substitution, or other concepts. Name the behavioural signal plainly and move on.
+- Avoid repeating the dashboard, age-group comparisons, frequency comparisons, or multiple statistics. The card already shows answer and percentile.
+- End each annotation with one concise linking sentence, such as "This reinforces the wider Reliance pattern identified earlier."
 
 For Section 8:
 - Compare self-perception to benchmark positioning.
@@ -306,7 +317,7 @@ Use only this compact context:
     schema = {
         "distinctive_responses_narrative": {
             "type": "string",
-            "description": "Intro paragraph plus exactly 7 clearly separated response explanations. 40-70 words per response. Never include variable IDs."
+            "description": "One 35-55 word intro paragraph plus exactly 7 concise research annotations, 45-70 words each. No Markdown, no bold markers, no bullets, no numbering, no variable IDs. Each annotation should explain why the response matters and link it to the wider profile."
         },
         "perception_gap_narrative": {
             "type": "string",
