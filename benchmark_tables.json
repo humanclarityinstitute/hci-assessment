@@ -77712,6 +77712,7 @@
         "nudging_influenced_unaware"
       ],
       "reverse_scored": [
+        "agency_trust_own_judgement",
         "nudging_influenced_unaware"
       ],
       "overall": {
@@ -101315,7 +101316,9 @@
         "ai_boundaries_change_over_time"
       ],
       "reverse_scored": [
-        "social_transparency_concealment"
+        "social_transparency_concealment",
+        "social_transparency_gap",
+        "ai_identity_mine_vs_ai"
       ],
       "overall": {
         "values": [
@@ -110291,9 +110294,12 @@
     "trust_q3",
     "ver_q2",
     "ver_q3",
+    "agency_q3",
     "agency_q4",
+    "agency_q5",
     "thought_q4",
-    "soc_q2"
+    "soc_q2",
+    "soc_q4"
   ],
   "metadata": {
     "total_variables": 39,
