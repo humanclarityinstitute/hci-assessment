@@ -164,7 +164,7 @@ QUESTION_MAP = {
     'agency_q3': {
         'text': 'Using AI tools has changed how much I trust my own judgement.',
         'dimension': 'human_agency',
-        'reverse_scored': False,
+        'reverse_scored': True,
     },
     'agency_q4': {
         'text': 'I sometimes feel influenced by systems without being fully aware of how.',
@@ -174,7 +174,7 @@ QUESTION_MAP = {
     'agency_q5': {
         'text': 'I sometimes question what is genuinely "mine" versus shaped by suggestions from AI tools.',
         'dimension': 'human_agency',
-        'reverse_scored': False,
+        'reverse_scored': True,
     },
     
     # EMOTIONAL REGULATION (4 questions)
@@ -240,7 +240,7 @@ QUESTION_MAP = {
     'soc_q4': {
         'text': 'There is a gap between how much I actually use AI and what I let others believe.',
         'dimension': 'social_transparency',
-        'reverse_scored': False,
+        'reverse_scored': True,
     },
 }
 
@@ -255,7 +255,7 @@ REVERSE_SCORED_KEYS = {
 
 # Verify counts
 assert len(QUESTION_MAP) == 39, f"Expected 39 questions, got {len(QUESTION_MAP)}"
-assert len(REVERSE_SCORED_KEYS) == 6, f"Expected 6 reverse-scored, got {len(REVERSE_SCORED_KEYS)}"
+assert len(REVERSE_SCORED_KEYS) == 9, f"Expected 9 reverse-scored, got {len(REVERSE_SCORED_KEYS)}"
 
 # Helper functions
 def get_question_text(key):
