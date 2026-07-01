@@ -556,40 +556,50 @@ def render_dashboard(x):
 
 def render_typicality(x):
     distinctive = list(x.get('distinctive', []) or [])
-    typical = list(x.get('typical', []) or [])
-    moderate = list(x.get('moderate', []) or [])
-    within_range = typical + moderate
+    benchmark_range = list(x.get('benchmark_range', []) or [])
+    if not benchmark_range:
+        benchmark_range = list(x.get('typical', []) or []) + list(x.get('moderate', []) or [])
 
-    distinct_count = len(distinctive)
-    within_count = len(within_range)
-    intro = (
-        f"Across the nine behavioural dimensions measured by HCI, your profile is characterised by {distinct_count} clearly distinctive "
-        f"dimension{'s' if distinct_count != 1 else ''} and {within_count} dimension{'s' if within_count != 1 else ''} that sit closer to the benchmark population."
+    section_intro = (
+        "Across the nine behavioural dimensions measured by HCI, this section shows where your AI behaviour differs most clearly from the benchmark population "
+        "and where it remains broadly aligned. Looking across dimensions rather than individual scores reveals the overall shape of your relationship with AI."
     )
 
-    if distinctive:
-        dist_rows = ''.join(
-            f'<div class="stand-row"><span>{esc(i.get("label"))}</span><strong>{esc(position_without_percentile(i)).title()}</strong></div>'
-            for i in distinctive
+    def rows(items, empty):
+        if not items:
+            return f'<p class="muted">{esc(empty)}</p>'
+        return ''.join(
+            f'<div class="stand-row" style="--stand-accent:{esc(dim_accent(i.get("dimension") or i.get("key") or i.get("label")))};">'
+            f'<span>{esc(i.get("label"))}</span>'
+            f'<strong>{esc(position_without_percentile(i)).title()}</strong>'
+            f'</div>'
+            for i in items
         )
-    else:
-        dist_rows = '<p class="muted">No dimensions fall cleanly into a strongly distinctive range.</p>'
 
-    if within_range:
-        names = ', '.join(esc(i.get('label')) for i in within_range if i.get('label'))
-        close_text = f"The remaining dimensions sit closer to the benchmark population: {names}. This suggests your profile is concentrated around a smaller number of behavioural differences rather than broad change across every part of AI use."
-    else:
-        close_text = "Few dimensions sit close to the benchmark population, which suggests your profile is broadly distinctive rather than concentrated in one or two areas."
+    distinctive_rows = rows(distinctive, "No dimensions fall cleanly into a strongly distinctive range.")
+    benchmark_rows = rows(benchmark_range, "No dimensions sit close to the benchmark range.")
 
     return f"""
-    <section class="page-section standing-section">
-      {section_kicker('Where you stand')}
-      <h2>{esc(x.get('title') or 'Where You Stand')}</h2>
-      <p class="section-intro compact">{esc(intro)}</p>
-      <article class="standing-card">
-        <h3>Your strongest areas of distinction</h3>
-        <div class="stand-list">{dist_rows}</div>
-        <p>{close_text}</p>
+    <section class="page-section standing-section profile-shape-section">
+      {section_kicker('Profile shape')}
+      <h2>{esc(x.get('title') or 'The Shape of Your Profile')}</h2>
+      <p class="section-intro compact">{esc(section_intro)}</p>
+
+      <div class="standing-grid">
+        <article class="standing-card">
+          <h3>Dimensions that stand out</h3>
+          <div class="stand-list">{distinctive_rows}</div>
+        </article>
+
+        <article class="standing-card">
+          <h3>Closer to the benchmark</h3>
+          <div class="stand-list">{benchmark_rows}</div>
+        </article>
+      </div>
+
+      <article class="profile-shape-summary">
+        <h3>Overall profile shape</h3>
+        {paras(x.get('profile_shape_summary')) or render_empty('No profile shape summary was available.')}
       </article>
     </section>"""
 
@@ -973,7 +983,7 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .evidence-callout{background:var(--cream);border-left:4px solid var(--accent);padding:26px 30px;margin-top:28px}.evidence-callout h3{margin-top:0}.insight-list{display:grid;gap:12px}.insight-row{display:grid;grid-template-columns:18px 1fr;gap:12px}.insight-row span{width:8px;height:8px;background:var(--accent);border-radius:50%;margin-top:10px}.insight-row p{margin:0}
 .dimension-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{border:1px solid var(--line);background:#fff;padding:24px;break-inside:avoid;page-break-inside:avoid}.dimension-card{min-height:0;display:flex;flex-direction:column;padding:20px 20px 18px;border-left:3px solid var(--dim-accent,var(--accent))}.dimension-card .card-topline{color:var(--dim-accent,var(--accent));margin-bottom:8px}.dimension-card h3{margin:8px 0 0;font-size:19px;color:#101828}.dimension-definition{color:#667085;font-size:13px;line-height:1.42;margin:0 0 8px}.insight{color:#475467;font-size:13px;line-height:1.45;margin-top:auto;padding-top:11px;border-top:1px solid var(--line)}.dimension-footnote{margin:10px 0 0;color:#98A2B3;font-size:10.5px;line-height:1.35}
 .percentile-block{margin:14px 0}.percentile-meta{display:block;text-align:right;color:var(--muted);font-size:12px}.percentile-meta span{display:none}.percentile-meta strong{color:var(--dim-accent,var(--accent-dark));font-size:13px}.percentile-track{height:6px;background:#eef2f6;border-radius:20px;position:relative;margin-top:7px}.percentile-fill{display:block;height:100%;background:var(--dim-accent,var(--accent));border-radius:20px}.percentile-marker{position:absolute;top:50%;width:13px;height:13px;background:#fff;border:3px solid var(--dim-accent,var(--accent));border-radius:50%;transform:translate(-50%,-50%)}
-.comparison-list{display:grid;gap:6px;margin:12px 0}.comparison,.evidence-meta,.typical-row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid var(--line);padding-top:7px;color:#475467;font-size:13px}.comparison strong,.evidence-meta strong,.typical-row strong{color:#101828;text-align:right}.standing-card{border:1px solid var(--line);background:#fff;padding:24px;max-width:860px}.standing-card h3{margin-top:0}.stand-list{display:grid;gap:7px;margin:12px 0 16px}.stand-row{display:flex;justify-content:space-between;gap:22px;border-top:1px solid var(--line);padding-top:8px}.stand-row span{font-weight:700}.stand-row strong{color:#344054;text-align:right}.standing-section .section-intro.compact{font-size:16px;line-height:1.5;margin-bottom:18px}.two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.split-card h3{margin-top:0}.rarity strong{font-size:20px;color:var(--accent-dark)}
+.comparison-list{display:grid;gap:6px;margin:12px 0}.comparison,.evidence-meta,.typical-row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid var(--line);padding-top:7px;color:#475467;font-size:13px}.comparison strong,.evidence-meta strong,.typical-row strong{color:#101828;text-align:right}.standing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:960px}.standing-card{border:1px solid var(--line);background:#fff;padding:22px;max-width:860px}.standing-card h3{margin-top:0;font-size:16px}.stand-list{display:grid;gap:8px;margin:12px 0 0}.stand-row{display:flex;justify-content:space-between;gap:22px;border-top:1px solid var(--line);padding-top:8px;position:relative}.stand-row:before{content:"";position:absolute;left:0;top:8px;bottom:0;width:3px;background:var(--stand-accent,var(--accent));border-radius:999px}.stand-row span{font-weight:700;padding-left:12px}.stand-row strong{color:#344054;text-align:right}.standing-section .section-intro.compact{font-size:16px;line-height:1.5;margin-bottom:18px}.profile-shape-summary{max-width:960px;margin-top:18px;background:#fbfaf7;border-left:3px solid var(--accent);padding:20px 24px}.profile-shape-summary h3{margin:0 0 8px;font-size:16px}.profile-shape-summary p{font-size:15px;line-height:1.58;color:#344054;margin:0}.two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.split-card h3{margin-top:0}.rarity strong{font-size:20px;color:var(--accent-dark)}
 .evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.evidence-card p{font-size:15px;color:#344054}.protect-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.protect-card{background:#fcfcfd}.protect-card h3{font-family:Georgia,"Times New Roman",serif;font-size:25px;font-weight:500;margin-top:0}.positioning,.research-note{background:var(--cream);padding:12px;border-left:3px solid var(--accent)}ul{margin:8px 0 0 20px;padding:0}li{margin-bottom:8px}
 .question-group{margin-top:40px}.group-definition{max-width:820px}.question-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.question-card h4{font-size:16px;color:#111827}.answer{color:#344054}.scale{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:12px 0 6px}.scale span{text-align:center;border:1px solid var(--line-strong);padding:7px 0;font-size:12px;color:#475467}.scale .selected{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff;font-weight:700}.scale-label{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}.histogram-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}.dist{height:112px;display:flex;align-items:flex-end;gap:7px;background:#f9fafb;border:1px solid var(--line);padding:26px 10px 22px;border-radius:2px}.dist-bar{flex:1;background:#cfd6df;position:relative;min-height:4px;border-radius:2px 2px 0 0}.dist-bar.answer{background:var(--accent-dark)}.dist-value{position:absolute;top:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#475467}.dist-index{position:absolute;bottom:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#667085}.dist-empty{background:#f2f4f7;border:1px solid var(--line);padding:14px;color:var(--muted);font-size:13px}.comparison-note{font-size:14px;color:#475467;margin-top:14px}.empty-state{background:#f9fafb;border:1px dashed var(--line-strong);padding:18px;color:var(--muted)}
 .deep-dive{background:#101828;color:#fff;padding:42px}.deep-dive h2,.deep-dive h3{color:#fff}.deep-dive .section-kicker{color:#9cc2ff}.deep-dive p{color:#e4e7ec}.quality{background:#fff7ed;border:1px solid #fed7aa;padding:20px}.report-footer{border-top:1px solid var(--line);padding-top:24px;color:var(--muted);font-size:13px}
@@ -1298,6 +1308,6 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 
 @media(max-width:900px){.hci-report .protect-grid.four{grid-template-columns:1fr}}
 
-@media(max-width:900px){.hci-report{padding:36px 22px}.cover-grid,.dimension-grid,.two-col,.evidence-grid,.protect-grid,.question-grid,.histogram-grid{grid-template-columns:1fr}h1{font-size:44px}h2{font-size:30px}.brand-row{margin-bottom:42px}}
+@media(max-width:900px){.hci-report{padding:36px 22px}.cover-grid,.dimension-grid,.standing-grid,.two-col,.evidence-grid,.protect-grid,.question-grid,.histogram-grid{grid-template-columns:1fr}h1{font-size:44px}h2{font-size:30px}.brand-row{margin-bottom:42px}}
 @media print{body{background:#fff}.hci-report{max-width:none;padding:34px}.page-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:42px}.dimension-grid{grid-template-columns:repeat(3,1fr);gap:14px}.dimension-card{padding:17px 17px 15px}.percentile-block{margin:11px 0}.insight{font-size:12.5px}.dimension-definition{font-size:12.5px}.question-grid{grid-template-columns:repeat(2,1fr)}.cover-panel,.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{box-shadow:none}a{color:inherit}}
 </style>'''
