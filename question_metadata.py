@@ -298,8 +298,8 @@ PERCEPTION_QUESTIONS = {
             'Somewhat more than most people',
             'Much more than most people'
         ],
-        'related_dimension': 'reliance',
-        'maps_to': 'reliance'  # For gap analysis
+        'related_dimension': 'usage_frequency',
+        'maps_to': 'usage_frequency'  # For perception-vs-behaviour comparison
     },
     'perceived_reliance': {
         'text': 'Compared to most people, how much do you rely on AI?',
@@ -324,8 +324,8 @@ PERCEPTION_QUESTIONS = {
             'Somewhat more than most people',
             'Much more than most people'
         ],
-        'related_dimension': 'reliance',
-        'maps_to': 'reliance'
+        'related_dimension': 'dependence_derived',
+        'maps_to': 'dependence_derived'
     }
 }
 
