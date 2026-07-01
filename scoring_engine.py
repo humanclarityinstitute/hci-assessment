@@ -205,8 +205,130 @@ PERCEPTION_QUESTIONS = {
     'perceived_dependence': 'Compared to most people, how dependent on AI are you?'
 }
 
-# Rare combination thresholds
-RARE_COMBINATION_THRESHOLD = 5.0  # % of population
+# Combination detection thresholds
+# The old engine only detected >75/<25 extremes across six pairs, which meant
+# many meaningful profiles produced no combination signal. These thresholds are
+# intentionally wider: they identify true rare combinations, notable tensions,
+# and coherent/no-tension profiles.
+COMBO_HIGH_THRESHOLD = 70
+COMBO_LOW_THRESHOLD = 30
+TRUE_RARE_RARITY_PCT = 5.0
+NOTABLE_RARITY_PCT = 15.0
+
+DIMENSION_LABELS = {
+    'reliance': 'Reliance',
+    'trust': 'Trust',
+    'verification': 'Verification',
+    'decision_delegation': 'Decision Delegation',
+    'human_agency': 'Human Agency',
+    'emotional_regulation': 'Emotional Regulation',
+    'disclosure': 'Disclosure',
+    'thought_partnership': 'Thought Partnership',
+    'social_transparency': 'Social Transparency',
+}
+
+# Curated HCI pair library. Each rule is directional, so the section explains
+# meaningful relationships rather than every mathematically possible pair.
+COMBINATION_RULES = [
+    {
+        'id': 'high_reliance_high_agency',
+        'dims': ('reliance', 'human_agency'),
+        'bands': ('high', 'high'),
+        'description': 'High Reliance + High Human Agency',
+        'signal_type': 'integrated_agency',
+    },
+    {
+        'id': 'high_reliance_low_verification',
+        'dims': ('reliance', 'verification'),
+        'bands': ('high', 'low'),
+        'description': 'High Reliance + Low Verification',
+        'signal_type': 'integration_with_light_scrutiny',
+    },
+    {
+        'id': 'high_trust_low_verification',
+        'dims': ('trust', 'verification'),
+        'bands': ('high', 'low'),
+        'description': 'High Trust + Low Verification',
+        'signal_type': 'acceptance_with_light_scrutiny',
+    },
+    {
+        'id': 'high_decision_delegation_low_human_agency',
+        'dims': ('decision_delegation', 'human_agency'),
+        'bands': ('high', 'low'),
+        'description': 'High Decision Delegation + Low Human Agency',
+        'signal_type': 'delegation_pressure',
+    },
+    {
+        'id': 'high_decision_delegation_high_human_agency',
+        'dims': ('decision_delegation', 'human_agency'),
+        'bands': ('high', 'high'),
+        'description': 'High Decision Delegation + High Human Agency',
+        'signal_type': 'delegated_input_with_authorship',
+    },
+    {
+        'id': 'high_thought_partnership_low_emotional_regulation',
+        'dims': ('thought_partnership', 'emotional_regulation'),
+        'bands': ('high', 'low'),
+        'description': 'High Thought Partnership + Low Emotional Regulation',
+        'signal_type': 'cognitive_emotional_boundary',
+    },
+    {
+        'id': 'high_thought_partnership_high_human_agency',
+        'dims': ('thought_partnership', 'human_agency'),
+        'bands': ('high', 'high'),
+        'description': 'High Thought Partnership + High Human Agency',
+        'signal_type': 'collaborative_but_authored',
+    },
+    {
+        'id': 'high_thought_partnership_low_decision_delegation',
+        'dims': ('thought_partnership', 'decision_delegation'),
+        'bands': ('high', 'low'),
+        'description': 'High Thought Partnership + Low Decision Delegation',
+        'signal_type': 'thinking_partner_not_decision_proxy',
+    },
+    {
+        'id': 'high_disclosure_low_social_transparency',
+        'dims': ('disclosure', 'social_transparency'),
+        'bands': ('high', 'low'),
+        'description': 'High Disclosure + Low Social Transparency',
+        'signal_type': 'private_ai_relationship',
+    },
+    {
+        'id': 'high_disclosure_high_emotional_regulation',
+        'dims': ('disclosure', 'emotional_regulation'),
+        'bands': ('high', 'high'),
+        'description': 'High Disclosure + High Emotional Regulation',
+        'signal_type': 'personal_emotional_ai_use',
+    },
+    {
+        'id': 'high_emotional_regulation_low_social_transparency',
+        'dims': ('emotional_regulation', 'social_transparency'),
+        'bands': ('high', 'low'),
+        'description': 'High Emotional Regulation + Low Social Transparency',
+        'signal_type': 'private_emotional_support',
+    },
+    {
+        'id': 'high_verification_high_trust',
+        'dims': ('verification', 'trust'),
+        'bands': ('high', 'high'),
+        'description': 'High Verification + High Trust',
+        'signal_type': 'trust_with_scrutiny',
+    },
+    {
+        'id': 'high_reliance_high_verification',
+        'dims': ('reliance', 'verification'),
+        'bands': ('high', 'high'),
+        'description': 'High Reliance + High Verification',
+        'signal_type': 'integrated_but_careful',
+    },
+    {
+        'id': 'low_reliance_high_thought_partnership',
+        'dims': ('reliance', 'thought_partnership'),
+        'bands': ('low', 'high'),
+        'description': 'Low Reliance + High Thought Partnership',
+        'signal_type': 'bounded_cognitive_partnership',
+    },
+]
 
 
 class ScoringEngine:
@@ -454,65 +576,160 @@ class ScoringEngine:
     
     def _detect_rare_combinations(self, dimension_scores, demographics):
         """
-        Detect rare dimension combinations in the benchmark data.
-        
-        Args:
-            dimension_scores (dict): All dimension percentiles
-            demographics (dict): Participant demographics
-        
-        Returns:
-            list: Rare combinations detected
+        Detect combination signals across the nine dimensions.
+
+        This detects three states:
+        1. true_rare: a meaningful directional pair that appears in <=5% of the benchmark
+        2. notable: a meaningful directional pair that appears in <=15% of the benchmark
+        3. coherent/no-tension: no pair qualifies, but the profile shape is still described
+
+        Important: this function does not assume every high/high or high/low pair is rare.
+        It checks a curated HCI pair library and estimates rarity from benchmark dimension
+        distributions when the benchmark contains aligned dimension value arrays.
         """
+        scored = {}
+        for dim, data in (dimension_scores or {}).items():
+            try:
+                scored[dim] = float(data.get('percentile_overall'))
+            except Exception:
+                continue
+
+        if len(scored) < 2:
+            return []
+
         combos = []
-        
-        # Define dimension pairs to check (most interesting combinations)
-        dimension_pairs = [
-            ('reliance', 'human_agency'),
-            ('reliance', 'verification'),
-            ('decision_delegation', 'human_agency'),
-            ('disclosure', 'trust'),
-            ('emotional_regulation', 'thought_partnership'),
-            ('trust', 'verification')
-        ]
-        
-        for dim1, dim2 in dimension_pairs:
-            if dim1 not in dimension_scores or dim2 not in dimension_scores:
+        for rule in COMBINATION_RULES:
+            dim1, dim2 = rule['dims']
+            band1, band2 = rule['bands']
+            if dim1 not in scored or dim2 not in scored:
                 continue
-            
-            p1 = dimension_scores[dim1].get('percentile_overall')
-            p2 = dimension_scores[dim2].get('percentile_overall')
-            
-            if p1 is None or p2 is None:
+
+            p1 = scored[dim1]
+            p2 = scored[dim2]
+            if not self._matches_band(p1, band1) or not self._matches_band(p2, band2):
                 continue
-            
-            # Identify if this is a rare combination
-            # (High/High, Low/Low, or divergent pairs are typically rare)
-            is_rare = False
-            combo_description = ""
-            
-            if p1 > 75 and p2 > 75:
-                is_rare = True
-                combo_description = f"High {dim1} + High {dim2}"
-            elif p1 < 25 and p2 < 25:
-                is_rare = True
-                combo_description = f"Low {dim1} + Low {dim2}"
-            elif (p1 > 75 and p2 < 25) or (p1 < 25 and p2 > 75):
-                is_rare = True
-                combo_description = f"Divergent: High {dim1}, Low {dim2}" if p1 > 75 else f"Divergent: Low {dim1}, High {dim2}"
-            
-            if is_rare:
-                combos.append({
-                    'combo': [dim1, dim2],
-                    'percentiles': [p1, p2],
-                    'dimension_1': dim1,
-                    'dimension_2': dim2,
-                    'percentile_dim1': p1,
-                    'percentile_dim2': p2,
-                    'description': combo_description,
-                    'is_distinctive': True
-                })
-        
-        return combos
+
+            rarity = self._estimate_combo_rarity(dim1, dim2, band1, band2)
+            severity = self._classify_combo_signal(p1, p2, rarity)
+
+            # Keep true rare and notable combinations. Anything weaker is treated
+            # as part of profile shape rather than a Section 4 combination.
+            if severity not in {'true_rare', 'notable'}:
+                continue
+
+            distance_score = abs(p1 - 50) + abs(p2 - 50)
+            if band1 != band2:
+                distance_score += abs(p1 - p2) * 0.35
+            if rarity is not None:
+                distance_score += max(0, (NOTABLE_RARITY_PCT - rarity)) * 2
+
+            combos.append({
+                'combo': [dim1, dim2],
+                'percentiles': [int(round(p1)), int(round(p2))],
+                'dimension_1': dim1,
+                'dimension_2': dim2,
+                'percentile_dim1': int(round(p1)),
+                'percentile_dim2': int(round(p2)),
+                'band_dim1': band1,
+                'band_dim2': band2,
+                'description': rule['description'],
+                'combination_id': rule['id'],
+                'signal_type': rule.get('signal_type'),
+                'is_distinctive': True,
+                'combo_classification': severity,
+                'rarity_percent': round(rarity, 1) if rarity is not None else (5.0 if severity == 'true_rare' else 12.0),
+                'frequency_pct': round(rarity, 1) if rarity is not None else (5.0 if severity == 'true_rare' else 12.0),
+                'distinctiveness_score': round(distance_score, 2),
+            })
+
+        # Sort so true rare appears before notable, then by rarity/distinctiveness.
+        rank = {'true_rare': 0, 'notable': 1}
+        combos.sort(key=lambda x: (rank.get(x.get('combo_classification'), 9), x.get('rarity_percent', 99), -x.get('distinctiveness_score', 0)))
+        return combos[:2]
+
+    def _matches_band(self, percentile, band):
+        try:
+            p = float(percentile)
+        except Exception:
+            return False
+        if band == 'high':
+            return p >= COMBO_HIGH_THRESHOLD
+        if band == 'low':
+            return p <= COMBO_LOW_THRESHOLD
+        return False
+
+    def _classify_combo_signal(self, p1, p2, rarity):
+        """Classify a matching pair as true rare, notable, or weak."""
+        extreme = (
+            max(p1, p2) >= 85 and min(p1, p2) <= 35
+        ) or (p1 >= 85 and p2 >= 85) or (p1 <= 15 and p2 <= 15)
+
+        if rarity is not None:
+            if rarity <= TRUE_RARE_RARITY_PCT:
+                return 'true_rare'
+            if rarity <= NOTABLE_RARITY_PCT:
+                return 'notable'
+            if extreme and rarity <= 20:
+                return 'notable'
+            return 'weak'
+
+        # Fallback if benchmark co-occurrence cannot be calculated.
+        if extreme:
+            return 'notable'
+        if (p1 >= 75 and p2 >= 75) or (p1 <= 25 and p2 <= 25) or (p1 >= 75 and p2 <= 25) or (p1 <= 25 and p2 >= 75):
+            return 'notable'
+        return 'weak'
+
+    def _estimate_combo_rarity(self, dim1, dim2, band1, band2):
+        """
+        Estimate benchmark co-occurrence from dimension overall value arrays.
+
+        Returns percentage of benchmark participants matching the same directional
+        bands. If aligned arrays are unavailable, returns None and the caller uses
+        a conservative fallback.
+        """
+        try:
+            data = getattr(self.benchmark, 'data', {}) or {}
+            dims = data.get('dimensions') or {}
+            vals1 = (((dims.get(dim1) or {}).get('overall') or {}).get('values') or [])
+            vals2 = (((dims.get(dim2) or {}).get('overall') or {}).get('values') or [])
+            if not vals1 or not vals2:
+                return None
+            n = min(len(vals1), len(vals2))
+            if n < 30:
+                return None
+            vals1 = [float(v) for v in vals1[:n] if v is not None]
+            vals2 = [float(v) for v in vals2[:n] if v is not None]
+            n = min(len(vals1), len(vals2))
+            if n < 30:
+                return None
+
+            pct1 = self._percentile_ranks(vals1)
+            pct2 = self._percentile_ranks(vals2)
+            matches = 0
+            for a, b in zip(pct1, pct2):
+                if self._matches_band(a, band1) and self._matches_band(b, band2):
+                    matches += 1
+            return (matches / n) * 100
+        except Exception:
+            return None
+
+    def _percentile_ranks(self, values):
+        """Return 1-99 percentile ranks for a list of numeric benchmark values."""
+        nums = [float(v) for v in values]
+        sorted_vals = sorted(nums)
+        n = len(sorted_vals)
+        out = []
+        for v in nums:
+            below = 0
+            for x in sorted_vals:
+                if x < v:
+                    below += 1
+                else:
+                    break
+            pct = int((below / n) * 100) if n else 50
+            out.append(max(1, min(99, pct)))
+        return out
 
 
 def score_assessment(responses, demographics, perceptions=None, session_id=None):
