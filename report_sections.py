@@ -371,18 +371,43 @@ def build_distinctive_responses(report_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def build_perception_gap(report_data: Dict[str, Any]) -> Dict[str, Any]:
     source = report_data.get("perception_gap") or {}
+    self_perception = source.get("self_perception", [])
 
     fallback = (
-        "Your self-perception and actual benchmark positioning are shown above. "
-        "The most useful way to read this section is not as a correction, but as a comparison between how your AI use feels from the inside and where your responses place you in the wider benchmark."
+        "What this section ultimately shows is that your intuition about your AI relationship is broadly accurate, "
+        "but the benchmark reveals where that distinctiveness actually sits. Rather than being defined by reliance alone, "
+        "your profile is characterised by the way you think with AI, trust it, and incorporate it into important decisions."
     )
 
+    def perceived_direction(answer: Any) -> str:
+        text = str(answer or "").lower()
+        if any(term in text for term in ["much more", "somewhat more", "more than", "higher", "above"]):
+            return "Higher"
+        if any(term in text for term in ["much less", "somewhat less", "less than", "lower", "below"]):
+            return "Lower"
+        if any(term in text for term in ["same", "average", "about the same", "similar"]):
+            return "About the same"
+        return str(answer or "Not stated")
+
+    comparison_summary = []
+    for item in self_perception:
+        comparison_summary.append({
+            "label": item.get("comparison_label") or item.get("short_label") or item.get("primary_dimension_label") or item.get("question") or "AI relationship",
+            "self": perceived_direction(item.get("answer")),
+            "benchmark": item.get("actual_percentile"),
+            "benchmark_label": item.get("actual_percentile_label"),
+            "position": item.get("actual_position"),
+        })
+
     return {
-        "title": "Perception Gap Analysis",
-        "self_perception": source.get("self_perception", []),
+        "title": "How You See Yourself",
+        "subtitle": "Comparing your self-perception with your benchmark profile.",
+        "self_perception": self_perception,
+        "comparison_summary": comparison_summary,
         "gaps": source.get("gaps", []),
         "largest_gap": source.get("largest_gap"),
         "has_significant_gap": source.get("has_significant_gap", False),
+        "narrative_heading": "What this comparison suggests",
         "narrative": narrative_block(report_data, "perception_gap_narrative", fallback),
     }
 
