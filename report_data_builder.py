@@ -115,20 +115,38 @@ DIMENSION_DEFINITIONS = {
 SELF_PERCEPTION_MAP = {
     "perceived_usage": {
         "question": "Compared to most people, how much do you use AI?",
-        "primary_dimension": "reliance",
-        "secondary_dimension": "thought_partnership",
+        "comparison_area": "AI Use",
+        "comparison_source": "usage_frequency",
+        "primary_dimension": None,
+        "secondary_dimension": None,
     },
     "perceived_reliance": {
         "question": "Compared to most people, how much do you rely on AI?",
+        "comparison_area": "AI Reliance",
+        "comparison_source": "reliance_dimension",
         "primary_dimension": "reliance",
         "secondary_dimension": None,
     },
     "perceived_dependence": {
         "question": "Compared to most people, how dependent on AI are you?",
-        "primary_dimension": "reliance",
-        "secondary_dimension": "decision_delegation",
+        "comparison_area": "AI Dependence",
+        "comparison_source": "dependence_derived",
+        "primary_dimension": None,
+        "secondary_dimension": None,
     },
 }
+
+DEPENDENCE_VARIABLES = ["rel_q1", "rel_q2", "rel_q5"]
+
+FREQUENCY_ORDER = [
+    "Never",
+    "Rarely",
+    "Occasionally",
+    "Sometimes",
+    "Often",
+    "Very often",
+    "Everyday",
+]
 
 PROTECT_DIMENSIONS = [
     "verification",
@@ -824,9 +842,166 @@ def build_distinctive_responses(questions: List[Dict[str, Any]], limit: int = 7,
     return selected[:limit]
 
 
-def build_perception_gap(scoring_results: Dict[str, Any], responses: Dict[str, Any], dimensions: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+
+def usage_frequency_percentile(demographics: Dict[str, Any], benchmark: Any) -> Optional[int]:
+    """
+    Estimate where the participant's reported AI-use frequency sits in the
+    benchmark population.
+
+    This uses benchmark frequency cohort sample sizes rather than any single
+    behavioural dimension, so the perceived-usage card compares self-view with
+    actual reported usage frequency.
+    """
+    bench_demo = demographics.get("_benchmark_demographics") or demographics
+    frequency = bench_demo.get("ai_tool_use_frequency") or demographics.get("ai_tool_use_frequency")
+    if not frequency:
+        return None
+
+    data = get_benchmark_data(benchmark)
+    dimensions = data.get("dimensions") or {}
+
+    frequency_counts: Dict[str, int] = {}
+    for dim_data in dimensions.values():
+        if not isinstance(dim_data, dict):
+            continue
+        by_frequency = dim_data.get("by_frequency") or {}
+        if not isinstance(by_frequency, dict) or not by_frequency:
+            continue
+        frequency_counts = {
+            str(k): clean_int(v.get("n"), 0) or 0
+            for k, v in by_frequency.items()
+            if isinstance(v, dict)
+        }
+        if frequency_counts:
+            break
+
+    if not frequency_counts:
+        # Last-resort deterministic placement when benchmark frequencies are
+        # unavailable. These are broad ordinal positions, not dimension scores.
+        fallback = {
+            "never": 5,
+            "rarely": 20,
+            "sometimes": 45,
+            "occasionally": 45,
+            "often": 70,
+            "very often": 82,
+            "veryoften": 82,
+            "everyday": 90,
+            "daily": 90,
+            "every day": 90,
+        }
+        return fallback.get(str(frequency).strip().lower())
+
+    actual_key = canonical_lookup(frequency, list(frequency_counts.keys()))
+    if actual_key is None:
+        return None
+
+    order = [key for key in FREQUENCY_ORDER if key in frequency_counts]
+    for key in frequency_counts:
+        if key not in order:
+            order.append(key)
+
+    total = sum(frequency_counts.values())
+    current_n = frequency_counts.get(actual_key, 0)
+    if total <= 0 or current_n <= 0:
+        return None
+
+    below = 0
+    for key in order:
+        if key == actual_key:
+            break
+        below += frequency_counts.get(key, 0)
+
+    # Place the user at the midpoint of their frequency cohort so categories
+    # with large samples do not all collapse to the lower bound of that bucket.
+    pct_value = ((below + (current_n / 2)) / total) * 100
+    return max(1, min(99, int(round(pct_value))))
+
+
+def derived_dependence_percentile(responses: Dict[str, Any], benchmark: Any) -> Optional[int]:
+    """
+    Derive an AI-dependence percentile from the reliance items that most directly
+    describe dependence rather than general reliance.
+
+    rel_q1: unease/restlessness without AI
+    rel_q2: struggle to function without AI/digital systems
+    rel_q5: perceived ability weakening because AI performs tasks
+    """
+    percentiles = []
+    for key in DEPENDENCE_VARIABLES:
+        answer = responses.get(key)
+        if answer is None:
+            continue
+        pct_value = safe_question_percentile(benchmark, key, answer)
+        if pct_value is not None:
+            percentiles.append(pct_value)
+
+    if not percentiles:
+        return None
+
+    return max(1, min(99, int(round(sum(percentiles) / len(percentiles)))))
+
+
+def perception_comparison_value(
+    key: str,
+    meta: Dict[str, Any],
+    responses: Dict[str, Any],
+    dimensions: Dict[str, Dict[str, Any]],
+    demographics: Dict[str, Any],
+    benchmark: Any,
+) -> Dict[str, Any]:
+    """
+    Resolve the measured comparison value for each self-perception question.
+    """
+    source = meta.get("comparison_source")
+
+    if source == "usage_frequency":
+        percentile = usage_frequency_percentile(demographics, benchmark)
+        return {
+            "comparison_area": "AI Use",
+            "comparison_source": "usage_frequency",
+            "primary_dimension": None,
+            "primary_dimension_label": "Usage Frequency",
+            "actual_percentile": clean_int(percentile, 50),
+            "actual_position": position_phrase(percentile),
+            "measured_basis": "Reported AI-use frequency compared with the benchmark frequency distribution.",
+        }
+
+    if source == "dependence_derived":
+        percentile = derived_dependence_percentile(responses, benchmark)
+        return {
+            "comparison_area": "AI Dependence",
+            "comparison_source": "dependence_derived",
+            "primary_dimension": None,
+            "primary_dimension_label": "Derived Dependence",
+            "actual_percentile": clean_int(percentile, 50),
+            "actual_position": position_phrase(percentile),
+            "measured_basis": "Derived from dependence-related reliance items: unease without AI, difficulty functioning without AI, and perceived ability weakening.",
+        }
+
+    primary = meta.get("primary_dimension") or "reliance"
+    percentile = dimensions.get(primary, {}).get("percentile")
+    return {
+        "comparison_area": meta.get("comparison_area") or DIMENSION_LABELS.get(primary, primary),
+        "comparison_source": source or primary,
+        "primary_dimension": primary,
+        "primary_dimension_label": DIMENSION_LABELS.get(primary, primary),
+        "actual_percentile": clean_int(percentile, 50),
+        "actual_position": position_phrase(percentile),
+        "measured_basis": f"Based on the {DIMENSION_LABELS.get(primary, primary)} dimension score.",
+    }
+
+
+def build_perception_gap(
+    scoring_results: Dict[str, Any],
+    responses: Dict[str, Any],
+    dimensions: Dict[str, Dict[str, Any]],
+    demographics: Optional[Dict[str, Any]] = None,
+    benchmark: Any = None,
+) -> Dict[str, Any]:
     gaps = scoring_results.get("perception_gaps") or []
     rows = []
+    demographics = demographics or {}
 
     for key, meta in SELF_PERCEPTION_MAP.items():
         # Prefer metadata file text if present.
@@ -834,17 +1009,28 @@ def build_perception_gap(scoring_results: Dict[str, Any], responses: Dict[str, A
         if isinstance(PERCEPTION_QUESTIONS, dict) and isinstance(PERCEPTION_QUESTIONS.get(key), dict):
             question = PERCEPTION_QUESTIONS[key].get("text") or question
 
-        primary = meta["primary_dimension"]
+        comparison = perception_comparison_value(
+            key=key,
+            meta=meta,
+            responses=responses,
+            dimensions=dimensions,
+            demographics=demographics,
+            benchmark=benchmark,
+        )
+
         secondary = meta.get("secondary_dimension")
 
         rows.append({
             "key": key,
             "question": question,
             "answer": responses.get(key),
-            "primary_dimension": primary,
-            "primary_dimension_label": DIMENSION_LABELS[primary],
-            "actual_percentile": dimensions[primary]["percentile"],
-            "actual_position": position_phrase(dimensions[primary]["percentile"]),
+            "comparison_area": comparison.get("comparison_area"),
+            "comparison_source": comparison.get("comparison_source"),
+            "measured_basis": comparison.get("measured_basis"),
+            "primary_dimension": comparison.get("primary_dimension"),
+            "primary_dimension_label": comparison.get("primary_dimension_label"),
+            "actual_percentile": comparison.get("actual_percentile"),
+            "actual_position": comparison.get("actual_position"),
             "secondary_dimension": secondary,
             "secondary_percentile": dimensions.get(secondary, {}).get("percentile") if secondary else None,
         })
@@ -1035,7 +1221,7 @@ def build_report_data(
 
     dimensions = normalize_dimensions(scoring_results, demographics, benchmark)
     questions = build_questions(responses, demographics, benchmark)
-    perception = build_perception_gap(scoring_results, responses, dimensions)
+    perception = build_perception_gap(scoring_results, responses, dimensions, demographics, benchmark)
     rare = build_rare_combinations(scoring_results, dimensions)
     distinctive = build_distinctive_responses(questions, 7)
 
