@@ -283,17 +283,17 @@ For Section 7:
 - You MUST explain all 7 distinctive responses provided.
 - Write one short introductory paragraph of 35-55 words.
 - Then write exactly 7 concise annotations, one per response.
-- Each annotation must be 45-70 words.
+- Each annotation must be 45-70 words. Be strict: do not write 100+ word mini-essays.
 - Do NOT use Markdown, bold markers, bullets, numbered lists, tables, or headings with **.
 - Do NOT use raw variable names or codes such as del_q3, agency_q1, trust_q3, rel_q1.
-- Start each annotation with a short plain-language label or the question text, followed by a colon.
+- Start each annotation with a short plain-language label, followed by a colon. Use natural labels such as "Trusting AI accuracy:" or "Hiding AI use socially:" rather than copying the full question every time.
 - For each response, explain only:
   1. why it is distinctive,
   2. why it matters in HCI behavioural terms,
   3. how it supports or complicates the wider profile.
 - Do not over-explain automation bias, skill fade, emotional substitution, or other concepts. Name the behavioural signal plainly and move on.
-- Avoid repeating the dashboard, age-group comparisons, frequency comparisons, or multiple statistics. The card already shows answer and percentile.
-- End each annotation with one concise linking sentence, such as "This reinforces the wider Reliance pattern identified earlier."
+- Avoid repeating the dashboard, age-group comparisons, frequency comparisons, or multiple statistics. The card already shows answer and benchmark position. Do not mention age-group percentiles unless the age comparison is genuinely central to the interpretation.
+- End each annotation with one concise linking sentence that connects to the wider profile, but vary the language. Do not repeatedly use "This reinforces...". Suitable alternatives include "This supports...", "This helps explain...", "This adds nuance to...", "This sits alongside...", or "This is one of the clearest contributors to...".
 
 For Section 8:
 - Compare self-perception to benchmark positioning.
