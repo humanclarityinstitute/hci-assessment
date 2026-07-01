@@ -777,7 +777,14 @@ def build_question_comparison_statement(answer: Any, pct: Optional[int], pct_age
     return f"You answered {answer}/7. Overall comparison is unavailable, but your age-group percentile is {pct_age}."
 
 
-def build_distinctive_responses(questions: List[Dict[str, Any]], limit: int = 7) -> List[Dict[str, Any]]:
+def build_distinctive_responses(questions: List[Dict[str, Any]], limit: int = 7, max_per_dimension: int = 2) -> List[Dict[str, Any]]:
+    """Select the most distinctive question-level responses.
+
+    We cap each dimension so this section does not get dominated by one
+    construct. The user has already seen the full 39-question profile in
+    Section 6; Section 7 should provide a spread of the strongest evidence
+    across the profile.
+    """
     candidates = []
     for q in questions:
         pct = q.get("percentile")
@@ -786,7 +793,35 @@ def build_distinctive_responses(questions: List[Dict[str, Any]], limit: int = 7)
             item["distance_from_centre"] = abs((clean_int(pct, 50) or 50) - 50)
             candidates.append(item)
 
-    return sorted(candidates, key=lambda x: (x["distance_from_centre"], x.get("percentile") or 0), reverse=True)[:limit]
+    sorted_candidates = sorted(
+        candidates,
+        key=lambda x: (x["distance_from_centre"], x.get("percentile") or 0),
+        reverse=True,
+    )
+
+    selected = []
+    counts: Dict[str, int] = {}
+    for item in sorted_candidates:
+        dim = item.get("dimension") or "unknown"
+        if counts.get(dim, 0) >= max_per_dimension:
+            continue
+        selected.append(item)
+        counts[dim] = counts.get(dim, 0) + 1
+        if len(selected) >= limit:
+            break
+
+    # Safety fallback: if the cap leaves fewer than limit because of missing
+    # dimension metadata, fill remaining slots from the original ranking.
+    if len(selected) < limit:
+        seen = {q.get("key") for q in selected}
+        for item in sorted_candidates:
+            if item.get("key") in seen:
+                continue
+            selected.append(item)
+            if len(selected) >= limit:
+                break
+
+    return selected[:limit]
 
 
 def build_perception_gap(scoring_results: Dict[str, Any], responses: Dict[str, Any], dimensions: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
