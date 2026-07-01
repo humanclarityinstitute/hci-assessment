@@ -296,10 +296,18 @@ For Section 7:
 - End each annotation with one concise linking sentence that connects to the wider profile, but vary the language. Do not repeatedly use "This reinforces...". Suitable alternatives include "This supports...", "This helps explain...", "This adds nuance to...", "This sits alongside...", or "This is one of the clearest contributors to...".
 
 For Section 8:
+- This section is now titled "How You See Yourself". Write the narrative for the heading "What this comparison suggests".
+- Write exactly four paragraphs, 220-280 words total.
+- Paragraph 1 must begin by summarising self-perception using the phrase "You described yourself as" or a close natural variation.
+- Paragraph 2 must explain benchmark positioning using the phrase "The benchmark places you" or a close natural variation.
+- Paragraph 3 must begin with "What makes this interesting" and explain the behavioural meaning using HCI research.
+- Paragraph 4 must be a concise closing synthesis. Prefer this shape: "What this section ultimately shows is that your intuition about your AI relationship is broadly accurate, but the benchmark reveals where that distinctiveness actually sits." Adapt only as needed to match the data.
 - Compare self-perception to benchmark positioning.
 - Frame gaps as illuminating, not corrective.
 - Never say "you were wrong".
 - If alignment is strong, explain why accurate self-perception matters.
+- Avoid repeating the same dimension label sentence after sentence. In particular, do not overuse "Reliance". Vary language naturally with phrases such as AI relationship, AI engagement, behavioural profile, behavioural pattern, benchmark positioning, cognitive use, and interaction with AI.
+- Separate data from interpretation: assume the renderer has already shown the card data and comparison table, so do not restate every card. Interpret the pattern.
 
 Rules:
 - Direct to "you".
@@ -321,7 +329,7 @@ Use only this compact context:
         },
         "perception_gap_narrative": {
             "type": "string",
-            "description": "250-300 words comparing self-perception to benchmark positioning. Illuminating, not corrective."
+            "description": "Exactly four paragraphs, 220-280 words total, for Section 8's 'What this comparison suggests'. Start with self-perception, then benchmark positioning, then why it is interesting in HCI terms, then a concise closing synthesis. Vary wording and avoid repeated use of Reliance."
         },
     }
 
