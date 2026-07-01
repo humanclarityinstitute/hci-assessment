@@ -228,13 +228,45 @@ def build_typicality(report_data: Dict[str, Any]) -> Dict[str, Any]:
             out.append(return_item)
         return out
 
+    distinctive = enrich(source.get("distinctive", []))
+    typical = enrich(source.get("typical", []))
+    moderate = enrich(source.get("moderate", []))
+    all_items = enrich(source.get("all", []))
+
     return {
-        "title": "Where You Stand",
-        "distinctive": enrich(source.get("distinctive", [])),
-        "typical": enrich(source.get("typical", [])),
-        "moderate": enrich(source.get("moderate", [])),
-        "all": enrich(source.get("all", [])),
+        "title": "The Shape of Your Profile",
+        "subtitle": "Where your AI behaviour stands out and where it remains closer to the benchmark",
+        "distinctive": distinctive,
+        "typical": typical,
+        "moderate": moderate,
+        "benchmark_range": typical + moderate,
+        "all": all_items,
+        "profile_shape_summary": narrative_block(
+            report_data,
+            "profile_shape_summary",
+            profile_shape_fallback(distinctive, typical + moderate),
+        ),
     }
+
+
+def profile_shape_fallback(distinctive, benchmark_range) -> str:
+    """Fallback summary for the profile-shape section if Claude output is unavailable."""
+    if distinctive and benchmark_range:
+        return (
+            "Your profile is shaped by a smaller number of dimensions that stand out against a wider background of behaviours that remain closer to the benchmark population. "
+            "That means the most useful reading of your results is not that everything has shifted, but that several specific parts of your AI relationship carry most of the signal."
+        )
+
+    if distinctive and not benchmark_range:
+        return (
+            "Your profile shows a broad pattern of distinction across the HCI dimensions rather than one isolated signal. "
+            "This means the overall shape of your AI relationship is best understood as a wider behavioural pattern, not a single unusually high or low score."
+        )
+
+    return (
+        "Your profile sits largely within the benchmark range across the HCI dimensions. "
+        "That does not make it less meaningful; it means your relationship with AI is currently defined more by its overall balance than by one strongly unusual dimension."
+    )
 
 
 # ---------------------------------------------------------------------
