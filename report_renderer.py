@@ -482,7 +482,7 @@ def render_report(report_data):
   {render_trajectory(s.get('trajectory') or s.get('section_11_trajectory') or {})}
   {render_looking_forward(s.get('looking_forward') or s.get('section_12_looking_forward') or {})}
   {render_closing_reflection(s.get('closing_reflection') or s.get('section_13_closing_reflection') or {})}
-  {render_quality(report_data)}
+  
 
   <footer class="report-footer">
     <strong>Human Clarity Institute</strong>
