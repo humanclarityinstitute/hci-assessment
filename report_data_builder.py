@@ -795,27 +795,27 @@ def build_questions(responses: Dict[str, Any], demographics: Dict[str, Any], ben
                 "distribution_everyone": safe_question_distribution(benchmark, key),
                 "distribution_age_group": safe_question_distribution(benchmark, key, segment=age_segment) if age_segment else None,
                 "distribution_frequency": safe_question_distribution(benchmark, key, segment=freq_segment) if freq_segment else None,
-                "comparison_statement": build_question_comparison_statement(answer, pct, pct_age),
+                "comparison_statement": build_question_comparison_statement(answer, pct, pct_freq),
                 "is_reverse_scored": key in reverse_set,
             })
 
     return questions
 
 
-def build_question_comparison_statement(answer: Any, pct: Optional[int], pct_age: Optional[int]) -> str:
+def build_question_comparison_statement(answer: Any, pct: Optional[int], pct_frequency: Optional[int]) -> str:
     if answer is None:
         return "No answer was recorded for this item."
 
-    if pct is None and pct_age is None:
+    if pct is None and pct_frequency is None:
         return f"You answered {answer}/7. Benchmark comparison is unavailable for this item."
 
-    if pct is not None and pct_age is not None:
-        return f"You answered {answer}/7 — at or above {pct} of 100 people overall, and at or above {pct_age} of 100 people your age."
+    if pct is not None and pct_frequency is not None:
+        return f"You answered {answer}/7 — at or above {pct} of 100 people overall, and at or above {pct_frequency} of 100 people who use AI about as frequently as you."
 
     if pct is not None:
-        return f"You answered {answer}/7 — at or above {pct} of 100 people overall. Age-group comparison is unavailable."
+        return f"You answered {answer}/7 — at or above {pct} of 100 people overall. AI-use frequency comparison is unavailable."
 
-    return f"You answered {answer}/7. Overall comparison is unavailable, but your age-group percentile is {pct_age}."
+    return f"You answered {answer}/7. Overall comparison is unavailable, but your AI-use frequency percentile is {pct_frequency}."
 
 
 def build_distinctive_responses(questions: List[Dict[str, Any]], limit: int = 7, max_per_dimension: int = 2) -> List[Dict[str, Any]]:
@@ -1194,6 +1194,24 @@ def build_if_nothing_changes(dimensions: Dict[str, Dict[str, Any]], demographics
     }
 
 
+
+
+def build_human_capital_inputs(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Prepare a single synthesis package for the Human Capital narrative."""
+    synth = report_data.get("synthesis_inputs", {})
+    return {
+        "overall_profile": synth,
+        "dimensions": report_data.get("dimensions", {}),
+        "top_dimensions": synth.get("top_dimensions", []),
+        "lowest_dimensions": synth.get("lowest_dimensions", []),
+        "rare_combinations": report_data.get("rare_combinations", []),
+        "distinctive_responses": report_data.get("distinctive_responses", []),
+        "behaviour_story": report_data.get("narrative_blocks", {}).get("behaviour_story"),
+        "perception_gap": report_data.get("perception_gap", {}),
+        "usage_frequency": report_data.get("demographics", {}).get("_frequency_benchmark"),
+        "demographics": report_data.get("demographics", {}),
+    }
+
 def build_data_quality(report_data: Dict[str, Any]) -> Dict[str, Any]:
     warnings = []
 
@@ -1213,12 +1231,12 @@ def build_data_quality(report_data: Dict[str, Any]) -> Dict[str, Any]:
         warnings.append(f"Dashboard frequency percentile missing for {len(dashboard_missing_freq)} dimensions: {dashboard_missing_freq}.")
 
     missing_overall_dist = [q["key"] for q in report_data.get("questions", []) if not q.get("distribution_everyone")]
-    missing_age_dist = [q["key"] for q in report_data.get("questions", []) if not q.get("distribution_age_group")]
+    missing_freq_dist = [q["key"] for q in report_data.get("questions", []) if not q.get("distribution_frequency")]
 
     if missing_overall_dist:
         warnings.append(f"{len(missing_overall_dist)} overall question distributions missing.")
-    if missing_age_dist:
-        warnings.append(f"{len(missing_age_dist)} age-group question distributions missing or below threshold.")
+    if missing_freq_dist:
+        warnings.append(f"{len(missing_freq_dist)} AI-use frequency question distributions missing or below threshold.")
 
     neutral_question_pcts = [q["key"] for q in report_data.get("questions", []) if q.get("percentile") == 50]
     if len(neutral_question_pcts) > 25:
@@ -1296,8 +1314,10 @@ def build_report_data(
         },
 
         "narrative_blocks": {},
+        "human_capital": {},
     }
 
+    report_data["human_capital"] = build_human_capital_inputs(report_data)
     report_data["data_quality"] = build_data_quality(report_data)
     return report_data
 
