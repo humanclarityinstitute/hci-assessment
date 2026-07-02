@@ -45,11 +45,12 @@ def build_sections(report_data: Dict[str, Any]) -> Dict[str, Any]:
     story = build_behaviour_story(report_data)
     questions = build_question_profile(report_data)
     distinctive = build_distinctive_responses(report_data)
-    perception = build_perception_gap(report_data)
-    protect = build_what_to_protect(report_data)
-    trajectory = build_if_nothing_changes(report_data)
-    next_steps = build_next_steps(report_data)
     deep_dive = build_deep_dive(report_data)
+    perception = build_perception_gap(report_data)
+    human_capital = build_human_capital(report_data)
+    trajectory = build_if_nothing_changes(report_data)
+    looking_forward = build_looking_forward(report_data)
+    closing_reflection = build_closing_reflection(report_data)
 
     return {
         # Legacy renderer keys
@@ -60,11 +61,12 @@ def build_sections(report_data: Dict[str, Any]) -> Dict[str, Any]:
         "story": story,
         "questions": questions,
         "distinctive": distinctive,
-        "perception": perception,
-        "protect": protect,
-        "trajectory": trajectory,
-        "next_steps": next_steps,
         "deep_dive": deep_dive,
+        "perception": perception,
+        "human_capital": human_capital,
+        "trajectory": trajectory,
+        "looking_forward": looking_forward,
+        "closing_reflection": closing_reflection,
 
         # Explicit locked section keys
         "section_1_dashboard": dashboard,
@@ -73,11 +75,12 @@ def build_sections(report_data: Dict[str, Any]) -> Dict[str, Any]:
         "section_5_behaviour_story": story,
         "section_6_question_profile": questions,
         "section_7_distinctive_responses": distinctive,
-        "section_8_perception_gap": perception,
-        "section_9_what_to_protect": protect,
-        "section_10_if_nothing_changes": trajectory,
-        "section_11_next_steps": next_steps,
-        "section_12_deep_dive": deep_dive,
+        "section_8_dimension_deep_dives": deep_dive,
+        "section_9_perception_gap": perception,
+        "section_10_human_capital": human_capital,
+        "section_11_trajectory": trajectory,
+        "section_12_looking_forward": looking_forward,
+        "section_13_closing_reflection": closing_reflection,
     }
 
 
@@ -166,46 +169,44 @@ def build_dashboard(report_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------
-# Section 12: Deep Dive
+# Dimension Deep Dives
 # ---------------------------------------------------------------------
 
 def build_deep_dive(report_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Optional but high-value personalised Deep Dive.
+    Dimension reference section.
 
     This is Claude-written when available, with deterministic fallback.
     """
     return {
-        "title": "Deep Dive",
+        "title": "Dimension Deep Dives",
+        "subtitle": "A closer look at each behavioural dimension in your benchmark profile.",
         "body": narrative_block(report_data, "deep_dive", deep_dive_fallback(report_data)),
     }
 
 
 def deep_dive_fallback(report_data: Dict[str, Any]) -> str:
-    inputs = report_data.get("synthesis_inputs") or {}
-    most = inputs.get("most_distinctive_variable")
-    top = (inputs.get("top_dimensions") or [{}])[0]
-    combo = inputs.get("top_rare_combination")
+    dims = report_data.get("dimensions") or {}
+    if not dims:
+        return "No dimension data was available for the Dimension Deep Dives section."
 
-    if combo:
-        return (
-            f"The most useful place to look more closely is the combination of {combo.get('label_1')} and {combo.get('label_2')}. "
-            "This pairing gives the clearest view of how different parts of your AI behaviour interact."
+    parts = []
+    for dim in DIMENSION_ORDER:
+        d = dims.get(dim) or {}
+        if not d:
+            continue
+        label = d.get("label") or DIMENSION_LABELS.get(dim, dim)
+        definition = d.get("definition") or DIMENSION_DEFINITIONS.get(dim, "")
+        percentile = d.get("percentile")
+        position = d.get("position") or percentile_position(percentile)
+        parts.append(
+            f"{label}\n"
+            f"This dimension measures {definition.lower()}. "
+            f"Your result sits at the {ordinal(percentile)} percentile, placing it {str(position).lower()} relative to the benchmark. "
+            "This gives one focused perspective on your relationship with AI and is most useful when interpreted alongside the other HCI dimensions."
         )
 
-    if most:
-        return (
-            f"The most useful place to look more closely is your response to “{most.get('question_text')}”. "
-            f"You answered {most.get('answer_display')}, which makes this one of the strongest signals in your profile."
-        )
-
-    if top:
-        return (
-            f"The most useful place to look more closely is {top.get('label', 'your highest dimension')}. "
-            "This is the clearest organising feature in your current AI behaviour pattern."
-        )
-
-    return "The most useful place to look more closely is the overall shape of your profile."
+    return "\n\n".join(parts) if parts else "No dimension data was available for the Dimension Deep Dives section."
 
 # ---------------------------------------------------------------------
 # Section 3
@@ -360,6 +361,7 @@ def build_question_profile(report_data: Dict[str, Any]) -> Dict[str, Any]:
 def build_distinctive_responses(report_data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "title": "Your Most Distinctive Responses",
+        "intro": "The responses below contributed most strongly to the overall shape of your benchmark profile. Together they provide the clearest evidence supporting the conclusions described throughout the earlier sections of this report.",
         "responses": (report_data.get("distinctive_responses") or [])[:7],
         "narrative": narrative_block(report_data, "distinctive_responses_narrative", ""),
     }
@@ -374,8 +376,8 @@ def build_perception_gap(report_data: Dict[str, Any]) -> Dict[str, Any]:
     self_perception = source.get("self_perception", [])
 
     fallback = (
-        "This section compares what you said about yourself with your measured pattern across the assessment. "
-        "It is a comparison between self-perception and behavioural evidence, not a judgement."
+        "This section compares how you see your own AI relationship with the measured benchmark pattern from your assessment. "
+        "It is a reflective comparison, not a correction or judgement."
     )
 
     def area_from_question(item: Dict[str, Any]) -> Dict[str, str]:
@@ -420,7 +422,7 @@ def build_perception_gap(report_data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "title": "How You See Yourself",
         "subtitle": "Comparing your self-perception with your measured AI behaviour.",
-        "intro": "You rated how you think you compare with most people. Below, that self-view is compared with your measured pattern across the 39 assessment responses mapped to each area.",
+        "intro": "You rated how you think you compare with most people. Below, that self-view is placed beside your measured benchmark pattern, offering a second perspective on your relationship with AI.",
         "self_perception": cards,
         "gaps": source.get("gaps", []),
         "largest_gap": source.get("largest_gap"),
@@ -431,7 +433,129 @@ def build_perception_gap(report_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------
-# Section 9
+# Section 10
+# ---------------------------------------------------------------------
+
+def build_human_capital(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Section 10: Your Human Capital.
+
+    Pure presentation assembly. This section does not calculate, rank, infer,
+    or translate capabilities. It only packages the Human Capital narrative
+    object produced by the single Claude Human Capital call.
+    """
+    narrative = (report_data.get("narrative_blocks") or {}).get("human_capital") or {}
+    if not isinstance(narrative, dict):
+        narrative = {}
+
+    return {
+        "title": "Your Human Capital",
+        "subtitle": (
+            "Translating your behavioural benchmark into the human capabilities "
+            "your current relationship with AI appears to be strengthening, "
+            "preserving, or placing under gradual pressure."
+        ),
+        "introduction": (
+            "Your benchmark profile describes how you currently relate to AI.\n\n"
+            "This section translates those behavioural patterns into the human capabilities they appear to support, maintain, or gradually influence.\n\n"
+            "These are not fixed traits or judgements.\n\n"
+            "They are capacities that are actively exercised through your current relationship with AI and may strengthen, remain stable, or gradually change over time."
+        ),
+        "capabilities_developing": narrative.get("capabilities_developing", []),
+        "worth_protecting": narrative.get("worth_protecting", []),
+        "worth_watching": narrative.get("worth_watching", []),
+        "human_capital_priorities": narrative.get("human_capital_priorities", []),
+        "closing": narrative.get("closing", ""),
+    }
+
+
+
+# ---------------------------------------------------------------------
+# Section 11
+# ---------------------------------------------------------------------
+
+def build_looking_forward(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    source = {x.get("dimension"): x for x in report_data.get("what_to_protect", [])}
+    items = []
+
+    # Looking Forward is intentionally deterministic. These observation cards
+    # reuse the Human Skills / What To Protect structure without adding advice,
+    # prediction, scoring, or Claude generation.
+    short_intros = {
+        "verification": (
+            "Most people verify AI outputs before acting. Over time, however, checking can become mentally demanding, "
+            "leading many people to verify only what feels important or high-risk."
+        ),
+        "human_agency": (
+            "Agency usually remains strong at the identity level, but the process can still drift. Small suggestions, "
+            "defaults, and framings can quietly shape decisions before you fully notice."
+        ),
+        "emotional_regulation": (
+            "AI can offer a useful space for relief, support, or reflection. The key distinction is whether it supplements "
+            "human connection or gradually begins to replace it."
+        ),
+        "thought_partnership": (
+            "AI works best as a thinking partner: something to develop ideas with, not instead of your own thinking. "
+            "The important question is whether it is challenging your thought or quietly replacing it."
+        ),
+    }
+
+    def clean_title(title: Any) -> str:
+        text = str(title or "").strip()
+        lower = text.lower()
+        prefix = "what to notice:"
+        if lower.startswith(prefix):
+            return text[len(prefix):].strip()
+        return text
+
+    def position_badge(positioning: Any) -> str:
+        text = str(positioning or "").lower()
+        if "high" in text:
+            return "HIGH"
+        if "middle" in text or "centre" in text or "center" in text:
+            return "MIDDLE"
+        if "low" in text:
+            return "LOW"
+        return "CURRENT"
+
+    for dim, template in WHAT_TO_PROTECT_TEMPLATES.items():
+        data = source.get(dim, {})
+        percentile = data.get("percentile")
+        positioning = data.get("positioning") or protect_position(percentile)
+        title = clean_title(template.get("title"))
+        items.append({
+            "dimension": dim,
+            "title": title,
+            "capacity": DIMENSION_LABELS[dim],
+            "percentile": percentile,
+            "positioning": positioning,
+            "position_badge": position_badge(positioning),
+            "intro": short_intros.get(dim) or template.get("intro", ""),
+            "watch": template.get("watch", []),
+            "research": template.get("research", ""),
+            "closing": template.get("closing", ""),
+        })
+
+    return {
+        "title": "Looking Forward",
+        "subtitle": (
+            "Your relationship with AI will continue evolving, but not all changes happen at once. "
+            "The observations below are not predictions. They are patterns that people with similar profiles "
+            "often become aware of first. Whether they happen—and whether they matter—is something only you "
+            "can observe over time."
+        ),
+        "items": items,
+        "closing": (
+            "These observations are not a checklist and they are not expectations. They simply highlight the kinds "
+            "of subtle shifts that often emerge gradually rather than suddenly. Whether they appear in your own "
+            "experience is something only you can observe over time—which is why measuring again in the future can be valuable."
+        ),
+        "final_line": "You decide.",
+    }
+
+
+# ---------------------------------------------------------------------
+# Legacy unused builder: previous Section 9
 # ---------------------------------------------------------------------
 
 def build_what_to_protect(report_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -514,12 +638,12 @@ def build_if_nothing_changes(report_data: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "title": "If Nothing Changes",
-        "subtitle": "Observable patterns from HCI research, not predictions or prescriptions.",
+        "subtitle": "Commonly observed patterns associated with similar benchmark profiles, not predictions or prescriptions.",
         "summary": build_trajectory_summary(strengths, monitoring),
         "likely_to_continue": narrative_block(report_data, "likely_to_continue", likely_to_continue_fallback(data)),
         "strengths_likely_to_deepen": strengths,
         "areas_worth_monitoring": monitoring,
-        "monitoring_intro": "These are not concerns or predictions. They are simply the parts of a profile that research shows are most likely to shift as AI becomes more integrated into everyday life.",
+        "monitoring_intro": "These are not concerns or predictions. They are simply areas that are commonly worth observing among similar profiles as AI becomes more integrated into everyday life.",
         "overall_outlook": narrative_block(report_data, "overall_outlook", overall_outlook_fallback(data)),
     }
 
@@ -541,7 +665,7 @@ def build_trajectory_summary(strengths, monitoring):
     Small scan-first summary for Section 10.
 
     The renderer uses this before the narrative so the reader can immediately see
-    what is stable, what may deepen, and what is worth monitoring.
+    what is commonly observed, what may continue developing, and what is worth monitoring.
     """
     rows = []
     seen = set()
@@ -554,7 +678,7 @@ def build_trajectory_summary(strengths, monitoring):
         rows.append({
             "label": item.get("label"),
             "position": trajectory_band(item.get("percentile")),
-            "direction": "Likely to deepen",
+            "direction": "May continue developing",
         })
         if len(rows) >= 2:
             break
@@ -602,17 +726,17 @@ def enrich_monitoring(items):
 
 def strength_research_summary(dim: str) -> str:
     copy = {
-        "trust": "Everyday users consistently report higher trust than occasional users, suggesting confidence often grows as AI becomes more familiar and useful.",
-        "decision_delegation": "Decision support can become more fluent with repeated use, especially when AI is already involved in shaping options, recommendations, or next steps.",
-        "thought_partnership": "People who use AI as a thinking partner often find the interaction becomes more natural as idea development, challenge, and refinement become part of the workflow.",
-        "human_agency": "People who maintain clear decision authority while using AI often reinforce that authorship through repeated use rather than passively losing it.",
-        "reliance": "When AI is already embedded in a working rhythm, continued use can make that support feel increasingly normal and efficient.",
-        "verification": "Strong verification can deepen into a stable checking rhythm when accuracy remains important to the user.",
-        "emotional_regulation": "When AI is used for emotional processing, repeated use can make it feel like a more available reflective space.",
-        "disclosure": "When disclosure to AI is already high, familiarity can make personal expression in that setting feel increasingly normal.",
-        "social_transparency": "When people are already open about AI use, continued exposure can make that transparency easier to maintain.",
+        "trust": "Among similar users, trust is often reinforced as AI becomes more familiar and useful, especially when outputs repeatedly feel helpful.",
+        "decision_delegation": "Decision support is often reinforced when AI is already involved in shaping options, recommendations, or next steps.",
+        "thought_partnership": "Among people who use AI as a thinking partner, idea development, challenge, and refinement often become a more natural part of the workflow.",
+        "human_agency": "People who maintain clear decision authority while using AI often reinforce that sense of authorship through repeated use.",
+        "reliance": "When AI is already embedded in a working rhythm, similar profiles often describe that support as increasingly normal and efficient.",
+        "verification": "Strong verification is often associated with a stable checking rhythm when accuracy remains important to the user.",
+        "emotional_regulation": "When AI is used for emotional processing, similar profiles often describe it as an available reflective space.",
+        "disclosure": "When disclosure to AI is already high, familiarity is often associated with personal expression feeling more normal in that setting.",
+        "social_transparency": "When people are already open about AI use, continued exposure is often associated with easier transparency.",
     }
-    return copy.get(dim, "Research shows this pattern can become more fluent when it is already part of a person's AI relationship.")
+    return copy.get(dim, "Research commonly associates this pattern with greater fluency when it is already part of a person's AI relationship.")
 
 
 def strength_deepening_summary(dim: str) -> str:
@@ -674,14 +798,14 @@ def likely_to_continue_fallback(data: Dict[str, Any]) -> str:
     high = data.get("highest_dimension") or {}
     if not high:
         return (
-            "People with profiles like yours tend to retain the overall shape of their relationship with AI unless usage frequency changes significantly. "
-            "If your current pattern holds, the clearest continuity is likely to be the way your strongest behaviours keep organising the rest of the profile. "
+            "People with profiles like yours are often characterised by a relatively stable overall relationship with AI unless usage frequency changes significantly. "
+            "One commonly observed pattern is that the strongest behaviours continue to organise the rest of the profile. "
             "What tends to remain stable is not only the behaviour itself, but the internal logic that makes the pattern feel coherent."
         )
 
     return (
-        "People with profiles like yours tend to retain the overall shape of their relationship with AI unless usage frequency changes significantly. "
-        f"The pattern most likely to hold is the role of {high.get('label', 'your strongest dimension').lower()} as an organising feature in your AI relationship. "
+        "People with profiles like yours are often characterised by a relatively stable overall relationship with AI unless usage frequency changes significantly. "
+        f"One commonly observed pattern is the role of {high.get('label', 'your strongest dimension').lower()} as an organising feature in similar AI relationships. "
         "When a behaviour already feels useful and coherent, it often remains part of the working rhythm because there is little friction pushing it to change. "
         "What tends to remain stable is not just the behaviour, but the internal logic that makes it feel sufficient."
     )
@@ -692,10 +816,10 @@ def overall_outlook_fallback(data: Dict[str, Any]) -> str:
     monitor = data.get("monitoring_anchor") or {}
 
     return (
-        "Overall, your profile is best read as a pattern to stay aware of, not a problem to solve. "
-        f"{high.get('label', 'Your strongest dimension')} gives the report its main anchor, while {monitor.get('label', 'one area')} is worth holding in view as usage evolves. "
+        "Overall, your profile is best read as a measured pattern with common associations, not a personal forecast or a problem to solve. "
+        f"{high.get('label', 'Your strongest dimension')} gives the report its main anchor, while {monitor.get('label', 'one area')} is commonly worth holding in view as usage evolves. "
         "Research consistently shows that people's sense of identity remains remarkably stable, even as the way they think with AI gradually evolves. "
-        "What this report offers is not a prediction, but a clearer view of the pattern you have today. How that relationship develops from here remains entirely yours to shape."
+        "What this report offers is not a prediction, but a clearer view of the pattern you have today. The next section turns that into the smaller shifts people with similar profiles often notice first."
     )
 
 
@@ -703,57 +827,29 @@ def overall_outlook_fallback(data: Dict[str, Any]) -> str:
 # Section 11
 # ---------------------------------------------------------------------
 
-def build_next_steps(report_data: Dict[str, Any]) -> Dict[str, Any]:
+def build_closing_reflection(report_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Section 11 is intentionally deterministic.
+    Final section: Closing Reflection.
 
-    It closes the report by moving from benchmark awareness to user ownership
-    without adding prescription, optimisation language, or another API call.
+    Pure presentation assembly. This section does not calculate, infer, or
+    interpret. It packages the Closing Reflection narrative object produced by
+    the single Claude Closing Reflection call.
     """
+    narrative = (report_data.get("narrative_blocks") or {}).get("closing_reflection") or {}
+    if not isinstance(narrative, dict):
+        narrative = {}
+
     return {
-        "title": "Your Next Steps",
-        "subtitle": "Use this report as a mirror for awareness, clarity, and choice.",
-        "action": {
-            "step": "STEP 1",
-            "title": "Test this report with your AI",
-            "intro": "Upload this full report to whichever AI you use most.",
-            "prompt_label": "Ask your AI",
-            "prompt": (
-                "Does this report ring true to how we work together? "
-                "Where does it match your sense of how I use you? "
-                "Where does it miss?"
-            ),
-            "reflection_intro": "Then simply compare:",
-            "reflection_points": [
-                "What AI agrees with",
-                "What surprises you",
-                "What you disagree with",
-            ],
-            "privacy_note": "Your data stays with you. Nothing from that conversation returns to HCI.",
-        },
-        "awareness": {
-            "title": "What This Awareness Does",
-            "body": [
-                "Awareness creates clarity. Clarity makes intentional choices possible.",
-                "This report shows where you sit — how you use AI, what you rely on it for, where you are distinctive, and where you are typical. That positioning is neutral. What matters is what you do with it.",
-                "The people who flourish with AI are the ones who stay aware of their own pattern and adjust their relationship as it evolves — not through willpower or rigid rules, but through genuine understanding of what serves them.",
-            ],
-        },
-        "alignment": {
-            "title": "Stay Aligned With Your Pattern",
-            "body": [
-                "Return to this assessment whenever your relationship with AI feels like it has shifted significantly.",
-                "Retesting lets you notice what has actually changed in your pattern, not only what you think has changed. It is the clearest way to stay within the boundaries that help you flourish.",
-            ],
-        },
-        "mirror": {
-            "title": "This Report As A Mirror",
-            "intro": "This report is intended to be a mirror rather than a judgement.",
-            "points": [
-                "your benchmark positioning",
-                "your distinctive patterns",
-                "your behavioural relationships",
-            ],
-            "closing": "What you do with that clarity is entirely yours.",
-        },
+        "title": "Closing Reflection",
+        "introduction": (
+            "Every benchmark profile answers many questions—but it also leaves one unanswered.\n\n"
+            "Rather than ending with another recommendation, this report finishes with one question "
+            "that appears most relevant to your current relationship with AI.\n\n"
+            "There isn't a right answer today.\n\n"
+            "The value comes from noticing how your answer evolves over time."
+        ),
+        "one_question": narrative.get("one_question", ""),
+        "why_this_question_matters": narrative.get("why_this_question_matters", ""),
+        "what_next_time": narrative.get("what_will_be_interesting_next_time", ""),
+        "closing_reflection": narrative.get("closing_reflection", ""),
     }
