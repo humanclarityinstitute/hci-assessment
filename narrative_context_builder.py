@@ -340,6 +340,165 @@ def build_full_narrative_context(report_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def build_human_capital_context(report_data: Dict[str, Any], full: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build the full evidence context for Section 9: Your Human Capital.
+
+    This context is intentionally broad. Human Capital translates the complete
+    participant profile into human capabilities, so Claude should synthesize
+    across the whole report rather than rely on any single dimension.
+    """
+    narrative_blocks = report_data.get("narrative_blocks") or {}
+    human_capital_inputs = report_data.get("human_capital") or {}
+
+    question_evidence = []
+    for q in report_data.get("questions") or []:
+        if not isinstance(q, dict):
+            continue
+        question_evidence.append({
+            "dimension": q.get("dimension"),
+            "dimension_label": q.get("dimension_label"),
+            "question_text": q.get("question_text"),
+            "answer_display": q.get("answer_display"),
+            "percentile": q.get("percentile"),
+            "percentile_frequency": q.get("percentile_frequency"),
+            "comparison_statement": q.get("comparison_statement"),
+            "is_reverse_scored": q.get("is_reverse_scored"),
+        })
+
+    profile_shape = report_data.get("typicality") or {}
+
+    return {
+        "section_purpose": (
+            "Translate behavioural benchmark evidence into human capabilities "
+            "that appear to be developing, worth protecting, or worth watching."
+        ),
+        "profile": full.get("profile", {}),
+        "human_capital_inputs": human_capital_inputs,
+        "dimension_contexts": full.get("dimension_contexts", {}),
+        "profile_shape": {
+            "distinctive": slim_dimensions(profile_shape.get("distinctive", [])),
+            "typical": slim_dimensions(profile_shape.get("typical", [])),
+            "moderate": slim_dimensions(profile_shape.get("moderate", [])),
+            "all": slim_dimensions(profile_shape.get("all", [])),
+        },
+        "rare_combinations": full.get("rare_combinations", []),
+        "distinctive_responses": full.get("distinctive_responses", []),
+        "question_level_evidence": question_evidence,
+        "perception_gap": full.get("perception_gap", {}),
+        "trajectory": full.get("trajectory", {}),
+        "previous_narrative_blocks": {
+            "opening_findings": narrative_blocks.get("opening_findings"),
+            "profile_shape_summary": narrative_blocks.get("profile_shape_summary"),
+            "rare_combinations_narrative": narrative_blocks.get("rare_combinations_narrative"),
+            "behaviour_story": narrative_blocks.get("behaviour_story"),
+            "distinctive_responses_narrative": narrative_blocks.get("distinctive_responses_narrative"),
+            "perception_gap_narrative": narrative_blocks.get("perception_gap_narrative"),
+        },
+        "global_hci_assets": full.get("global_hci_assets", {}),
+        "translation_rules": [
+            "Translate behaviour into capability.",
+            "Use plain human language.",
+            "Do not mention dimensions, percentiles, scores, or benchmark mechanics in the final prose.",
+            "Do not invent aspirational qualities unsupported by the evidence.",
+            "Do not give advice, predict future outcomes, or judge behaviour.",
+        ],
+    }
+
+
+
+def build_closing_reflection_context(report_data: Dict[str, Any], full: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build synthesized whole-report context for Section 12: Closing Reflection.
+
+    This is intentionally different from earlier context builders. The closing
+    reflection should look back across the completed report narrative and render-
+    ready section evidence rather than receive a fresh dump of raw benchmark
+    mechanics. Its job is to help Claude distil the report into one enduring
+    question and one calm conclusion.
+    """
+    narrative_blocks = report_data.get("narrative_blocks") or {}
+
+    # Human Capital may be stored either as a nested object from the latest
+    # architecture or as flat legacy keys from earlier Claude outputs.
+    human_capital = narrative_blocks.get("human_capital")
+    if not isinstance(human_capital, dict):
+        human_capital = {
+            "capabilities_developing": narrative_blocks.get("capabilities_developing", []),
+            "worth_protecting": narrative_blocks.get("worth_protecting", []),
+            "worth_watching": narrative_blocks.get("worth_watching", []),
+            "human_capital_priorities": narrative_blocks.get("human_capital_priorities", []),
+            "closing": narrative_blocks.get("human_capital_closing") or narrative_blocks.get("closing"),
+        }
+
+    looking_forward_items = []
+    for item in report_data.get("what_to_protect") or []:
+        if not isinstance(item, dict):
+            continue
+        looking_forward_items.append({
+            "dimension": item.get("dimension") or item.get("key"),
+            "label": item.get("label") or item.get("capacity"),
+            "title": item.get("title"),
+            "positioning": item.get("positioning"),
+        })
+
+    trajectory = full.get("trajectory", {})
+
+    return {
+        "section_purpose": (
+            "Distil the completed benchmark report into one enduring question "
+            "and one hopeful closing reflection."
+        ),
+        "profile": full.get("profile", {}),
+        "synthesized_report_context": {
+            "initial_analysis": narrative_blocks.get("opening_findings"),
+            "profile_shape": narrative_blocks.get("profile_shape_summary"),
+            "rare_combinations": narrative_blocks.get("rare_combinations_narrative"),
+            "behaviour_story": narrative_blocks.get("behaviour_story"),
+            "distinctive_responses": narrative_blocks.get("distinctive_responses_narrative"),
+            "self_perception": narrative_blocks.get("perception_gap_narrative"),
+            "dimension_deep_dives": narrative_blocks.get("deep_dive"),
+            "human_capital": human_capital,
+            "trajectory": {
+                "common_patterns": narrative_blocks.get("likely_to_continue"),
+                "overall_outlook": narrative_blocks.get("overall_outlook"),
+                "at_a_glance": {
+                    "highest_dimension": trajectory.get("highest_dimension"),
+                    "monitoring_anchor": trajectory.get("monitoring_anchor"),
+                    "strengths_that_may_continue_developing": trajectory.get("strengths_likely_to_deepen", []),
+                    "areas_worth_monitoring": trajectory.get("areas_worth_monitoring", []),
+                },
+            },
+            "looking_forward": {
+                "purpose": "What people with similar profiles often notice first over time.",
+                "items": looking_forward_items,
+            },
+        },
+        "evidence_anchors": {
+            "top_dimensions": full.get("profile", {}).get("top_dimensions", []),
+            "lowest_dimensions": full.get("profile", {}).get("lowest_dimensions", []),
+            "most_distinctive_variable": full.get("profile", {}).get("most_distinctive_variable"),
+            "largest_perception_gap": full.get("profile", {}).get("largest_perception_gap"),
+            "top_rare_combination": full.get("profile", {}).get("top_rare_combination"),
+            "rare_combinations": full.get("rare_combinations", [])[:2],
+            "distinctive_responses": full.get("distinctive_responses", [])[:5],
+        },
+        "closing_rules": [
+            "Use synthesized evidence already established elsewhere in the report.",
+            "Do not introduce new benchmark evidence or new interpretation.",
+            "Do not give advice, recommendations, coaching, or action steps.",
+            "Distil the report into one question the participant can carry forward.",
+            "The question should not be answerable today; it should become more meaningful over time.",
+            "If the profile shows strong retained agency or identity stability, that may be acknowledged as reassuring; otherwise do not make identity-stability claims.",
+            "End with the participant's continuing measurement journey, not with organisational promotion.",
+        ],
+        "global_hci_assets": {
+            "hci_principles": (full.get("global_hci_assets", {}) or {}).get("hci_principles", []),
+        },
+    }
+
+
+
 def build_context_for_claude_section(report_data: Dict[str, Any], section: str) -> Dict[str, Any]:
     full = build_full_narrative_context(report_data)
 
@@ -398,6 +557,12 @@ def build_context_for_claude_section(report_data: Dict[str, Any], section: str) 
             },
             "global_hci_assets": full["global_hci_assets"],
         }
+
+    if section == "human_capital":
+        return build_human_capital_context(report_data, full)
+
+    if section == "closing_reflection":
+        return build_closing_reflection_context(report_data, full)
 
     if section == "trajectory":
         return {
