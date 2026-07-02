@@ -55,7 +55,8 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
     }
 
     # Run the first three calls in parallel because they are independent.
-    # Then run Deep Dive last so it can use earlier narrative_blocks as context.
+    # Then run Human Capital and Deep Dive after the first three so they can
+    # use earlier narrative_blocks as context.
     parallel_calls = [
         ("profile_narrative", generate_profile_narrative),
         ("distinctive_and_perception", generate_distinctive_and_perception_narrative),
@@ -79,7 +80,18 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
                 traceback.print_exc()
                 status["calls"][name] = f"failed: {str(e)}"
 
-    # Deep Dive runs after the first three so it can synthesize the whole report.
+    # Human Capital runs after the first three so it can translate the
+    # participant's established pattern into human capabilities.
+    try:
+        blocks = generate_human_capital_narrative(report_data, api_key)
+        report_data["narrative_blocks"].update(blocks)
+        status["calls"]["human_capital"] = "success"
+    except Exception as e:
+        print(f"[CLAUDE] human_capital failed: {e}")
+        traceback.print_exc()
+        status["calls"]["human_capital"] = f"failed: {str(e)}"
+
+    # Deep Dive runs after the synthesis calls so it can use earlier narrative_blocks as context.
     try:
         blocks = generate_deep_dive_narrative(report_data, api_key)
         report_data["narrative_blocks"].update(blocks)
@@ -88,6 +100,17 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
         print(f"[CLAUDE] deep_dive failed: {e}")
         traceback.print_exc()
         status["calls"]["deep_dive"] = f"failed: {str(e)}"
+
+    # Closing Reflection runs last because it distils the completed report into
+    # one enduring question and one final perspective.
+    try:
+        blocks = generate_closing_reflection_narrative(report_data, api_key)
+        report_data["narrative_blocks"].update(blocks)
+        status["calls"]["closing_reflection"] = "success"
+    except Exception as e:
+        print(f"[CLAUDE] closing_reflection failed: {e}")
+        traceback.print_exc()
+        status["calls"]["closing_reflection"] = f"failed: {str(e)}"
 
     status["status"] = "complete"
     report_data["narrative_generation"] = status
@@ -129,6 +152,19 @@ Fill exactly these blocks:
 - behaviour_story
 
 For opening_findings, write the opening synthesis for the report.
+The purpose of this section is not simply to describe what stands out.
+
+Its purpose is to immediately demonstrate that the report genuinely understands this person's relationship with AI.
+
+Each finding should answer four questions:
+
+• What stands out?
+• Why does it matter?
+• What does it reveal about their relationship with AI?
+• Why is this one of the defining characteristics of their overall profile?
+
+Avoid simply describing benchmark differences. Always connect observations back to the participant's wider relationship with AI.
+
 This is the first personalised interpretation the reader sees. It must make the reader feel the report has actually analysed their pattern.
 
 Write 330-430 words total.
@@ -136,28 +172,68 @@ Use exactly three short editorial subheadings, each followed by one substantial 
 Do not use boxes, bullets, numbering, labels like "Behavioural finding", or fields such as "Data:" / "Interpretation:" / "Why it matters:".
 
 The three subheadings should cover:
-1. The most distinctive signal in the profile.
-2. How the participant's self-perception compares with the benchmark, or alignment if there is no gap.
-3. The wider pattern shape: rare combination if present, otherwise coherent/no-combo interpretation.
+1. The strongest organising feature of the participant's profile. This will usually be their most distinctive signal, but its purpose is to explain why this feature shapes the wider behavioural pattern rather than simply describing an extreme score.
+2. How the participant's self-understanding compares with the benchmark. Where differences exist, frame them as insight rather than correction. Where alignment exists, explain why accurate self-awareness is itself meaningful.
+3. The overall shape emerging across the participant's profile. If a rare combination exists, use it as the organising example. If not, explain the wider behavioural pattern that best characterises the participant. The purpose is to introduce the relationship that the remainder of the report will gradually unpack.
 
-Also write profile_shape_summary as one separate 60-90 word paragraph for the later section titled "The Shape of Your Profile". This paragraph should summarise the overall shape created by all nine dimensions. Do not repeat the opening findings. Do not discuss every dimension individually. Describe whether the profile is concentrated around a few distinctive dimensions or broadly aligned with the benchmark population. Avoid percentages and percentile language.
+Each paragraph should naturally conclude by explaining why this observation matters within the participant's broader relationship with AI.
+Avoid ending on statistics or description.
+End on meaning.
 
-For behaviour_story, write an observational behavioural profile, not a dramatic narrative.
-This section should feel like an HCI researcher reflecting the participant's pattern back to them.
-Write 300-350 words total, in 3-4 flowing paragraphs, with no internal headings or bullets.
-Begin with the single strongest behavioural signal or organising feature in the participant's profile, but do not spend the whole opening explaining one question. Use that anchor to explain what it reveals about the wider pattern.
-Identify the 2-3 underlying mechanisms that best account for the profile. Do not try to cover every dimension. Do not list all nine dimensions. Do not restate the dashboard.
+Assume later sections will provide detailed evidence.
+This opening should introduce the participant to the overall story of their relationship with AI, not attempt to fully explain it.
+
+Also write profile_shape_summary as one separate 50-80 word paragraph for the later section titled "The Shape of Your Profile". This paragraph should answer: "What does this profile look like?" Keep it visual, concise, and descriptive rather than analytical. Summarise the overall shape created by all nine dimensions without explaining why the shape exists. Do not repeat the opening findings. Do not discuss every dimension individually. Describe whether the profile is concentrated around a few defining signals or broadly aligned with the benchmark population. Avoid percentages and percentile language. Do not drift into Behaviour Story; later sections will explain why these dimensions appear together.
+
+For rare_combinations_narrative, write the narrative for the section titled "What Makes You Different".
+Keep the existing deterministic combination selection as the source of truth.
+If rare combinations exist, focus the narrative almost entirely on the strongest combination.
+Other detected combinations may be mentioned briefly only where they genuinely strengthen the interpretation.
+Do not try to explain every detected combination equally.
+
+Make the participant the centre of the narrative from the beginning.
+Use this flow naturally:
+1. Start with what is unusual about this participant's combination.
+2. Give brief benchmark context in approximately one paragraph.
+3. Spend the largest part of the narrative explaining how this participant departs from the usual pattern.
+4. Explain what the combination appears to signal about their relationship with AI.
+5. End with one concise synthesis explaining why this combination is one of the defining features of their wider profile.
+
+Assume the participant already understands what the individual dimensions mean from earlier sections.
+Do not spend significant time re-explaining Thought Partnership, Emotional Regulation, Human Agency, or other dimensions individually.
+Focus on the interaction between dimensions rather than defining each dimension again.
+
+Reduce benchmark exposition, academic explanation, repeated dimension explanation, and lengthy theoretical discussion.
+Use plain behavioural language.
+Prefer careful signalling language such as "This appears to signal...", "This pattern often reflects...", and "This combination suggests...".
+Avoid certainty language such as "This proves..." or "This demonstrates...".
+Do not give advice, predict future behaviour, introduce strengths or shadows, discuss worth protecting, human capability, future monitoring, or observation guidance.
+The participant should finish this section understanding what makes their relationship with AI genuinely different from most people and why that distinction matters, without being told what to do.
+
+For behaviour_story, write the narrative centre of the report: an observational behavioural story, not a dramatic narrative.
+This section should answer: "What kind of relationship with AI is emerging, and why do these patterns exist together?"
+Write approximately 450 words total, in 4-5 flowing paragraphs, with no internal headings or bullets.
+Open with one concise paragraph describing the participant's overall relationship with AI. Begin with the participant's story, not with dimensions, scores, or mechanics.
+Treat dimensions as evidence for the story, not the story itself.
+Assume earlier sections have already introduced the dimensions. Briefly reference Thought Partnership, Human Agency, Reliance, Emotional Regulation, Trust, Verification, Disclosure, or Social Transparency only when needed to explain how the pattern works.
+Do not re-teach individual dimensions. Do not try to cover every dimension. Do not list all nine dimensions. Do not restate the dashboard.
+Explain the 2-3 behavioural mechanisms that best account for the profile. Focus on behavioural boundaries, interaction style, trust dynamics, reliance patterns, cognitive structure, and how these elements appear to sustain the overall relationship with AI.
+Where supported by the context, surface hidden patterns that may sit beneath the benchmark scores, such as quiet normalisation, perception gaps, subtle tensions, invisible behavioural shifts, or the difference between visible use and underlying dependence.
 Use HCI research as supporting evidence, not as the main subject of the section. Suitable phrasing includes "Across HCI's benchmark studies...", "HCI's research consistently shows...", or "Looking across the measured behaviours..." but only where it adds clarity.
 Avoid repeating comparisons already shown earlier in the report, such as age-group comparisons, everyday-user comparisons, or bare percentile rankings.
-Do not use means, averages, statistical shorthand, or technical language. Do not predict what will happen. Do not give advice.
-End with a clear concluding observation that naturally leads into the rest of the report, for example by pointing to the tension, alignment, or mechanism the following sections will examine more closely.
+Do not use means, averages, statistical shorthand, or technical language.
+Do not give advice, make recommendations, predict future behaviour, discuss what to protect, translate the profile into human capability or human capital language, add reflection questions, or introduce future trajectory.
+End with one clear, memorable behavioural insight about the participant's relationship with AI. This should be a conclusion, not a teaser or transition.
+The participant should finish this section thinking: "This explains the story my profile is telling."
 
 Style the opening_findings subheadings like a premium research report, for example:
-Your most distinctive signal
-How your self-perception compares
+Your strongest organising feature
+How your self-understanding compares
 The shape of the wider pattern
 
-Use one or two key statistics where useful, but do not overload the opening with numbers. Later sections provide the evidence.
+Use benchmark statistics sparingly.
+Only include numbers when they strengthen understanding.
+Never allow numbers to become the focus of the narrative.
 Never use means, averages, standard deviations, effect sizes, raw score averages, or statistical shorthand that a general reader has to interpret. Do not write phrases such as "mean of 1.1" or "average of 4.4". If cohort differences matter, explain them in plain behavioural language, for example: "everyday AI users report higher reliance, but your pattern sits beyond that already-high group."
 
 Tone:
@@ -166,6 +242,8 @@ Tone:
 - plain English
 - direct to "you"
 - curious, not dramatic
+- insightful rather than impressive
+- avoid long academic explanations where one clear behavioural insight communicates the same idea
 - not clinical
 - not self-help
 - not prescriptive
@@ -183,15 +261,15 @@ Use only this context:
         },
         "profile_shape_summary": {
             "type": "string",
-            "description": "60-90 word paragraph for The Shape of Your Profile. Summarise the overall profile shape across all nine dimensions. Do not repeat the opening findings, do not list every dimension, and avoid percentages/percentiles."
+            "description": "50-80 word paragraph for The Shape of Your Profile. Describe what the overall profile looks like across all nine dimensions. Keep it visual and descriptive, do not explain why the shape exists, do not repeat the opening findings, do not list every dimension, and avoid percentages/percentiles."
         },
         "rare_combinations_narrative": {
             "type": "string",
-            "description": "If rare combinations exist, explain top 1-2 in 350-500 words total. If none exist, write 120-180 words explaining what no rare combo means."
+            "description": "If rare combinations exist, focus the narrative almost entirely on the strongest combination in 300-420 words. Keep benchmark context brief, make the participant central, explain what the combination appears to signal and why it matters within the wider AI relationship. Mention other detected combinations only briefly if they strengthen the interpretation. If none exist, write 120-180 words explaining what no rare combo means."
         },
         "behaviour_story": {
             "type": "string",
-            "description": "300-350 word observational behavioural profile in 3-4 flowing paragraphs. Begin with the strongest behavioural signal or organising feature, explain the 2-3 mechanisms that best account for the profile, use HCI research lightly as support, avoid dashboard repetition, no predictions, no advice, no means/averages/statistical shorthand."
+            "description": "Approximately 450 word behavioural story in 4-5 flowing paragraphs. Begin with the participant's overall relationship with AI, treat dimensions as evidence rather than the story, explain the 2-3 mechanisms that make the profile coherent, surface hidden patterns where supported, use HCI research lightly as support, avoid dashboard repetition, no predictions, no advice, no capability translation, no future trajectory."
         },
     }
 
@@ -279,35 +357,42 @@ Write two HCI report narrative blocks:
 The raw data lists/tables already exist. Explain what they mean.
 
 For Section 7:
-- Treat this as research annotation beside the benchmark data, not seven mini-essays.
+- This section is titled "Your Most Distinctive Responses" and its job is validation, not new interpretation.
+- The cards already show the dimension, question, participant response, percentile, and benchmark comparison. The narrative should explain why each response is important evidence supporting the participant's overall benchmark profile.
+- Assume the participant has already read the Behaviour Story and earlier benchmark sections. Treat those conclusions as established; do not repeat or expand them.
 - You MUST explain all 7 distinctive responses provided.
-- Write one short introductory paragraph of 35-55 words.
-- Then write exactly 7 concise annotations, one per response.
-- Each annotation must be 45-70 words. Be strict: do not write 100+ word mini-essays.
+- Write exactly 7 concise evidence annotations, one per response.
+- Each annotation must be 25-50 words, usually 1-2 sentences. Be strict: do not write mini-essays.
+- Do NOT write an introductory paragraph. The renderer already provides the section introduction.
 - Do NOT use Markdown, bold markers, bullets, numbered lists, tables, or headings with **.
 - Do NOT use raw variable names or codes such as del_q3, agency_q1, trust_q3, rel_q1.
-- Start each annotation with a short plain-language label, followed by a colon. Use natural labels such as "Trusting AI accuracy:" or "Hiding AI use socially:" rather than copying the full question every time.
+- Start each annotation with a short plain-language evidence label, followed by a colon. Use natural labels such as "Trusting AI accuracy:" or "Hiding AI use socially:" rather than copying the full question every time.
 - For each response, explain only:
-  1. why it is distinctive,
-  2. why it matters in HCI behavioural terms,
-  3. how it supports or complicates the wider profile.
-- Do not over-explain automation bias, skill fade, emotional substitution, or other concepts. Name the behavioural signal plainly and move on.
-- Avoid repeating the dashboard, age-group comparisons, frequency comparisons, or multiple statistics. The card already shows answer and benchmark position. Do not mention age-group percentiles unless the age comparison is genuinely central to the interpretation.
-- End each annotation with one concise linking sentence that connects to the wider profile, but vary the language. Do not repeatedly use "This reinforces...". Suitable alternatives include "This supports...", "This helps explain...", "This adds nuance to...", "This sits alongside...", or "This is one of the clearest contributors to...".
+  1. why the response is statistically distinctive,
+  2. how it supports the participant's overall benchmark profile.
+- Do not redefine behavioural dimensions such as Human Agency, Trust, Reliance, Verification, or Thought Partnership. Reference the dimension only when necessary.
+- Do not introduce new interpretations, repeat the Behaviour Story, provide coaching, recommend actions, discuss human capability, future guidance, Human Capital, worth protecting, strengths, shadows, or observation guidance.
+- Avoid repeating the dashboard, age-group comparisons, frequency comparisons, or multiple statistics. The card already shows answer and benchmark position.
+- Keep the writing concise, evidence-based, confidence-building, highly readable, and participant-focused.
 
 For Section 8:
 - This section is now titled "How You See Yourself". Write the narrative for the heading "What this comparison suggests".
-- Write exactly four paragraphs, 220-280 words total.
+- This section exists to compare the participant's self-perception with their measured benchmark profile. Its purpose is reflection rather than interpretation.
+- Write exactly four concise paragraphs, 190-240 words total.
+- Focus on helping the participant understand where their intuition aligns with the benchmark and where the benchmark provides additional perspective.
+- Treat the benchmark as complementary to the participant's own understanding rather than replacing it.
 - Paragraph 1 must begin by summarising self-perception using the phrase "You described yourself as" or a close natural variation.
 - Paragraph 2 must explain benchmark positioning using the phrase "The benchmark places you" or a close natural variation.
-- Paragraph 3 must begin with "What makes this interesting" and explain the behavioural meaning using HCI research.
-- Paragraph 4 must be a concise closing synthesis. Prefer this shape: "What this section ultimately shows is that your intuition about your AI relationship is broadly accurate, but the benchmark reveals where that distinctiveness actually sits." Adapt only as needed to match the data.
+- Paragraph 3 must focus on alignment, difference, and perspective. Do not explain mechanisms or why the pattern exists.
+- Paragraph 4 must be a reflective closing synthesis. Prefer this intent: "The benchmark does not replace your own understanding of yourself. It simply provides a perspective that is difficult to see from the inside. Together, your self-perception and the benchmark offer a more complete picture of your relationship with AI." Adapt only as needed to match the data.
 - Compare self-perception to benchmark positioning.
 - Frame gaps as illuminating, not corrective.
 - Never say "you were wrong".
 - If alignment is strong, explain why accurate self-perception matters.
-- Avoid repeating the same dimension label sentence after sentence. In particular, do not overuse "Reliance". Vary language naturally with phrases such as AI relationship, AI engagement, behavioural profile, behavioural pattern, benchmark positioning, cognitive use, and interaction with AI.
-- Separate data from interpretation: assume the renderer has already shown the card data and comparison table, so do not restate every card. Interpret the pattern.
+- Avoid long behavioural explanations, research summaries, mechanism explanations, or heavy-user generalisations. Those belong in other sections.
+- Avoid repeating the same dimension label sentence after sentence. Vary language naturally with phrases such as AI relationship, AI engagement, behavioural profile, benchmark positioning, self-view, measured pattern, and interaction with AI.
+- Separate data from reflection: assume the renderer has already shown the card data and comparison table, so do not restate every card.
+- Do not introduce Behaviour Story, future discussion, Human Capital, worth protecting, advice, recommendations, or coaching.
 
 Rules:
 - Direct to "you".
@@ -325,11 +410,11 @@ Use only this compact context:
     schema = {
         "distinctive_responses_narrative": {
             "type": "string",
-            "description": "One 35-55 word intro paragraph plus exactly 7 concise research annotations, 45-70 words each. No Markdown, no bold markers, no bullets, no numbering, no variable IDs. Each annotation should explain why the response matters and link it to the wider profile."
+            "description": "Exactly 7 concise evidence annotations, 25-50 words each. No introductory paragraph, no Markdown, no bold markers, no bullets, no numbering, no variable IDs. Each annotation should explain why the response is statistically distinctive and how it supports the participant\'s overall benchmark profile, without redefining dimensions or adding advice."
         },
         "perception_gap_narrative": {
             "type": "string",
-            "description": "Exactly four paragraphs, 220-280 words total, for Section 8's 'What this comparison suggests'. Start with self-perception, then benchmark positioning, then why it is interesting in HCI terms, then a concise closing synthesis. Vary wording and avoid repeated use of Reliance."
+            "description": "Exactly four concise paragraphs, 190-240 words total, for Section 8's 'What this comparison suggests'. Reflect on how self-perception aligns with benchmark positioning and where the benchmark adds perspective. Treat the benchmark as complementary, not corrective. Avoid mechanism explanation, research exposition, advice, future discussion, and Human Capital framing."
         },
     }
 
@@ -344,32 +429,40 @@ def generate_trajectory_narrative(report_data: Dict[str, Any], api_key: str) -> 
     context = build_context_for_claude_section(report_data, "trajectory")
 
     prompt = f"""
-Write HCI report Section 10 narrative blocks: "If Nothing Changes".
+Write HCI report Section 11 narrative blocks: "If Nothing Changes".
 
-This is not prediction, advice, urgency, optimisation, or self-help.
-It is observational synthesis based on what typically remains stable or shifts when current AI usage patterns hold.
+Primary job:
+Provide context about how relationships like this are commonly characterised when similar benchmark profiles continue along broadly similar patterns.
+
+This section describes population patterns.
+It does not infer individual futures.
+
+This is not prediction, advice, urgency, optimisation, coaching, or longitudinal inference.
+Do not imply that HCI can predict this participant's behavioural trajectory.
 
 Write only:
 - likely_to_continue
 - overall_outlook
 
-The deterministic parts of Section 10 are handled elsewhere. Do not rewrite the strengths list or monitoring list.
+The deterministic parts of this section are handled elsewhere. Do not rewrite the strengths list, monitoring list, or at-a-glance table.
 
 For likely_to_continue:
 - Write 120-160 words.
-- Begin with one broad framing sentence about the overall pattern, such as: "People with profiles like yours tend to retain the overall shape of their relationship with AI unless usage frequency changes significantly."
-- Then explain the single strongest stable behavioural interaction in the profile.
-- Use softened, observational language: "can", "tends to", "often", "may", "typically".
-- Do not say a behaviour definitely will continue or deepen.
-- End with one sentence about what tends to remain stable: the internal logic, behavioural rhythm, or profile shape.
+- Treat the display heading as "Commonly observed", even though the internal schema key remains likely_to_continue for compatibility.
+- Begin by describing what is commonly observed among people with similar profiles.
+- Explain the single strongest population-level pattern associated with the profile.
+- Use language such as "people with similar profiles often...", "one commonly observed pattern is...", "this profile is frequently characterised by...", "people sometimes report...", "this pattern is often accompanied by...".
+- Avoid deterministic or future-predictive language.
+- Do not say the participant will continue, will deepen, is expected to change, or is likely to change.
+- End by reinforcing that the section describes commonly observed patterns, not a personal forecast.
 
 For overall_outlook:
 - Write 90-130 words.
-- Summarise the overall profile in one sentence.
-- Identify one area most worth monitoring and explain why in research-grounded language.
-- Balance that with one strength that suggests thoughtful adaptation.
-- End with a reassuring, non-prescriptive closing.
-- Prefer this closing shape where appropriate: "Research consistently shows that people's sense of identity remains remarkably stable, even as the way they think with AI gradually evolves. What this report offers is not a prediction, but a clearer view of the pattern you have today. How that relationship develops from here remains entirely yours to shape."
+- Summarise the profile as a measured pattern today.
+- Identify one area commonly worth monitoring among similar profiles and explain why in research-grounded, population-level language.
+- Balance that with one capability or behavioural strength that is often reinforced through continued use.
+- Reduce repetition from earlier sections; do not restate Agency, Reliance, or Verification unless each reference adds something new.
+- Finish by handing naturally into the next report section, Looking Forward, where the focus becomes what people with similar profiles often notice first.
 
 Rules:
 - No timeline predictions.
@@ -379,10 +472,14 @@ Rules:
 - No urgency.
 - Do not imply decline is inevitable.
 - Do not use hard numerical statistics unless absolutely necessary.
-- Avoid phrases like "over the next 3-6 months", "within a year", or percentage-change predictions.
+- Avoid phrases like "will", "likely will", "expected to", "trajectory suggests", "your profile will become", "trajectory indicates", "likely outcome", "over the next 3-6 months", "within a year", or percentage-change predictions.
+- Prefer: commonly, often, may, appears, associated with, frequently observed, among similar profiles, can, tends to.
 - Ground observations in the provided HCI context.
-- Speak directly to "you".
-- Keep the tone grounded, reassuring, observational, and premium.
+- Speak directly to "you", but keep claims about change population-level rather than individually predictive.
+- Keep the tone grounded, reassuring, observational, scientifically disciplined, and premium.
+
+The participant should finish thinking:
+"I understand the kinds of patterns that are commonly associated with relationships like mine, but my own future remains something I will continue observing."
 
 Use only this context:
 {compact_context(context)}
@@ -391,41 +488,244 @@ Use only this context:
     schema = {
         "likely_to_continue": {
             "type": "string",
-            "description": "120-160 words. Broad framing sentence first, then the strongest stable behavioural interaction, then what tends to remain stable. Observational, no predictions, no prescriptions, no timeline language."
+            "description": "120-160 words for the display heading 'Commonly observed'. Describe population-level patterns commonly associated with similar profiles. No individual predictions, no prescriptions, no timeline language, no deterministic future claims."
         },
         "overall_outlook": {
             "type": "string",
-            "description": "90-130 words. Summarise the profile, identify one monitoring area, balance it with one strength, and close with reassurance. No urgency, no prescriptions, no predictions."
+            "description": "90-130 words. Summarise the current measured profile, identify one commonly monitored area among similar profiles, balance with one commonly reinforced strength, and hand naturally into Looking Forward. No predictions, no prescriptions."
         },
     }
 
     return call_claude_structured(api_key, prompt, schema)
 
 
+
+
 # ---------------------------------------------------------------------
-# Call 4: Final Deep Dive
+# Call 4: Section 9 Human Capital
+# ---------------------------------------------------------------------
+
+def generate_human_capital_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, Any]:
+    context = build_context_for_claude_section(report_data, "human_capital")
+
+    prompt = f"""
+Write HCI report Section 9: "Your Human Capital".
+
+This is a translation section, not an interpretation section, not a benchmark section, and not advice.
+Its job is to translate the participant's behavioural benchmark profile into the human capabilities their current relationship with AI appears to support, maintain, or gradually influence.
+
+Core question:
+"What does my current relationship with AI appear to be building, preserving, or gradually changing within me?"
+
+Use the complete participant context, including dimension scores, question-level evidence, rare combinations, Behaviour Story, distinctive responses, Profile Shape, Perception Gap, usage frequency, demographics where relevant, and HCI signals.
+
+The section must feel human, concise, and evidence-led.
+It should not primarily talk about AI, scores, dimensions, percentiles, or benchmark mechanics.
+It should translate measured behavioural evidence into human capabilities.
+
+Return exactly these fields:
+- capabilities_developing
+- worth_protecting
+- worth_watching
+- human_capital_priorities
+- human_capital_closing
+
+Output requirements:
+1. capabilities_developing
+   - Exactly 3 items.
+   - Each item has:
+     - title
+     - body
+   - Title: a plain human capability, 2-6 words.
+   - Body: 40-60 words.
+   - Explain why this capability appears to be actively exercised or developing, what behavioural evidence supports it, and why it matters.
+   - Do not call these "strengths".
+
+2. worth_protecting
+   - Exactly 3 items.
+   - Each item has:
+     - title
+     - body
+   - Title: a plain human capability, 2-6 words.
+   - Body: 40-60 words.
+   - Identify capabilities that appear central to how this participant currently works with AI and seem valuable to preserve as the relationship evolves.
+   - These are not necessarily the highest scores.
+
+3. worth_watching
+   - Exactly 3 items.
+   - Each item has:
+     - title
+     - body
+   - Title: a plain human capability, 2-6 words.
+   - Body: 40-60 words.
+   - Identify capabilities that naturally deserve observation over time.
+   - These are not weaknesses, risks, warnings, or problems to solve.
+   - Explain why they are worth watching without creating anxiety.
+
+4. human_capital_priorities
+   - Exactly 3 items.
+   - Each item has:
+     - title
+     - body
+   - Title: short, concrete, human, 2-5 words.
+   - Body: approximately 30 words.
+   - These are the three capabilities that best capture this participant's Human Capital today.
+   - They should be memorable and suitable for a visually prominent summary block.
+
+5. human_capital_closing
+   - 80-120 words.
+   - Use this intent:
+     Human capabilities rarely change all at once. More often they evolve gradually through repeated habits and everyday interactions. This benchmark provides a starting point for understanding that journey, not a final judgement about where it leads. The value comes from returning over time and observing how these capabilities continue to develop.
+   - Tailor lightly to the participant's profile without giving advice.
+
+Writing rules:
+- Translate behaviour into capability.
+- Use plain human language.
+- Stay directly traceable to evidence elsewhere in the report.
+- Use cautious language: "appears", "suggests", "currently", "may", "seems".
+- Avoid inflated or aspirational claims.
+- Do not invent qualities unsupported by the participant's data.
+- Do not mention percentiles.
+- Do not mention dimension names.
+- Do not mention raw scores.
+- Do not use benchmark jargon.
+- Do not repeat the Behaviour Story.
+- Do not give behavioural advice.
+- Do not predict future outcomes.
+- Do not judge behaviour.
+- Do not use "you should", "try", "consider", or coaching language.
+- Do not introduce Looking Forward content, observation cards, reflection questions, strengths/shadows, or recommendations.
+
+The participant should finish this section thinking:
+"I now understand what my benchmark profile means for me as a person — not just how I compare with other people."
+
+Use only this context:
+{compact_context(context, max_chars=30000)}
+"""
+
+    capability_item_schema = {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "Plain human capability title."
+            },
+            "body": {
+                "type": "string",
+                "description": "Evidence-led translation of the capability."
+            },
+        },
+        "required": ["title", "body"],
+        "additionalProperties": False,
+    }
+
+    schema = {
+        "capabilities_developing": {
+            "type": "array",
+            "description": "Exactly 3 capabilities currently developing. No dimensions, scores, percentiles, advice, or benchmark jargon.",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": capability_item_schema,
+        },
+        "worth_protecting": {
+            "type": "array",
+            "description": "Exactly 3 capabilities worth protecting. No dimensions, scores, percentiles, advice, or benchmark jargon.",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": capability_item_schema,
+        },
+        "worth_watching": {
+            "type": "array",
+            "description": "Exactly 3 capabilities worth watching over time. Not risks, warnings, weaknesses, or advice.",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": capability_item_schema,
+        },
+        "human_capital_priorities": {
+            "type": "array",
+            "description": "Exactly 3 concise Human Capital priorities with short bodies suitable for a visually prominent summary block.",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": capability_item_schema,
+        },
+        "human_capital_closing": {
+            "type": "string",
+            "description": "80-120 word closing paragraph. Reflective, human, non-prescriptive, no predictions or advice.",
+        },
+    }
+
+    blocks = call_claude_structured(api_key, prompt, schema)
+    if isinstance(blocks, dict) and "human_capital_closing" in blocks and "closing" not in blocks:
+        blocks["closing"] = blocks.get("human_capital_closing")
+    return {"human_capital": blocks}
+
+
+
+# ---------------------------------------------------------------------
+# Call 5: Final Deep Dive
 # ---------------------------------------------------------------------
 
 def generate_deep_dive_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
     context = build_context_for_claude_section(report_data, "deep_dive")
 
     prompt = f"""
-Write the final HCI report Deep Dive.
+Write the HCI report section titled "Dimension Deep Dives".
 
-This is the capstone section at the end of the report. It should be the most valuable interpretive insight in the report.
+This section exists to help the participant understand each behavioural dimension in greater depth.
+Its purpose is exploration, not overall interpretation.
+Assume the participant has already read the earlier sections of the report.
+Do not re-establish the overall story of the profile.
+Your job is to help them explore each HCI behavioural dimension with more nuance and context than earlier sections provided.
 
-The Deep Dive should synthesize the whole report, including earlier narrative blocks when available, while focusing on the single most information-rich pattern selected in the context.
+Write a reference-style explanation of the participant's HCI dimensions.
+For each dimension included in the context, stay focused on that dimension only.
 
-Rules:
-- Write one coherent 600-800 word final section.
-- Explain why this pattern matters.
-- Explain how it connects to the wider profile.
-- Ground the explanation in HCI signals, human reference framing, and benchmark context.
-- Do not prescribe action.
-- Do not diagnose.
-- Do not exaggerate uniqueness.
-- Do not turn this into generic self-help.
-- Use direct plain English and speak to "you".
+Each dimension entry should naturally answer exactly four questions:
+1. What does this dimension measure?
+2. Where does the participant sit?
+3. What does this typically look like behaviourally?
+4. Why does understanding this dimension matter?
+
+Structure:
+- Use the dimension name as a plain heading.
+- Under each heading, write 3-4 concise paragraphs.
+- Keep each dimension entry clear, educational, and scannable.
+- The full section should feel like a high-quality reference manual for the participant's behavioural dimensions, not another Behaviour Story.
+- Do not make every entry dramatic or memorable. Make it reliable, precise, useful, and easy to understand.
+
+Content rules:
+- Use the participant's benchmark position as context.
+- Use HCI research and signals only where they help explain the dimension more deeply.
+- Include behavioural examples where useful.
+- Explain what higher, lower, or benchmark-range positioning typically looks like for that dimension.
+- Increase understanding of the construct rather than repeating basic definitions from earlier sections.
+- Stay focused on one dimension at a time.
+- Briefly mention the wider profile only if absolutely necessary for context.
+
+Do not:
+- Re-explain the participant's Behaviour Story.
+- Summarise the overall profile.
+- Explain how multiple dimensions interact.
+- Repeat conclusions already established earlier in the report.
+- Introduce Human Capital, human capability, worth protecting, strengths/shadows, future trajectory, monitoring, advice, behavioural recommendations, or reflection questions.
+- Use future language such as "over time", "as AI develops", "watch for", "this may become", or "long term".
+- Use coaching language such as "consider", "try", "you should", or "it may help".
+- Diagnose, prescribe, alarm, or exaggerate uniqueness.
+
+End each dimension entry with one short concluding paragraph explaining why that dimension is useful to understand as one part of the participant's relationship with AI.
+The ending should be consistent in purpose across dimensions, but not identical in wording.
+A suitable style is: "This dimension provides one perspective on your relationship with AI. Like every HCI dimension, it is most meaningful when interpreted alongside the rest of your benchmark profile."
+
+Tone:
+- exploratory
+- educational
+- research-grounded
+- direct to "you"
+- plain English
+- professional
+- not dramatic
+- not self-help
+- not prescriptive
 
 Use only this context:
 {compact_context(context, max_chars=32000)}
@@ -434,7 +734,7 @@ Use only this context:
     schema = {
         "deep_dive": {
             "type": "string",
-            "description": "600-800 word final capstone deep dive. Use 4-6 short paragraphs. Synthesize the report while focusing on the selected pattern."
+            "description": "Dimension Deep Dives section. Reference-style explanations for the HCI dimensions in the context. Each dimension should use a plain heading and answer what it measures, where the participant sits, what it typically looks like, and why understanding it matters. Exploration only; no overall profile synthesis, no advice, no future trajectory, no Human Capital framing."
         },
     }
 
@@ -479,6 +779,174 @@ def clean_narrative_text(text: str) -> str:
     )
 
     return text.strip()
+
+
+# ---------------------------------------------------------------------
+# Call 6: Closing Reflection
+# ---------------------------------------------------------------------
+
+def build_closing_reflection_context(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build compact whole-report context for the final Closing Reflection.
+
+    This intentionally uses the completed report_data and narrative_blocks rather
+    than asking Claude to generate new evidence. The final section should distil
+    the report into one enduring question and a hopeful conclusion.
+    """
+    narrative_blocks = report_data.get("narrative_blocks") or {}
+    synthesis_inputs = report_data.get("synthesis_inputs") or {}
+
+    return {
+        "section_purpose": (
+            "Distil the completed HCI report into one enduring question and one "
+            "calm, hopeful closing reflection. This is reflection, not advice."
+        ),
+        "profile": {
+            "session_id": report_data.get("session_id"),
+            "demographics": report_data.get("demographics", {}),
+            "usage_frequency": (report_data.get("demographics") or {}).get("ai_tool_use_frequency")
+                or (report_data.get("demographics") or {}).get("frequency"),
+        },
+        "benchmark_overview": {
+            "top_dimensions": synthesis_inputs.get("top_dimensions", []),
+            "lowest_dimensions": synthesis_inputs.get("lowest_dimensions", []),
+            "most_distinctive_variable": synthesis_inputs.get("most_distinctive_variable"),
+            "largest_perception_gap": synthesis_inputs.get("largest_perception_gap"),
+            "top_rare_combination": synthesis_inputs.get("top_rare_combination"),
+        },
+        "profile_shape": report_data.get("typicality", {}),
+        "rare_combinations": report_data.get("rare_combinations", []),
+        "distinctive_responses": (report_data.get("distinctive_responses") or [])[:7],
+        "perception_gap": report_data.get("perception_gap", {}),
+        "human_capital_inputs": report_data.get("human_capital", {}),
+        "trajectory_inputs": report_data.get("if_nothing_changes", {}),
+        "looking_forward_inputs": report_data.get("looking_forward") or report_data.get("what_to_protect", []),
+        "completed_narrative_blocks": {
+            "opening_findings": narrative_blocks.get("opening_findings"),
+            "profile_shape_summary": narrative_blocks.get("profile_shape_summary"),
+            "rare_combinations_narrative": narrative_blocks.get("rare_combinations_narrative"),
+            "behaviour_story": narrative_blocks.get("behaviour_story"),
+            "distinctive_responses_narrative": narrative_blocks.get("distinctive_responses_narrative"),
+            "perception_gap_narrative": narrative_blocks.get("perception_gap_narrative"),
+            "human_capital": narrative_blocks.get("human_capital"),
+            "likely_to_continue": narrative_blocks.get("likely_to_continue"),
+            "overall_outlook": narrative_blocks.get("overall_outlook"),
+            "deep_dive": narrative_blocks.get("deep_dive"),
+        },
+        "writing_rules": [
+            "Do not introduce new evidence.",
+            "Do not give advice or recommendations.",
+            "Do not predict outcomes.",
+            "The personalised question must be answerable only over time, not today.",
+            "End with the participant's ongoing measurement journey, not with promotion.",
+        ],
+    }
+
+
+def generate_closing_reflection_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, Any]:
+    context = build_context_for_claude_section(report_data, "closing_reflection")
+
+    prompt = f"""
+Write HCI report Section 12: "Closing Reflection".
+
+Primary job:
+Reflection and inspiration. This section concludes the participant's journey. It should not introduce new evidence, recommendations, coaching, predictions, or action steps. It should help the participant step back from the benchmark and consider the broader meaning of their relationship with AI.
+
+Core question for this section:
+Why is continuing to understand my relationship with AI worthwhile?
+
+Distil the participant's entire benchmark profile into one meaningful question and one thoughtful conclusion. The participant should finish feeling understood, curious, hopeful, and motivated to continue observing their relationship with AI over time.
+
+Return exactly one object under these fields:
+- one_question
+- why_this_question_matters
+- what_will_be_interesting_next_time
+- closing_reflection
+
+Output requirements:
+
+1. one_question
+- Exactly one question.
+- Approximately 15-30 words.
+- It must emerge naturally from the complete benchmark profile.
+- It should summarise the deepest tension, opportunity, or curiosity revealed by the report.
+- It should feel personal, memorable, emotionally resonant, evidence-based, and unresolved.
+- It must not be answerable today; it should become more meaningful as time passes.
+
+2. why_this_question_matters
+- 80-120 words.
+- Explain why this question fits this participant.
+- Connect it directly to the overall behavioural pattern already established in the report.
+- Explain why it is worth carrying forward.
+- Do not give advice, instructions, or motivation.
+
+3. what_will_be_interesting_next_time
+- 100-120 words.
+- Bridge today's benchmark with future measurement.
+- Explain that the value of returning is not simply comparing scores, but discovering how the participant's relationship with AI has evolved.
+- Include that behavioural change is usually gradual and that relationships with AI naturally evolve.
+- Include an explicit, gentle recommendation to return in around six months.
+- Include the carry-forward principle: this report does not ask the participant to carry forward another rule or recommendation; it asks them to carry forward one question. Over time, that question becomes a lens through which they may notice how their relationship with AI continues evolving.
+
+4. closing_reflection
+- 180-250 words.
+- Finish the report with perspective, not findings or recommendations.
+- Begin with a brief looking-back moment. Use this idea naturally: "You've now seen where your relationship with AI sits today, what makes it distinctive, which human capabilities appear most important, and what is worth paying attention to as that relationship continues evolving."
+- Then transition naturally to: one question remains.
+- Widen the lens beyond today's benchmark.
+- Reinforce human agency, curiosity, intentional AI use, and human flourishing.
+- Explain that AI will continue evolving, human relationships with AI will continue evolving, and there is no single correct way to use AI.
+- The value lies in remaining aware of how that relationship changes.
+- Mention Human Clarity Institute only if it feels natural and non-promotional. If mentioned, use this meaning: HCI exists to help people measure, understand, and protect the human capabilities that continue shaping their relationship with AI over time.
+- End with the participant, not the organisation. Do not include the report's final standalone sentence here; the renderer adds it after this paragraph.
+
+Profile-dependent reassurance rule:
+- If the participant demonstrates evidence of strong retained agency, authorship, or identity stability, the closing may acknowledge that as one reassuring feature of the profile.
+- If the evidence does not support that, do not mention identity stability or retained agency as a reassurance.
+
+Writing rules:
+- Be personal, calm, evidence-led, hopeful, and reflective.
+- Encourage curiosity, agency, and longitudinal measurement.
+- Do not introduce new evidence.
+- Do not summarise the whole report mechanically.
+- Do not give advice.
+- Do not predict outcomes.
+- Do not use fear, urgency, or coaching language.
+- Do not sound promotional.
+- Do not repeat earlier sections.
+- Do not say "you should", "try", "make sure", or "the next step is".
+- Avoid generic motivational language.
+- Use direct plain English.
+
+The participant should finish thinking:
+"I understand my relationship with AI. I know what is worth paying attention to. I have one meaningful question to carry forward. I'm curious to discover how my relationship changes over time."
+
+Use only this completed-report context:
+{compact_context(context, max_chars=34000)}
+"""
+
+    schema = {
+        "one_question": {
+            "type": "string",
+            "description": "Exactly one personalised evidence-based question, 15-30 words, unresolved and meaningful over time.",
+        },
+        "why_this_question_matters": {
+            "type": "string",
+            "description": "80-120 words explaining why the question fits the participant's established benchmark profile. No advice or new evidence.",
+        },
+        "what_will_be_interesting_next_time": {
+            "type": "string",
+            "description": "100-120 words connecting the question to future measurement and a gentle return in around six months. No coaching or prediction.",
+        },
+        "closing_reflection": {
+            "type": "string",
+            "description": "180-250 word final reflection with looking-back transition, agency, curiosity, and HCI purpose if natural. Do not include the final standalone sentence; the renderer adds it.",
+        },
+    }
+
+    blocks = call_claude_structured(api_key, prompt, schema)
+    return {"closing_reflection": blocks}
+
 
 
 # ---------------------------------------------------------------------
@@ -536,6 +1004,13 @@ def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict
     for block in raw.get("content", []):
         if isinstance(block, dict) and block.get("type") == "tool_use":
             data = block.get("input") or {}
-            return {k: clean_narrative_text(str(data.get(k, "")).strip()) for k in properties.keys()}
+            cleaned = {}
+            for k in properties.keys():
+                value = data.get(k, "")
+                if isinstance(value, str):
+                    cleaned[k] = clean_narrative_text(value.strip())
+                else:
+                    cleaned[k] = value
+            return cleaned
 
     raise RuntimeError(f"No tool_use block returned by Claude. Raw keys: {list(raw.keys())}")
