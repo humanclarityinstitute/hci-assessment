@@ -145,14 +145,8 @@ def render_empty(message="This section is being prepared."):
 
 def percentile_bar(value, label=None):
     p = pct(value)
-    label = label or f"{p}th percentile"
     return f'''
     <div class="percentile-block">
-      <div class="percentile-meta">
-        <span>Lower</span>
-        <strong>{esc(label)}</strong>
-        <span>Higher</span>
-      </div>
       <div class="percentile-track" aria-label="Percentile {p}">
         <span class="percentile-fill" style="width:{p}%"></span>
         <i class="percentile-marker" style="left:{p}%"></i>
@@ -386,33 +380,8 @@ def dashboard_count_label(card):
 
 
 def dashboard_comparisons(card):
-    """Keep the dashboard compact: show population + age only, not frequency groups."""
-    rows = []
-    seen = set()
-    for r in card.get("comparisons", []) or []:
-        raw_label = str(r.get("label") or "").strip()
-        norm = raw_label.lower()
-        pct_value = r.get("percentile")
-        pct_label = r.get("percentile_label") or safe_ordinal(pct_value)
-
-        if any(term in norm for term in ["everyday", "daily", "frequent", "frequency", "users"]):
-            continue
-        if any(term in norm for term in ["age", "cohort"]):
-            label = raw_label.replace("Your age group", "Age group").replace("Your ", "")
-            key = "age"
-        elif any(term in norm for term in ["everyone", "overall", "population", "benchmark"]):
-            label = "Population"
-            key = "population"
-        else:
-            continue
-        if key in seen:
-            continue
-        seen.add(key)
-        rows.append({"label": label, "percentile_label": pct_label, "percentile": pct_value, "key": key})
-
-    if "population" not in seen:
-        rows.insert(0, {"label": "Population", "percentile_label": safe_ordinal(card.get("percentile")), "percentile": card.get("percentile"), "key": "population"})
-    return rows[:2] if any(r.get("key") == "age" for r in rows) else rows[:1]
+    """Dashboard cards now show the primary percentile once, without repeated comparison rows."""
+    return []
 
 
 def dashboard_insight(card):
@@ -507,11 +476,12 @@ def render_report(report_data):
   {render_story(s.get('story') or {})}
   {render_questions(s.get('questions') or {}, d)}
   {render_distinctive(s.get('distinctive') or {})}
-  {render_perception(s.get('perception') or {})}
-  {render_protect(s.get('protect') or {}, report_data)}
-  {render_trajectory(s.get('trajectory') or {})}
-  {render_next(s.get('next_steps') or {})}
   {render_deep_dive(deep) if deep else ''}
+  {render_perception(s.get('perception') or {})}
+  {render_human_capital(s.get('human_capital') or s.get('section_10_human_capital') or {})}
+  {render_trajectory(s.get('trajectory') or s.get('section_11_trajectory') or {})}
+  {render_looking_forward(s.get('looking_forward') or s.get('section_12_looking_forward') or {})}
+  {render_closing_reflection(s.get('closing_reflection') or s.get('section_13_closing_reflection') or {})}
   {render_quality(report_data)}
 
   <footer class="report-footer">
@@ -581,7 +551,8 @@ def render_dashboard(x):
           <div class="card-topline">{esc(c.get('label')).upper()}</div>
           <p class="dimension-definition">{esc(c.get('definition'))}</p>
           <h3>{esc(safe_ordinal(percentile))} percentile</h3>
-          {percentile_bar(percentile, f"{safe_ordinal(percentile)} percentile")}
+          <p class="percentile-context">Higher than {percentile} out of 100 people</p>
+          {percentile_bar(percentile)}
           <div class="comparison-list">{comps}</div>
           <p class="insight">{esc(dashboard_insight(c))}</p>
           <p class="dimension-footnote">{esc(dashboard_count_label(c))}</p>
@@ -603,8 +574,8 @@ def render_typicality(x):
         benchmark_range = list(x.get('typical', []) or []) + list(x.get('moderate', []) or [])
 
     section_intro = (
-        "Across the nine behavioural dimensions measured by HCI, this section shows where your AI behaviour differs most clearly from the benchmark population "
-        "and where it remains broadly aligned. Looking across dimensions rather than individual scores reveals the overall shape of your relationship with AI."
+        "Looking across all nine behavioural dimensions reveals the overall shape of your relationship with AI. "
+        "Individual dimensions describe specific aspects of your behaviour, but the way those dimensions cluster together often provides the clearest picture of how AI currently fits into your life."
     )
 
     def signal_items(items, empty, show_position=True):
@@ -637,14 +608,14 @@ def render_typicality(x):
 
       <div class="profile-shape-layout">
         <article class="shape-panel shape-panel-primary">
-          <h3>Strongest behavioural signals</h3>
-          <p class="shape-panel-note">These dimensions carry the clearest signal in your profile.</p>
+          <h3>Defining Behavioural Signals</h3>
+          <p class="shape-panel-note">These dimensions contribute most strongly to the overall shape of your relationship with AI.</p>
           <div class="shape-signal-list">{distinctive_rows}</div>
         </article>
 
         <article class="shape-panel">
-          <h3>Other measured dimensions</h3>
-          <p class="shape-panel-note">These sit closer to the benchmark pattern and add context.</p>
+          <h3>Supporting Behavioural Signals</h3>
+          <p class="shape-panel-note">These dimensions remain closer to the benchmark and provide important context to your overall profile.</p>
           <div class="shape-signal-list compact">{benchmark_rows}</div>
         </article>
       </div>
@@ -653,6 +624,7 @@ def render_typicality(x):
         <h3>How these dimensions work together</h3>
         {paras(x.get('profile_shape_summary')) or render_empty('No profile shape summary was available.')}
       </article>
+      <p class="profile-shape-transition">The next section explores why these dimensions appear together and what they reveal about your relationship with AI.</p>
     </section>"""
 
 def render_rare(x):
@@ -678,7 +650,7 @@ def render_story(x):
 
 
 def render_questions(x, demo):
-    age = demo.get("age_group", "your age group")
+    freq = demo.get("_frequency_benchmark") or demo.get("ai_tool_use_frequency") or demo.get("frequency") or "your AI-use frequency"
     groups = ""
     for g in x.get("groups", []):
         group_label = g.get("label") or ""
@@ -698,14 +670,13 @@ def render_questions(x, demo):
                 or q.get("overall_percentile")
                 or q.get("comparison_percentile")
             )
-            age_pct = (
-                q.get("percentile_age_group")
-                or q.get("age_group_percentile")
-                or q.get("percentile_age")
-                or q.get("cohort_percentile")
+            freq_pct = (
+                q.get("percentile_frequency")
+                or q.get("frequency_percentile")
+                or q.get("percentile_ai_tool_use_frequency")
             )
-            if age_pct in (None, ""):
-                age_pct = overall_pct
+            if freq_pct in (None, ""):
+                freq_pct = overall_pct
 
             qid = q.get("id") or q.get("question_id") or question_identifier(group_key, idx)
             rare = q.get("rarity_label") or rarity_label(overall_pct)
@@ -735,7 +706,7 @@ def render_questions(x, demo):
 
               <div class="position-rows">
                 {mini_percentile_row("Everyone", overall_pct)}
-                {mini_percentile_row(f"Age {age}", age_pct)}
+                {mini_percentile_row(f"Similar AI use ({freq})", freq_pct)}
               </div>
 
               <p class="comparison-note">{esc(q.get('comparison_statement'))}</p>
@@ -752,6 +723,7 @@ def render_questions(x, demo):
       {section_kicker('Question-level evidence')}
       <h2>{esc(x.get('title') or 'Your Question-Level Profile')}</h2>
       <p class="section-intro">{esc(x.get('subtitle') or 'How your individual responses compare with benchmark distributions.')}</p>
+      <p class="section-intro compact question-level-explainer">These question-level results show the individual responses that contributed most to your benchmark profile. Comparing them with both the overall population and people who use AI as frequently as you provides additional context for understanding which responses are most distinctive.</p>
       {groups or render_empty('No question-level profile was available.')}
     </section>"""
 
@@ -775,7 +747,7 @@ def render_distinctive(x):
             <strong>{pct(percentile)} of 100 participants</strong>
           </div>
         </article>"""
-    return f'<section class="page-section distinctive-section">{section_kicker("Distinctive responses")}<h2>{esc(x.get("title") or "Your Most Distinctive Responses")}</h2><div class="evidence-grid distinctive-grid">{cards or render_empty("No distinctive responses were available.")}</div><div class="narrative narrow distinctive-narrative">{paras(x.get("narrative"))}</div></section>'
+    return f'<section class="page-section distinctive-section">{section_kicker("Distinctive responses")}<h2>{esc(x.get("title") or "Your Most Distinctive Responses")}</h2><p class="section-intro compact distinctive-explainer">{esc(x.get("intro") or "The responses below contributed most strongly to the overall shape of your benchmark profile. Together they provide the clearest evidence supporting the conclusions described throughout the earlier sections of this report.")}</p><div class="evidence-grid distinctive-grid">{cards or render_empty("No distinctive responses were available.")}</div><div class="narrative narrow distinctive-narrative">{paras(x.get("narrative"))}</div></section>'
 
 def render_perception(x):
     def measured_label(item):
@@ -819,6 +791,163 @@ def render_perception(x):
       <div class="perception-grid">{cards or render_empty('No self-perception answers were available.')}</div>
       <p class="perception-footnote">Your measured pattern is derived from the assessment as a whole. It reflects observable behaviour mapped to each area, not just how you feel about it from the inside.</p>
       <div class="perception-narrative-block"><h3>{esc(x.get('narrative_heading') or 'What this comparison suggests')}</h3><div class="narrative narrow">{paras(x.get('narrative'))}</div></div>
+    </section>'''
+
+
+def human_capital_text(item, *keys):
+    """Best-effort text extraction for Claude-structured Human Capital items."""
+    if not isinstance(item, dict):
+        return str(item or "")
+    for key in keys:
+        value = item.get(key)
+        if value not in (None, ""):
+            return value
+    return ""
+
+
+def render_human_capital_group(title, intro, items, class_name=""):
+    cards = ""
+    for item in items or []:
+        name = human_capital_text(item, "capability", "capability_name", "title", "name", "priority")
+        body = human_capital_text(item, "explanation", "description", "translation", "body", "text", "summary")
+        if not name and not body:
+            continue
+        cards += f'''
+        <article class="human-capital-card {esc(class_name)}">
+          <h4>{esc(name)}</h4>
+          <p>{esc(body)}</p>
+        </article>'''
+
+    return f'''
+      <div class="human-capital-group {esc(class_name)}">
+        <h3>{esc(title)}</h3>
+        <p class="human-capital-group-intro">{esc(intro)}</p>
+        <div class="human-capital-card-grid">{cards or render_empty('No Human Capital items were available for this group.')}</div>
+      </div>'''
+
+
+def render_human_capital(x):
+    """Render Section 10: Your Human Capital."""
+    x = x if isinstance(x, dict) else {}
+
+    developing_intro = "Based on your current benchmark profile, these capabilities appear to be most actively developing through your relationship with AI today."
+    protecting_intro = "Some capabilities appear particularly important to the way you currently work with AI. These are not necessarily your highest benchmark scores. They are the qualities that seem most valuable to preserve as your relationship with AI continues evolving."
+    watching_intro = "Every relationship with AI evolves gradually. These are not problems to solve. They are simply the capabilities that people with similar profiles often find most useful to keep an eye on as their relationship with AI develops."
+
+    priorities = ""
+    for idx, item in enumerate(x.get("human_capital_priorities") or [], 1):
+        title = human_capital_text(item, "title", "priority", "capability", "capability_name", "name")
+        body = human_capital_text(item, "explanation", "description", "body", "text", "summary")
+        if not title and not body:
+            continue
+        priorities += f'''
+        <article class="human-capital-priority">
+          <span>{idx}</span>
+          <div>
+            <h4>{esc(title)}</h4>
+            <p>{esc(body)}</p>
+          </div>
+        </article>'''
+
+    return f'''
+    <section class="page-section human-capital-section">
+      {section_kicker('Human capital')}
+      <h2>{esc(x.get('title') or 'Your Human Capital')}</h2>
+      <p class="section-intro compact">{esc(x.get('subtitle') or 'Translating your behavioural benchmark into the human capabilities your current relationship with AI appears to be strengthening, preserving, or placing under gradual pressure.')}</p>
+
+      <article class="human-capital-introduction">
+        {paras(x.get('introduction'))}
+      </article>
+
+      {render_human_capital_group('Capabilities Currently Developing', developing_intro, x.get('capabilities_developing'), 'developing')}
+      {render_human_capital_group('Worth Protecting', protecting_intro, x.get('worth_protecting'), 'protecting')}
+      {render_human_capital_group('Worth Watching', watching_intro, x.get('worth_watching'), 'watching')}
+
+      <div class="human-capital-priorities-block">
+        <h3>Human Capital Priorities</h3>
+        <p class="human-capital-group-intro">If there are three capabilities that best capture your Human Capital today, they are these:</p>
+        <div class="human-capital-priority-grid">{priorities or render_empty('No Human Capital priorities were available.')}</div>
+      </div>
+
+      <article class="human-capital-closing">
+        {paras(x.get('closing')) or render_empty('No Human Capital closing reflection was available.')}
+      </article>
+    </section>'''
+
+
+def render_looking_forward(x):
+    """Render Looking Forward using the Human Skills / What To Protect card structure.
+
+    This section is observational only: no advice, no prediction, no Claude call.
+    """
+    x = x if isinstance(x, dict) else {}
+    supplied = x.get("items", []) if isinstance(x, dict) else []
+
+    def render_item(i):
+        watch = "".join(
+            f'<li><span>•</span><strong>{esc(w)}</strong></li>'
+            for w in i.get("watch", [])
+        )
+        percentile = i.get("percentile")
+        pct_label = f"{esc(safe_ordinal(percentile))} percentile" if percentile not in (None, "") else ""
+        badge = protect_badge_label(i.get("position_badge") or i.get("positioning"))
+        title = str(i.get("title") or "")
+        title = title.replace("What to Notice:", "").replace("WHAT TO NOTICE:", "").strip()
+        capacity = i.get("capacity") or i.get("label") or "Capacity"
+
+        return f'''
+        <article class="protect-card premium-protect-card looking-forward-card">
+          <div class="card-topline">What people often notice first</div>
+          <h3>{esc(title)}</h3>
+
+          <div class="protect-capacity">
+            <span>Human skill</span>
+            <strong>{esc(capacity)}</strong>
+          </div>
+
+          <div class="protect-position-badge">
+            <span>Your current position</span>
+            <strong>{esc(badge)}</strong>
+            {f'<em>{pct_label}</em>' if pct_label else ''}
+          </div>
+
+          <div class="protect-divider"></div>
+
+          <p class="protect-intro">{esc(i.get("intro"))}</p>
+
+          <div class="protect-divider"></div>
+
+          <div class="protect-watch looking-forward-watch">
+            <h4>A common pattern to notice</h4>
+            <ul>{watch}</ul>
+          </div>
+
+          <div class="protect-research-callout">
+            <h4>Research insight</h4>
+            <p>{esc(i.get("research"))}</p>
+          </div>
+
+          <div class="protect-closing">
+            <p>{esc(i.get("closing"))}</p>
+          </div>
+        </article>'''
+
+    items = "".join(render_item(i) for i in supplied)
+    closing = x.get("closing") or (
+        "These observations are not a checklist and they are not expectations. They simply highlight the kinds "
+        "of subtle shifts that often emerge gradually rather than suddenly. Whether they appear in your own "
+        "experience is something only you can observe over time—which is why measuring again in the future can be valuable."
+    )
+    final_line = x.get("final_line") or "You decide."
+
+    return f'''<section class="page-section protect-section looking-forward-section">{section_kicker("Looking forward")}
+      <h2>{esc(x.get("title") or "Looking Forward")}</h2>
+      <p class="section-intro">{esc(x.get("subtitle") or "Your relationship with AI will continue evolving, but not all changes happen at once. The observations below are not predictions. They are patterns that people with similar profiles often become aware of first. Whether they happen—and whether they matter—is something only you can observe over time.")}</p>
+      <div class="protect-grid four">{items or render_empty("No Looking Forward observations were available.")}</div>
+      <article class="looking-forward-closing">
+        <p>{esc(closing)}</p>
+        <strong>{esc(final_line)}</strong>
+      </article>
     </section>'''
 
 def protect_badge_label(value):
@@ -1042,7 +1171,7 @@ def render_trajectory(x):
         <div class="trajectory-summary-row trajectory-summary-head">
           <span>Pattern</span>
           <strong>Current position</strong>
-          <em>Typical direction</em>
+          <em>Common association</em>
         </div>
         {summary_rows or '<p class="muted">No trajectory summary was available.</p>'}
       </article>'''
@@ -1051,7 +1180,7 @@ def render_trajectory(x):
     for d in x.get("strengths_likely_to_deepen", []):
         strengths += f'''
         <article class="trajectory-card strength-card">
-          <div class="card-topline">Strength likely to deepen</div>
+          <div class="card-topline">May continue developing</div>
           <h3>{esc(d.get("label"))}</h3>
           <p class="trajectory-percentile">{trajectory_card_percentile(d)}</p>
 
@@ -1062,7 +1191,7 @@ def render_trajectory(x):
 
           <div class="trajectory-divider"></div>
 
-          <h4>What deepening typically looks like</h4>
+          <h4>What this commonly looks like</h4>
           <p>{esc(trajectory_deepening_text(d))}</p>
         </article>'''
 
@@ -1086,7 +1215,7 @@ def render_trajectory(x):
 
           <div class="trajectory-divider"></div>
 
-          <h4>Early sign</h4>
+          <h4>What people often notice first</h4>
           <p>{esc(trajectory_monitor_early_sign(d))}</p>
         </article>'''
 
@@ -1094,24 +1223,24 @@ def render_trajectory(x):
     <section class="page-section trajectory-section">
       {section_kicker('Trajectory')}
       <h2>{esc(x.get('title') or 'If Nothing Changes')}</h2>
-      <p class="section-intro compact">{esc(x.get('subtitle') or 'Observable patterns from HCI research, not predictions or prescriptions.')}</p>
+      <p class="section-intro compact">{esc(x.get('subtitle') or 'Commonly observed patterns associated with similar benchmark profiles, not predictions or prescriptions.')}</p>
 
       {summary}
 
       <article class="trajectory-narrative-block">
-        <h3>Likely to continue</h3>
+        <h3>Commonly observed</h3>
         <div class="narrative narrow">{paras(x.get('likely_to_continue'))}</div>
       </article>
 
       <div class="trajectory-subsection">
-        <h3>Strengths likely to deepen</h3>
-        <p class="trajectory-note">If current patterns hold, these strengths are the most likely to become more fluent with continued exposure.</p>
+        <h3>Strengths That May Continue Developing</h3>
+        <p class="trajectory-note">Among similar profiles, these strengths are often reinforced through continued use. This is an association, not a prediction about your individual future.</p>
         <div class="trajectory-grid">{strengths or render_empty('No strengths were available for this section.')}</div>
       </div>
 
       <div class="trajectory-subsection">
         <h3>Areas worth monitoring</h3>
-        <p class="trajectory-note">{esc(x.get('monitoring_intro') or 'These are not concerns or predictions. They are simply the parts of a profile that research shows are most likely to shift as AI becomes more integrated into everyday life.')}</p>
+        <p class="trajectory-note">{esc(x.get('monitoring_intro') or 'These are not concerns or predictions. They are simply areas that are commonly worth observing among similar profiles as AI becomes more integrated into everyday life.')}</p>
         <div class="trajectory-grid">{monitors or render_empty('No monitoring areas were available for this section.')}</div>
       </div>
 
@@ -1122,100 +1251,65 @@ def render_trajectory(x):
     </section>'''
 
 
-def render_next(x):
+def render_closing_reflection(x):
+    """Render final section: Closing Reflection."""
     x = x if isinstance(x, dict) else {}
 
-    action = x.get("action") or {
-        "step": "STEP 1",
-        "title": "Test this report with your AI",
-        "intro": "Upload this full report to whichever AI you use most.",
-        "prompt_label": "Ask your AI",
-        "prompt": "Does this report ring true to how we work together? Where does it match your sense of how I use you? Where does it miss?",
-        "reflection_intro": "Then simply compare:",
-        "reflection_points": ["What AI agrees with", "What surprises you", "What you disagree with"],
-        "privacy_note": "Your data stays with you. Nothing from that conversation returns to HCI.",
-    }
-    awareness = x.get("awareness") or {
-        "title": "What This Awareness Does",
-        "body": [
-            "Awareness creates clarity. Clarity makes intentional choices possible.",
-            "This report shows where you sit — how you use AI, what you rely on it for, where you are distinctive, and where you are typical. That positioning is neutral. What matters is what you do with it.",
-            "The people who flourish with AI are the ones who stay aware of their own pattern and adjust their relationship as it evolves — not through willpower or rigid rules, but through genuine understanding of what serves them.",
-        ],
-    }
-    alignment = x.get("alignment") or {
-        "title": "Stay Aligned With Your Pattern",
-        "body": [
-            "Return to this assessment whenever your relationship with AI feels like it has shifted significantly.",
-            "Retesting lets you notice what has actually changed in your pattern, not only what you think has changed. It is the clearest way to stay within the boundaries that help you flourish.",
-        ],
-    }
-    mirror = x.get("mirror") or {
-        "title": "This Report As A Mirror",
-        "intro": "This report is intended to be a mirror rather than a judgement.",
-        "points": ["your benchmark positioning", "your distinctive patterns", "your behavioural relationships"],
-        "closing": "What you do with that clarity is entirely yours.",
-    }
-
-    reflection_points = "".join(f"<li>{esc(p)}</li>" for p in action.get("reflection_points", []))
-    awareness_paras = "".join(f"<p>{esc(p)}</p>" for p in awareness.get("body", []))
-    alignment_paras = "".join(f"<p>{esc(p)}</p>" for p in alignment.get("body", []))
-    mirror_points = "".join(f"<li>{esc(p)}</li>" for p in mirror.get("points", []))
+    intro = x.get("introduction") or (
+        "Every benchmark profile answers many questions—but it also leaves one unanswered.\n\n"
+        "Rather than ending with another recommendation, this report finishes with one question that appears most relevant to your current relationship with AI.\n\n"
+        "There isn't a right answer today.\n\n"
+        "The value comes from noticing how your answer evolves over time."
+    )
+    one_question = x.get("one_question") or "What will become most important to notice as your relationship with AI continues evolving?"
+    why_matters = x.get("why_this_question_matters") or "This question is designed to hold the main tension, opportunity, or curiosity that emerges from your benchmark profile. It is not something that needs to be answered immediately. Its value comes from giving you a lens for understanding how your relationship with AI continues to develop."
+    next_time = x.get("what_next_time") or x.get("what_will_be_interesting_next_time") or "The most useful future comparison may not be whether your score changes. It may be whether your answer to this question changes. If your relationship with AI continues evolving, returning to this assessment in around six months can help you notice what has shifted gradually rather than suddenly."
+    closing = x.get("closing_reflection") or "You have now seen where your relationship with AI sits today, what makes it distinctive, which human capabilities appear most important, and what is worth paying attention to as that relationship continues evolving. This report is not the end of that process. It is your first benchmark."
+    final_sentence = x.get("final_sentence") or "The technology will continue changing. Understanding your relationship with it may become one of the most valuable things you continue measuring."
 
     return f'''
-    <section class="page-section next-section">
-      {section_kicker("Next steps")}
-      <h2>{esc(x.get("title") or "Your Next Steps")}</h2>
-      <p class="section-intro compact">{esc(x.get("subtitle") or "Use this report as a mirror for awareness, clarity, and choice.")}</p>
+    <section class="page-section closing-reflection-section">
+      {section_kicker('Closing reflection')}
+      <h2>{esc(x.get('title') or 'Closing Reflection')}</h2>
 
-      <article class="next-action-card">
-        <div class="next-step-label">{esc(action.get("step") or "STEP 1")}</div>
-        <h3>{esc(action.get("title") or "Test this report with your AI")}</h3>
-        <p>{esc(action.get("intro"))}</p>
-
-        <div class="ai-prompt-callout">
-          <span>{esc(action.get("prompt_label") or "Ask your AI")}</span>
-          <blockquote>“{esc(action.get("prompt"))}”</blockquote>
-        </div>
-
-        <div class="next-compare">
-          <p>{esc(action.get("reflection_intro") or "Then simply compare:")}</p>
-          <ul>{reflection_points}</ul>
-        </div>
-
-        <p class="next-privacy-note">{esc(action.get("privacy_note"))}</p>
+      <article class="closing-reflection-intro">
+        {paras(intro)}
       </article>
 
-      <div class="next-component-grid">
-        <article class="next-component">
-          <h3>{esc(awareness.get("title") or "What This Awareness Does")}</h3>
-          {awareness_paras}
+      <div class="one-question-hero">
+        <span>Your One Question</span>
+        <blockquote>{esc(one_question)}</blockquote>
+      </div>
+
+      <div class="closing-reflection-grid">
+        <article class="closing-reflection-card">
+          <h3>Why This Question Matters</h3>
+          {paras(why_matters)}
         </article>
 
-        <article class="next-component">
-          <h3>{esc(alignment.get("title") or "Stay Aligned With Your Pattern")}</h3>
-          {alignment_paras}
+        <article class="closing-reflection-card">
+          <h3>What Will Be Interesting Next Time</h3>
+          {paras(next_time)}
         </article>
       </div>
 
-      <article class="next-mirror-card">
-        <h3>{esc(mirror.get("title") or "This Report As A Mirror")}</h3>
-        <p>{esc(mirror.get("intro"))}</p>
-        <ul>{mirror_points}</ul>
-        <p class="mirror-closing">{esc(mirror.get("closing"))}</p>
-      </article>
+      <div class="closing-visual-break" aria-hidden="true"><span></span></div>
 
-      <div class="next-final-brand">
-        <div class="next-brand-rule"></div>
-        <strong>Human Clarity Institute</strong>
-        <span>AI Behaviour Benchmarking</span>
-      </div>
+      <article class="closing-reflection-final">
+        <h3>Closing Reflection</h3>
+        <div class="closing-editorial">
+          {paras(closing)}
+        </div>
+        <p class="closing-final-sentence">{esc(final_sentence)}</p>
+      </article>
     </section>'''
 
+
 def render_deep_dive(x):
-    return f'''<section class="page-section deep-dive">{section_kicker("Deep dive")}
-      <h2>{esc(x.get("title") or "Deep Dive")}</h2>
-      <div class="narrative narrow">{paras(x.get("body"))}</div>
+    return f'''<section class="page-section dimension-deep-dives">{section_kicker("Dimension reference")}
+      <h2>{esc(x.get("title") or "Dimension Deep Dives")}</h2>
+      <p class="section-intro compact">{esc(x.get("subtitle") or "A closer look at each behavioural dimension in your benchmark profile.")}</p>
+      <div class="narrative narrow dimension-deep-dive-body">{paras(x.get("body"))}</div>
     </section>'''
 
 
@@ -1275,11 +1369,45 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .stat-pill{border-bottom:1px solid var(--line);padding:0 0 13px;margin-bottom:13px}.stat-pill:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}.stat-pill span{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.stat-pill strong{display:block;margin-top:4px;font-size:15px}
 .narrow{max-width:820px}.narrative p{font-size:17px;color:#253044}.opening-section .narrative p:first-child{font-size:22px;color:#1d2939;line-height:1.48}
 .evidence-callout{background:var(--cream);border-left:4px solid var(--accent);padding:26px 30px;margin-top:28px}.evidence-callout h3{margin-top:0}.insight-list{display:grid;gap:12px}.insight-row{display:grid;grid-template-columns:18px 1fr;gap:12px}.insight-row span{width:8px;height:8px;background:var(--accent);border-radius:50%;margin-top:10px}.insight-row p{margin:0}
-.dimension-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{border:1px solid var(--line);background:#fff;padding:24px;break-inside:avoid;page-break-inside:avoid}.dimension-card{min-height:0;display:flex;flex-direction:column;padding:20px 20px 18px;border-left:3px solid var(--dim-accent,var(--accent))}.dimension-card .card-topline{color:var(--dim-accent,var(--accent));margin-bottom:8px}.dimension-card h3{margin:8px 0 0;font-size:19px;color:#101828}.dimension-definition{color:#667085;font-size:13px;line-height:1.42;margin:0 0 8px}.insight{color:#475467;font-size:13px;line-height:1.45;margin-top:auto;padding-top:11px;border-top:1px solid var(--line)}.dimension-footnote{margin:10px 0 0;color:#98A2B3;font-size:10.5px;line-height:1.35}
-.percentile-block{margin:14px 0}.percentile-meta{display:block;text-align:right;color:var(--muted);font-size:12px}.percentile-meta span{display:none}.percentile-meta strong{color:var(--dim-accent,var(--accent-dark));font-size:13px}.percentile-track{height:6px;background:#eef2f6;border-radius:20px;position:relative;margin-top:7px}.percentile-fill{display:block;height:100%;background:var(--dim-accent,var(--accent));border-radius:20px}.percentile-marker{position:absolute;top:50%;width:13px;height:13px;background:#fff;border:3px solid var(--dim-accent,var(--accent));border-radius:50%;transform:translate(-50%,-50%)}
-.comparison-list{display:grid;gap:6px;margin:12px 0}.comparison,.evidence-meta,.typical-row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid var(--line);padding-top:7px;color:#475467;font-size:13px}.comparison strong,.evidence-meta strong,.typical-row strong{color:#101828;text-align:right}.standing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:960px}.standing-card{border:1px solid var(--line);background:#fff;padding:22px;max-width:860px}.standing-card h3{margin-top:0;font-size:16px}.stand-list{display:grid;gap:8px;margin:12px 0 0}.stand-row{display:flex;justify-content:space-between;gap:22px;border-top:1px solid var(--line);padding-top:8px;position:relative}.stand-row:before{content:"";position:absolute;left:0;top:8px;bottom:0;width:3px;background:var(--stand-accent,var(--accent));border-radius:999px}.stand-row span{font-weight:700;padding-left:12px}.stand-row strong{color:#344054;text-align:right}.standing-section .section-intro.compact{font-size:16px;line-height:1.5;margin-bottom:18px}.profile-shape-summary{max-width:960px;margin-top:18px;background:#fbfaf7;border-left:3px solid var(--accent);padding:20px 24px}.profile-shape-summary h3{margin:0 0 8px;font-size:16px}.profile-shape-summary p{font-size:15px;line-height:1.58;color:#344054;margin:0}.two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.split-card h3{margin-top:0}.rarity strong{font-size:20px;color:var(--accent-dark)}
+.dimension-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{border:1px solid var(--line);background:#fff;padding:24px;break-inside:avoid;page-break-inside:avoid}.dimension-card{min-height:0;display:flex;flex-direction:column;padding:20px 20px 18px;border-left:3px solid var(--dim-accent,var(--accent))}.dimension-card .card-topline{color:var(--dim-accent,var(--accent));margin-bottom:8px}.dimension-card h3{margin:8px 0 0;font-size:19px;color:#101828}.dimension-definition{color:#667085;font-size:13px;line-height:1.42;margin:0 0 8px}.percentile-context{margin:3px 0 0;color:#667085;font-size:12px;line-height:1.35}.insight{color:#475467;font-size:13px;line-height:1.45;margin-top:auto;padding-top:11px;border-top:1px solid var(--line)}.dimension-footnote{margin:10px 0 0;color:#98A2B3;font-size:10.5px;line-height:1.35}
+.percentile-block{margin:14px 0}.percentile-track{height:6px;background:#eef2f6;border-radius:20px;position:relative}.percentile-fill{display:block;height:100%;background:var(--dim-accent,var(--accent));border-radius:20px}.percentile-marker{position:absolute;top:50%;width:13px;height:13px;background:#fff;border:3px solid var(--dim-accent,var(--accent));border-radius:50%;transform:translate(-50%,-50%)}
+.comparison-list{display:none}.comparison,.evidence-meta,.typical-row{display:flex;justify-content:space-between;gap:18px;border-top:1px solid var(--line);padding-top:7px;color:#475467;font-size:13px}.comparison strong,.evidence-meta strong,.typical-row strong{color:#101828;text-align:right}.standing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:960px}.standing-card{border:1px solid var(--line);background:#fff;padding:22px;max-width:860px}.standing-card h3{margin-top:0;font-size:16px}.stand-list{display:grid;gap:8px;margin:12px 0 0}.stand-row{display:flex;justify-content:space-between;gap:22px;border-top:1px solid var(--line);padding-top:8px;position:relative}.stand-row:before{content:"";position:absolute;left:0;top:8px;bottom:0;width:3px;background:var(--stand-accent,var(--accent));border-radius:999px}.stand-row span{font-weight:700;padding-left:12px}.stand-row strong{color:#344054;text-align:right}.standing-section .section-intro.compact{font-size:16px;line-height:1.5;margin-bottom:18px}.profile-shape-summary{max-width:960px;margin-top:18px;background:#fbfaf7;border-left:3px solid var(--accent);padding:20px 24px}.profile-shape-summary h3{margin:0 0 8px;font-size:16px}.profile-shape-summary p{font-size:15px;line-height:1.58;color:#344054;margin:0}.profile-shape-transition{max-width:820px;margin:18px 0 0;color:#475467;font-size:15px;line-height:1.55}.two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.split-card h3{margin-top:0}.rarity strong{font-size:20px;color:var(--accent-dark)}
 .evidence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.evidence-card p{font-size:15px;color:#344054}.protect-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;max-width:1040px}.protect-card{background:#fcfcfd}.premium-protect-card{padding:28px;display:flex;flex-direction:column;gap:0;break-inside:avoid;page-break-inside:avoid}.premium-protect-card h3{font-family:Georgia,"Times New Roman",serif;font-size:28px;line-height:1.12;font-weight:500;margin:2px 0 18px;color:#111827}.protect-capacity{margin:0 0 16px}.protect-capacity span,.protect-position-badge span,.protect-watch h4,.protect-research-callout h4{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--accent-dark);font-weight:800;margin:0 0 6px}.protect-capacity strong{display:block;font-size:15px;color:#344054}.protect-position-badge{background:#f7f9fb;border:1px solid var(--line);border-left:4px solid var(--accent);padding:14px 16px;margin:0 0 18px}.protect-position-badge strong{display:block;font-size:20px;letter-spacing:.04em;color:#111827}.protect-position-badge em{display:block;font-style:normal;font-size:13px;color:#475467;margin-top:2px}.protect-divider{border-top:1px solid var(--line);margin:18px 0}.protect-intro{font-size:15px;line-height:1.58;color:#344054;margin:0}.protect-watch ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:9px}.protect-watch li{display:flex;gap:9px;align-items:flex-start;margin:0;color:#344054;font-size:14px;line-height:1.45}.protect-watch li span{color:var(--accent-dark);font-weight:800;line-height:1.2}.protect-watch li strong{font-weight:500;color:#344054}.protect-research-callout{background:var(--cream);border-left:3px solid var(--accent);padding:15px 16px;margin-top:18px}.protect-research-callout p{font-size:14px;line-height:1.55;color:#344054;margin:0}.protect-closing{border-top:1px solid var(--line);margin-top:18px;padding-top:14px}.protect-closing p{font-size:14px;line-height:1.5;color:#344054;margin:0}ul{margin:8px 0 0 20px;padding:0}li{margin-bottom:8px}
 .question-group{margin-top:40px}.group-definition{max-width:820px}.question-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.question-card h4{font-size:16px;color:#111827}.answer{color:#344054}.scale{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:12px 0 6px}.scale span{text-align:center;border:1px solid var(--line-strong);padding:7px 0;font-size:12px;color:#475467}.scale .selected{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff;font-weight:700}.scale-label{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}.histogram-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}.dist{height:112px;display:flex;align-items:flex-end;gap:7px;background:#f9fafb;border:1px solid var(--line);padding:26px 10px 22px;border-radius:2px}.dist-bar{flex:1;background:#cfd6df;position:relative;min-height:4px;border-radius:2px 2px 0 0}.dist-bar.answer{background:var(--accent-dark)}.dist-value{position:absolute;top:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#475467}.dist-index{position:absolute;bottom:-19px;left:50%;transform:translateX(-50%);font-size:10px;color:#667085}.dist-empty{background:#f2f4f7;border:1px solid var(--line);padding:14px;color:var(--muted);font-size:13px}.comparison-note{font-size:14px;color:#475467;margin-top:14px}.empty-state{background:#f9fafb;border:1px dashed var(--line-strong);padding:18px;color:var(--muted)}
+
+
+/* Human Capital section */
+.human-capital-section .section-intro.compact{font-size:16px;line-height:1.5;margin-bottom:20px}
+.human-capital-introduction{max-width:900px;background:var(--cream);border-left:3px solid var(--accent);padding:24px 28px;margin:24px 0 38px}
+.human-capital-introduction p{font-size:16px;line-height:1.62;color:#344054;margin:0 0 12px}
+.human-capital-introduction p:last-child{margin-bottom:0}
+.human-capital-group{margin-top:38px}
+.human-capital-group h3,.human-capital-priorities-block h3{font-family:Georgia,"Times New Roman",serif;font-size:28px;font-weight:500;line-height:1.15;margin:0 0 10px;color:#111827}
+.human-capital-group-intro{max-width:820px;color:#475467;font-size:15px;line-height:1.55;margin:0 0 18px}
+.human-capital-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:1040px}
+.human-capital-card{background:#fff;border:1px solid var(--line);padding:22px 24px;break-inside:avoid;page-break-inside:avoid;box-shadow:0 1px 0 rgba(16,24,40,.04)}
+.human-capital-card h4{font-family:Georgia,"Times New Roman",serif;font-size:24px;font-weight:500;line-height:1.18;margin:0 0 10px;color:#111827}
+.human-capital-card p{font-size:15px;line-height:1.58;color:#344054;margin:0}
+.human-capital-card.developing{border-left:3px solid var(--accent)}
+.human-capital-card.protecting{border-left:3px solid #1F7A7A}
+.human-capital-card.watching{border-left:3px solid #6B5CA5}
+.human-capital-priorities-block{margin-top:42px;background:#f9fafb;border:1px solid var(--line);padding:26px 28px;max-width:1040px}
+.human-capital-priority-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:18px}
+.human-capital-priority{background:#fff;border:1px solid var(--line);padding:18px;display:grid;grid-template-columns:34px 1fr;gap:14px;align-items:start;break-inside:avoid;page-break-inside:avoid}
+.human-capital-priority span{width:34px;height:34px;border-radius:50%;background:var(--accent-dark);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+.human-capital-priority h4{font-size:17px;line-height:1.3;margin:0 0 7px;color:#111827}
+.human-capital-priority p{font-size:14px;line-height:1.5;color:#344054;margin:0}
+.human-capital-closing{max-width:900px;margin-top:34px;border-top:1px solid var(--line);padding-top:22px}
+.human-capital-closing p{font-size:16px;line-height:1.62;color:#344054}
+
+
+/* Looking Forward */
+.looking-forward-section .section-intro{max-width:860px}
+.looking-forward-card .card-topline{color:var(--accent)}
+.looking-forward-watch li span{font-size:18px;line-height:1;color:var(--accent-dark);font-weight:800;margin-top:1px}
+.looking-forward-closing{max-width:900px;margin-top:26px;background:var(--cream);border-left:3px solid var(--accent);padding:22px 26px}
+.looking-forward-closing p{font-size:15px;line-height:1.6;color:#344054;margin:0 0 10px}
+.looking-forward-closing strong{display:block;font-size:15px;color:#111827}
 
 /* Section 10: If Nothing Changes */
 .trajectory-section .section-intro.compact{font-size:16px;line-height:1.5;margin-bottom:20px}
@@ -1307,7 +1435,7 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .trajectory-narrative-block.outlook{background:var(--cream);border-left:3px solid var(--accent);padding:24px 28px;margin-top:44px}
 .trajectory-narrative-block.outlook h3{font-size:26px}
 
-.deep-dive{background:#101828;color:#fff;padding:42px}.deep-dive h2,.deep-dive h3{color:#fff}.deep-dive .section-kicker{color:#9cc2ff}.deep-dive p{color:#e4e7ec}.quality{background:#fff7ed;border:1px solid #fed7aa;padding:20px}.report-footer{border-top:1px solid var(--line);padding-top:24px;color:var(--muted);font-size:13px}
+.dimension-deep-dives{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:42px 0}.dimension-deep-dives .dimension-deep-dive-body p{font-size:16px;line-height:1.62;color:#253044}.quality{background:#fff7ed;border:1px solid #fed7aa;padding:20px}.report-footer{border-top:1px solid var(--line);padding-top:24px;color:var(--muted);font-size:13px}
 
 /* V1 structure fixes */
 .hci-report .protect-grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -1599,6 +1727,7 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 
 /* Section 6 locked V1 — premium benchmark intelligence cards */
 .hci-report .questions-section{break-inside:auto;page-break-inside:auto}
+.hci-report .question-level-explainer{font-size:15px;line-height:1.55;margin-top:-12px;margin-bottom:26px;max-width:860px}
 .hci-report .question-group{margin-top:38px;break-inside:auto;page-break-inside:auto}
 .hci-report .question-group>h3{
   color:var(--q-accent);
@@ -1805,9 +1934,10 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 
 
 /* Section 8 — Perception Gap rebuilt: perception vs measured pattern */
-.hci-report .perception-section{padding-top:72px}.hci-report .perception-explainer{max-width:860px;margin-top:18px;color:#253044}.hci-report .perception-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;max-width:1160px;margin-top:34px}.hci-report .perception-card{background:#fff;border:1px solid var(--line);box-shadow:0 12px 30px rgba(16,24,40,.04);padding:28px 28px 30px;min-height:520px;display:flex;flex-direction:column}.hci-report .perception-card-head{display:flex;gap:16px;align-items:flex-start}.hci-report .perception-number{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:800;font-size:15px;box-shadow:0 8px 18px rgba(0,94,112,.18)}.hci-report .perception-card-head h3{margin:2px 0 7px;font-size:22px;color:#101828;letter-spacing:-.01em}.hci-report .perception-card-head p{margin:0;font-size:15px;line-height:1.45;color:#253044}.hci-report .perception-divider{height:1px;background:var(--line);margin:24px 0 22px}.hci-report .perception-block{padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid rgba(208,213,221,.75)}.hci-report .perception-block span,.hci-report .perception-interpretation span{display:block;font-size:11px;line-height:1.2;letter-spacing:.13em;text-transform:uppercase;color:#005e70;font-weight:900;margin-bottom:10px}.hci-report .perception-self-view strong{display:block;background:#fbfaf7;border:1px solid var(--line);border-radius:8px;padding:15px 16px;font-size:16px;line-height:1.35;color:#101828}.hci-report .perception-measured-view p{margin:0 0 18px;font-size:14px;line-height:1.55;color:#253044}.hci-report .perception-measured-view > strong{display:block;margin-top:16px;font-size:16px;color:#101828}.hci-report .perception-scale{position:relative;padding-top:32px;margin-top:4px}.hci-report .perception-scale-label-you{position:absolute;left:var(--perception-position);top:0;transform:translateX(-50%);font-size:12px;line-height:1.15;color:#005e70;text-align:center;font-weight:800;white-space:nowrap}.hci-report .perception-scale-label-you strong{font-size:12px;color:#253044;font-weight:700}.hci-report .perception-scale-track{position:relative;display:flex;align-items:center;justify-content:space-between;height:28px}.hci-report .perception-scale-track:before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:#d0d5dd;transform:translateY(-50%)}.hci-report .perception-scale-track span{position:relative;z-index:1;width:7px;height:7px;border-radius:50%;background:#d0d5dd}.hci-report .perception-scale-track span.active{background:#0f7d87}.hci-report .perception-scale-track i{position:absolute;z-index:3;left:var(--perception-position);top:50%;width:24px;height:24px;border-radius:50%;background:#0f7d87;border:3px solid #fff;box-shadow:0 4px 14px rgba(0,94,112,.28);transform:translate(-50%,-50%)}.hci-report .perception-scale-captions{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:12px;line-height:1.35;color:#475467}.hci-report .perception-scale-captions span:nth-child(2){text-align:center}.hci-report .perception-scale-captions span:nth-child(3){text-align:right}.hci-report .perception-interpretation{margin-top:auto;padding-top:4px}.hci-report .perception-interpretation p{margin:0;font-size:15px;line-height:1.55;color:#101828}.hci-report .perception-footnote{max-width:980px;margin:24px 0 0;padding-left:22px;border-left:3px solid rgba(0,94,112,.28);font-size:13px;line-height:1.55;color:#667085}.hci-report .perception-narrative-block{margin-top:58px}.hci-report .perception-narrative-block h3{margin:0 0 18px;font-size:22px;color:#101828}@media(max-width:1000px){.hci-report .perception-grid{grid-template-columns:1fr}.hci-report .perception-card{min-height:0}}
+.hci-report .perception-section{padding-top:72px}.hci-report .perception-explainer{max-width:860px;margin-top:18px;color:#253044}.hci-report .perception-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;max-width:1160px;margin-top:34px}.hci-report .perception-card{background:#fff;border:1px solid var(--line);box-shadow:0 12px 30px rgba(16,24,40,.04);padding:28px 28px 30px;min-height:520px;display:flex;flex-direction:column}.hci-report .perception-card-head{display:flex;gap:16px;align-items:flex-start}.hci-report .perception-number{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:800;font-size:15px;box-shadow:0 8px 18px rgba(0,94,112,.18)}.hci-report .perception-card-head h3{margin:2px 0 7px;font-size:22px;color:#101828;letter-spacing:-.01em}.hci-report .perception-card-head p{margin:0;font-size:15px;line-height:1.45;color:#253044}.hci-report .perception-divider{height:1px;background:var(--line);margin:24px 0 22px}.hci-report .perception-block{padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid rgba(208,213,221,.75)}.hci-report .perception-block span,.hci-report .perception-interpretation span{display:block;font-size:11px;line-height:1.2;letter-spacing:.13em;text-transform:uppercase;color:#005e70;font-weight:900;margin-bottom:10px}.hci-report .perception-self-view strong{display:block;background:#fbfaf7;border:1px solid var(--line);border-radius:8px;padding:15px 16px;font-size:16px;line-height:1.35;color:#101828}.hci-report .perception-measured-view p{margin:0 0 18px;font-size:14px;line-height:1.55;color:#253044}.hci-report .perception-measured-view > strong{display:block;margin-top:16px;font-size:16px;color:#101828}.hci-report .perception-scale{position:relative;padding-top:32px;margin-top:4px}.hci-report .perception-scale-label-you{position:absolute;left:var(--perception-position);top:0;transform:translateX(-50%);font-size:12px;line-height:1.15;color:#005e70;text-align:center;font-weight:800;white-space:nowrap}.hci-report .perception-scale-label-you strong{font-size:12px;color:#253044;font-weight:700}.hci-report .perception-scale-track{position:relative;display:flex;align-items:center;justify-content:space-between;height:28px}.hci-report .perception-scale-track:before{content:"";position:absolute;left:0;right:0;top:50%;height:3px;background:#d0d5dd;border-radius:999px;transform:translateY(-50%)}.hci-report .perception-scale-track span{position:relative;z-index:1;width:7px;height:7px;border-radius:50%;background:#d0d5dd}.hci-report .perception-scale-track span.active{background:#0f7d87}.hci-report .perception-scale-track i{position:absolute;z-index:3;left:var(--perception-position);top:50%;width:24px;height:24px;border-radius:50%;background:#0f7d87;border:3px solid #fff;box-shadow:0 4px 14px rgba(0,94,112,.28);transform:translate(-50%,-50%)}.hci-report .perception-scale-captions{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:12px;line-height:1.35;color:#475467}.hci-report .perception-scale-captions span:nth-child(2){text-align:center}.hci-report .perception-scale-captions span:nth-child(3){text-align:right}.hci-report .perception-interpretation{margin-top:auto;padding-top:4px}.hci-report .perception-interpretation p{margin:0;font-size:15px;line-height:1.55;color:#101828}.hci-report .perception-footnote{max-width:980px;margin:24px 0 0;padding-left:22px;border-left:3px solid rgba(0,94,112,.28);font-size:13px;line-height:1.55;color:#667085}.hci-report .perception-narrative-block{margin-top:58px}.hci-report .perception-narrative-block h3{margin:0 0 18px;font-size:22px;color:#101828}@media(max-width:1000px){.hci-report .perception-grid{grid-template-columns:1fr}.hci-report .perception-card{min-height:0}}
 
 /* Distinctive responses V2 */
+.hci-report .distinctive-explainer{font-size:15px;line-height:1.55;margin-bottom:24px;max-width:860px}
 .hci-report .distinctive-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.hci-report .distinctive-card{border-left:3px solid var(--evidence-accent,var(--accent));padding:22px 23px;display:flex;flex-direction:column;min-height:230px}.hci-report .distinctive-card .card-topline{color:var(--evidence-accent,var(--accent));margin-bottom:14px}
 .hci-report .distinctive-question{font-size:15px;line-height:1.5;color:#253044;margin:0 0 18px;min-height:68px}.hci-report .response-metric{border-top:1px solid var(--line);padding-top:12px;display:grid;grid-template-columns:1fr auto;gap:7px 12px;align-items:center;margin-top:auto}
 .hci-report .response-metric span,.hci-report .benchmark-metric span{font-size:11px;color:#667085;text-transform:uppercase;letter-spacing:.08em;font-weight:700}.hci-report .response-metric strong{font-size:13px;color:#101828;text-align:right}.hci-report .response-dots{display:flex;gap:5px;grid-column:1/2}.hci-report .response-dots span{width:9px;height:9px;border-radius:50%;border:1px solid color-mix(in srgb, var(--evidence-accent) 35%, #d0d5dd);background:#fff}.hci-report .response-dots span.filled{background:var(--evidence-accent,var(--accent));border-color:var(--evidence-accent,var(--accent))}
@@ -1817,4 +1947,25 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 
 @media(max-width:900px){.hci-report{padding:36px 22px}.cover-grid,.dimension-grid,.standing-grid,.profile-shape-layout,.two-col,.evidence-grid,.distinctive-grid,.protect-grid,.question-grid,.histogram-grid{grid-template-columns:1fr}h1{font-size:44px}h2{font-size:30px}.brand-row{margin-bottom:42px}}
 @media print{body{background:#fff}.hci-report{max-width:none;padding:34px}.page-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:42px}.dimension-grid{grid-template-columns:repeat(3,1fr);gap:14px}.profile-shape-layout{gap:14px}.shape-panel{padding:17px}.distinctive-grid{gap:14px}.distinctive-card{padding:17px;min-height:200px}.dimension-card{padding:17px 17px 15px}.percentile-block{margin:11px 0}.insight{font-size:12.5px}.dimension-definition{font-size:12.5px}.question-grid{grid-template-columns:repeat(2,1fr)}.cover-panel,.dimension-card,.evidence-card,.split-card,.question-card,.protect-card{box-shadow:none}a{color:inherit}}
+
+/* Closing Reflection */
+.closing-reflection-section{padding-top:10px}
+.closing-reflection-intro{max-width:780px;margin:0 0 34px;background:#fbfaf7;border-left:3px solid var(--accent);padding:24px 28px}
+.closing-reflection-intro p{font-size:17px;color:#344054;line-height:1.62;margin-bottom:12px}
+.one-question-hero{margin:42px auto 46px;max-width:880px;text-align:center;padding:46px 54px;background:#0f172a;color:#fff;border-radius:2px;box-shadow:var(--shadow)}
+.one-question-hero span{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.14em;font-weight:800;color:#c7d2fe;margin-bottom:18px}
+.one-question-hero blockquote{font-family:Georgia,"Times New Roman",serif;font-size:36px;line-height:1.22;font-weight:500;letter-spacing:-.02em;margin:0;color:#fff}
+.closing-reflection-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin:0 0 42px}
+.closing-reflection-card{border:1px solid var(--line);background:#fff;padding:28px;box-shadow:0 8px 24px rgba(16,24,40,.04)}
+.closing-reflection-card h3{margin:0 0 14px;font-size:18px;color:#111827}
+.closing-reflection-card p{font-size:16px;color:#344054;line-height:1.62}
+.closing-visual-break{display:flex;align-items:center;justify-content:center;margin:46px 0 42px}
+.closing-visual-break span{width:88px;height:1px;background:var(--line-strong);position:relative;display:block}
+.closing-visual-break span:before{content:"";position:absolute;left:50%;top:50%;width:8px;height:8px;border-radius:50%;background:var(--accent);transform:translate(-50%,-50%)}
+.closing-reflection-final{max-width:860px;margin:0 auto;text-align:left}
+.closing-reflection-final h3{text-align:center;font-family:Georgia,"Times New Roman",serif;font-size:30px;font-weight:500;margin:0 0 22px;color:#080b12}
+.closing-editorial p{font-size:19px;line-height:1.7;color:#253044;margin-bottom:18px}
+.closing-final-sentence{margin:34px auto 0;max-width:780px;text-align:center;font-family:Georgia,"Times New Roman",serif;font-size:26px;line-height:1.35;color:#111827}
+@media(max-width:800px){.closing-reflection-grid{grid-template-columns:1fr}.one-question-hero{padding:34px 28px}.one-question-hero blockquote{font-size:28px}}
+
 </style>'''
