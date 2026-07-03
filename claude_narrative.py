@@ -169,6 +169,7 @@ This is the first personalised interpretation the reader sees. It must make the 
 
 Write 330-430 words total.
 Use exactly three short editorial subheadings, each followed by one substantial paragraph.
+Write the subheadings as plain text only. Do not wrap subheadings in Markdown bold markers such as **Heading** and do not prefix them with #, ##, or ###.
 Do not use boxes, bullets, numbering, labels like "Behavioural finding", or fields such as "Data:" / "Interpretation:" / "Why it matters:".
 
 The three subheadings should cover:
@@ -205,6 +206,7 @@ Focus on the interaction between dimensions rather than defining each dimension 
 
 Reduce benchmark exposition, academic explanation, repeated dimension explanation, and lengthy theoretical discussion.
 Use plain behavioural language.
+Do not use Markdown, bold markers, headings with #, or shorthand such as %ile.
 Prefer careful signalling language such as "This appears to signal...", "This pattern often reflects...", and "This combination suggests...".
 Avoid certainty language such as "This proves..." or "This demonstrates...".
 Do not give advice, predict future behaviour, introduce strengths or shadows, discuss worth protecting, human capability, future monitoring, or observation guidance.
@@ -230,6 +232,7 @@ Style the opening_findings subheadings like a premium research report, for examp
 Your strongest organising feature
 How your self-understanding compares
 The shape of the wider pattern
+Return those headings as plain lines only, not Markdown.
 
 Use benchmark statistics sparingly.
 Only include numbers when they strengthen understanding.
@@ -257,7 +260,7 @@ Use only this context:
     schema = {
         "opening_findings": {
             "type": "string",
-            "description": "330-430 word opening synthesis with exactly three short editorial subheadings, each followed by one substantial paragraph. No bullets, no numbering, no 'Behavioural finding', no Data/Interpretation/Why-it-matters labels, and no means/averages/statistical shorthand."
+            "description": "330-430 word opening synthesis with exactly three short editorial subheadings, each followed by one substantial paragraph. Subheadings must be plain text lines only, with no Markdown bold markers and no # heading markers. No bullets, no numbering, no 'Behavioural finding', no Data/Interpretation/Why-it-matters labels, and no means/averages/statistical shorthand."
         },
         "profile_shape_summary": {
             "type": "string",
@@ -429,75 +432,101 @@ def generate_trajectory_narrative(report_data: Dict[str, Any], api_key: str) -> 
     context = build_context_for_claude_section(report_data, "trajectory")
 
     prompt = f"""
-Write HCI report Section 11 narrative blocks: "If Nothing Changes".
+Write HCI report Section 11 narrative blocks for the redesigned section: "Looking Ahead".
 
-Primary job:
-Provide context about how relationships like this are commonly characterised when similar benchmark profiles continue along broadly similar patterns.
+This section replaces the old "Trajectory / If Nothing Changes" section.
+Its job is not to interpret the participant again, predict their future, or repeat Human Capital.
+Its job is to turn the report into a measurement roadmap.
 
-This section describes population patterns.
-It does not infer individual futures.
+The section answers one question:
+What will be most interesting to measure next time?
 
-This is not prediction, advice, urgency, optimisation, coaching, or longitudinal inference.
-Do not imply that HCI can predict this participant's behavioural trajectory.
+Write only these blocks:
+- looking_ahead_intro
+- behavioural_tipping_points
+- measurement_questions
 
-Write only:
-- likely_to_continue
-- overall_outlook
+The renderer will deterministically display these fixed subsections:
+1. Signals Likely to Hold
+2. Signals Most Sensitive to Change
+3. Behavioural Tipping Points
+4. Questions for Your Next Measurement
 
-The deterministic parts of this section are handled elsewhere. Do not rewrite the strengths list, monitoring list, or at-a-glance table.
+Do not create extra sections.
+Do not mention "Why Return" because later report sections already handle the longitudinal meaning and closing reflection.
+Do not write an overall outlook.
+Do not write "Commonly observed", "Strengths That May Continue Developing", "Areas Worth Monitoring", or an at-a-glance table.
 
-For likely_to_continue:
-- Write 120-160 words.
-- Treat the display heading as "Commonly observed", even though the internal schema key remains likely_to_continue for compatibility.
-- Begin by describing what is commonly observed among people with similar profiles.
-- Explain the single strongest population-level pattern associated with the profile.
-- Use language such as "people with similar profiles often...", "one commonly observed pattern is...", "this profile is frequently characterised by...", "people sometimes report...", "this pattern is often accompanied by...".
-- Avoid deterministic or future-predictive language.
-- Do not say the participant will continue, will deepen, is expected to change, or is likely to change.
-- End by reinforcing that the section describes commonly observed patterns, not a personal forecast.
+For looking_ahead_intro:
+- Write 80-120 words in 1-2 paragraphs.
+- Explain that the profile is a snapshot, not a verdict or fixed identity.
+- Explain that the value of measuring again is not chasing better scores; it is noticing whether the behavioural architecture remains stable or begins to shift.
+- Use plain, direct language.
+- Do not summarise the full profile again.
+- Do not give advice.
 
-For overall_outlook:
-- Write 90-130 words.
-- Summarise the profile as a measured pattern today.
-- Identify one area commonly worth monitoring among similar profiles and explain why in research-grounded, population-level language.
-- Balance that with one capability or behavioural strength that is often reinforced through continued use.
-- Reduce repetition from earlier sections; do not restate Agency, Reliance, or Verification unless each reference adds something new.
-- Finish by handing naturally into the next report section, Looking Forward, where the focus becomes what people with similar profiles often notice first.
+For behavioural_tipping_points:
+- Write exactly three tipping points.
+- Format each as: Short heading: one concise explanation.
+- Separate each tipping point with a blank line.
+- Each explanation should describe a real-world behavioural shift that may precede measurable score change.
+- Use these three concepts unless the context strongly requires a different wording:
+  1. Earlier AI initiation — AI becomes the first place thinking begins rather than a place to refine an existing view.
+  2. Reduced verification friction — checking starts to feel less necessary because AI feels fluent, familiar, or usually right.
+  3. Expanding role boundaries — AI begins entering areas of work, decision-making, or personal life where it previously played little role.
+- Keep this observational, not alarming.
+- Do not say these changes will happen.
+
+For measurement_questions:
+- Write exactly five questions.
+- Put each question on its own line.
+- Do not use bullets, numbering, or Markdown.
+- Questions should be specific enough that the participant can compare their behaviour at the next measurement.
+- Focus on noticing change, not judging whether change is good or bad.
+- Include at least one question about whether they form an independent view before using AI.
+- Include at least one question about verification.
+- Include at least one question about whether AI has entered more areas of life or work.
+- Include at least one question about boundaries.
 
 Rules:
-- No timeline predictions.
-- No "you should".
-- No alarmism.
-- No optimisation language.
+- No predictions.
+- No coaching.
+- No recommendations.
 - No urgency.
-- Do not imply decline is inevitable.
-- Do not use hard numerical statistics unless absolutely necessary.
-- Avoid phrases like "will", "likely will", "expected to", "trajectory suggests", "your profile will become", "trajectory indicates", "likely outcome", "over the next 3-6 months", "within a year", or percentage-change predictions.
-- Prefer: commonly, often, may, appears, associated with, frequently observed, among similar profiles, can, tends to.
-- Ground observations in the provided HCI context.
-- Speak directly to "you", but keep claims about change population-level rather than individually predictive.
-- Keep the tone grounded, reassuring, observational, scientifically disciplined, and premium.
+- No alarmism.
+- No "you should".
+- No optimisation language.
+- No clinical language.
+- No moral judgement about high or low scores.
+- Do not repeat the Human Capital section.
+- Do not re-explain the profile.
+- Do not include percentages or statistics unless absolutely necessary.
+- Prefer measurement language: observe, compare, notice, re-measure, next measurement, behavioural architecture, signals.
+- Tone: premium, concise, scientifically disciplined, practical, HCI-specific.
 
-The participant should finish thinking:
-"I understand the kinds of patterns that are commonly associated with relationships like mine, but my own future remains something I will continue observing."
+The participant should finish this section thinking:
+"I know what to pay attention to between now and my next measurement."
 
 Use only this context:
 {compact_context(context)}
 """
 
     schema = {
-        "likely_to_continue": {
+        "looking_ahead_intro": {
             "type": "string",
-            "description": "120-160 words for the display heading 'Commonly observed'. Describe population-level patterns commonly associated with similar profiles. No individual predictions, no prescriptions, no timeline language, no deterministic future claims."
+            "description": "80-120 words. Introduce Looking Ahead as a measurement roadmap: profile as snapshot, next measurement as a way to notice whether behavioural architecture holds or shifts. No advice, no prediction, no full profile summary."
         },
-        "overall_outlook": {
+        "behavioural_tipping_points": {
             "type": "string",
-            "description": "90-130 words. Summarise the current measured profile, identify one commonly monitored area among similar profiles, balance with one commonly reinforced strength, and hand naturally into Looking Forward. No predictions, no prescriptions."
+            "description": "Exactly three tipping points, each formatted 'Short heading: one concise explanation', separated by blank lines. Observational real-world behavioural shifts only. No prediction or alarmism."
+        },
+        "measurement_questions": {
+            "type": "string",
+            "description": "Exactly five questions, one per line, no bullets or numbering. Questions for the next measurement focused on independent view formation, verification, expanding AI role, boundaries, and unnoticed change."
         },
     }
 
     return call_claude_structured(api_key, prompt, schema)
-
 
 
 
@@ -688,6 +717,8 @@ Each dimension entry should naturally answer exactly four questions:
 
 Structure:
 - Use the dimension name as a plain heading.
+- Do not prefix dimension headings with #, ##, ###, bold markers, or any Markdown syntax.
+- Do not insert horizontal separators such as --- between dimension entries.
 - Under each heading, write 3-4 concise paragraphs.
 - Keep each dimension entry clear, educational, and scannable.
 - The full section should feel like a high-quality reference manual for the participant's behavioural dimensions, not another Behaviour Story.
@@ -710,6 +741,7 @@ Do not:
 - Introduce Human Capital, human capability, worth protecting, strengths/shadows, future trajectory, monitoring, advice, behavioural recommendations, or reflection questions.
 - Use future language such as "over time", "as AI develops", "watch for", "this may become", or "long term".
 - Use coaching language such as "consider", "try", "you should", or "it may help".
+- Use Markdown formatting, bold markers, bullet lists, numbered lists, or horizontal rules such as ---.
 - Diagnose, prescribe, alarm, or exaggerate uniqueness.
 
 End each dimension entry with one short concluding paragraph explaining why that dimension is useful to understand as one part of the participant's relationship with AI.
