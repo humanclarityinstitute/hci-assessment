@@ -2011,4 +2011,212 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .closing-final-sentence{margin:34px auto 0;max-width:780px;text-align:center;font-family:Georgia,"Times New Roman",serif;font-size:26px;line-height:1.35;color:#111827}
 @media(max-width:800px){.closing-reflection-grid{grid-template-columns:1fr}.one-question-hero{padding:34px 28px}.one-question-hero blockquote{font-size:28px}}
 
+
+/* ================================================================
+   PDF-only layout lock
+   ----------------------------------------------------------------
+   These rules do nothing during normal desktop/mobile web rendering.
+   They activate only when report_pdf.py adds hci-pdf-mode to the
+   document/body/main before PDFShift captures the report.
+   ================================================================ */
+html.hci-pdf-mode,
+body.hci-pdf-mode{
+  background:#fff !important;
+}
+
+html.hci-pdf-mode body,
+body.hci-pdf-mode{
+  width:1440px !important;
+  min-width:1440px !important;
+  overflow:visible !important;
+}
+
+.hci-pdf-mode .hci-report,
+body.hci-pdf-mode .hci-report,
+html.hci-pdf-mode .hci-report,
+.hci-report.hci-pdf-mode{
+  width:1120px !important;
+  max-width:1120px !important;
+  min-width:1120px !important;
+  margin:0 auto !important;
+  padding:44px 48px !important;
+  background:#fff !important;
+  box-shadow:none !important;
+  font-size:14.5px !important;
+  line-height:1.48 !important;
+  zoom:.94;
+}
+
+.hci-pdf-mode .page-section,
+body.hci-pdf-mode .page-section,
+html.hci-pdf-mode .page-section,
+.hci-report.hci-pdf-mode .page-section{
+  margin-bottom:46px !important;
+  break-inside:auto !important;
+  page-break-inside:auto !important;
+}
+
+.hci-pdf-mode .dimension-grid,
+body.hci-pdf-mode .dimension-grid,
+html.hci-pdf-mode .dimension-grid,
+.hci-report.hci-pdf-mode .dimension-grid{
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:14px !important;
+}
+
+.hci-pdf-mode .question-grid,
+body.hci-pdf-mode .question-grid,
+html.hci-pdf-mode .question-grid,
+.hci-report.hci-pdf-mode .question-grid{
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:16px !important;
+}
+
+.hci-pdf-mode .profile-shape-layout,
+body.hci-pdf-mode .profile-shape-layout,
+html.hci-pdf-mode .profile-shape-layout,
+.hci-report.hci-pdf-mode .profile-shape-layout,
+.hci-pdf-mode .two-col,
+body.hci-pdf-mode .two-col,
+html.hci-pdf-mode .two-col,
+.hci-report.hci-pdf-mode .two-col,
+.hci-pdf-mode .standing-grid,
+body.hci-pdf-mode .standing-grid,
+html.hci-pdf-mode .standing-grid,
+.hci-report.hci-pdf-mode .standing-grid,
+.hci-pdf-mode .protect-grid,
+body.hci-pdf-mode .protect-grid,
+html.hci-pdf-mode .protect-grid,
+.hci-report.hci-pdf-mode .protect-grid,
+.hci-pdf-mode .protect-grid.four,
+body.hci-pdf-mode .protect-grid.four,
+html.hci-pdf-mode .protect-grid.four,
+.hci-report.hci-pdf-mode .protect-grid.four,
+.hci-pdf-mode .human-capital-card-grid,
+body.hci-pdf-mode .human-capital-card-grid,
+html.hci-pdf-mode .human-capital-card-grid,
+.hci-report.hci-pdf-mode .human-capital-card-grid,
+.hci-pdf-mode .human-capital-priority-grid,
+body.hci-pdf-mode .human-capital-priority-grid,
+html.hci-pdf-mode .human-capital-priority-grid,
+.hci-report.hci-pdf-mode .human-capital-priority-grid,
+.hci-pdf-mode .closing-reflection-grid,
+body.hci-pdf-mode .closing-reflection-grid,
+html.hci-pdf-mode .closing-reflection-grid,
+.hci-report.hci-pdf-mode .closing-reflection-grid{
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:16px !important;
+}
+
+.hci-pdf-mode .evidence-grid,
+body.hci-pdf-mode .evidence-grid,
+html.hci-pdf-mode .evidence-grid,
+.hci-report.hci-pdf-mode .evidence-grid,
+.hci-pdf-mode .distinctive-grid,
+body.hci-pdf-mode .distinctive-grid,
+html.hci-pdf-mode .distinctive-grid,
+.hci-report.hci-pdf-mode .distinctive-grid,
+.hci-pdf-mode .perception-grid,
+body.hci-pdf-mode .perception-grid,
+html.hci-pdf-mode .perception-grid,
+.hci-report.hci-pdf-mode .perception-grid,
+.hci-pdf-mode .looking-ahead-grid,
+body.hci-pdf-mode .looking-ahead-grid,
+html.hci-pdf-mode .looking-ahead-grid,
+.hci-report.hci-pdf-mode .looking-ahead-grid{
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:14px !important;
+}
+
+.hci-pdf-mode .dimension-card,
+body.hci-pdf-mode .dimension-card,
+html.hci-pdf-mode .dimension-card,
+.hci-report.hci-pdf-mode .dimension-card{
+  padding:16px 16px 14px !important;
+  min-height:0 !important;
+}
+
+.hci-pdf-mode .dimension-card h3,
+body.hci-pdf-mode .dimension-card h3,
+html.hci-pdf-mode .dimension-card h3,
+.hci-report.hci-pdf-mode .dimension-card h3{
+  font-size:17px !important;
+}
+
+.hci-pdf-mode .dimension-definition,
+body.hci-pdf-mode .dimension-definition,
+html.hci-pdf-mode .dimension-definition,
+.hci-report.hci-pdf-mode .dimension-definition,
+.hci-pdf-mode .insight,
+body.hci-pdf-mode .insight,
+html.hci-pdf-mode .insight,
+.hci-report.hci-pdf-mode .insight{
+  font-size:12px !important;
+  line-height:1.38 !important;
+}
+
+.hci-pdf-mode .percentile-block,
+body.hci-pdf-mode .percentile-block,
+html.hci-pdf-mode .percentile-block,
+.hci-report.hci-pdf-mode .percentile-block{
+  margin:10px 0 !important;
+}
+
+.hci-pdf-mode .dimension-card,
+.hci-pdf-mode .evidence-card,
+.hci-pdf-mode .split-card,
+.hci-pdf-mode .question-card,
+.hci-pdf-mode .protect-card,
+.hci-pdf-mode .shape-panel,
+.hci-pdf-mode .perception-card,
+.hci-pdf-mode .human-capital-card,
+.hci-pdf-mode .human-capital-priority,
+.hci-pdf-mode .looking-ahead-card,
+.hci-pdf-mode .tipping-point,
+.hci-pdf-mode .closing-reflection-card,
+body.hci-pdf-mode .dimension-card,
+body.hci-pdf-mode .evidence-card,
+body.hci-pdf-mode .split-card,
+body.hci-pdf-mode .question-card,
+body.hci-pdf-mode .protect-card,
+body.hci-pdf-mode .shape-panel,
+body.hci-pdf-mode .perception-card,
+body.hci-pdf-mode .human-capital-card,
+body.hci-pdf-mode .human-capital-priority,
+body.hci-pdf-mode .looking-ahead-card,
+body.hci-pdf-mode .tipping-point,
+body.hci-pdf-mode .closing-reflection-card,
+html.hci-pdf-mode .dimension-card,
+html.hci-pdf-mode .evidence-card,
+html.hci-pdf-mode .split-card,
+html.hci-pdf-mode .question-card,
+html.hci-pdf-mode .protect-card,
+html.hci-pdf-mode .shape-panel,
+html.hci-pdf-mode .perception-card,
+html.hci-pdf-mode .human-capital-card,
+html.hci-pdf-mode .human-capital-priority,
+html.hci-pdf-mode .looking-ahead-card,
+html.hci-pdf-mode .tipping-point,
+html.hci-pdf-mode .closing-reflection-card,
+.hci-report.hci-pdf-mode .dimension-card,
+.hci-report.hci-pdf-mode .evidence-card,
+.hci-report.hci-pdf-mode .split-card,
+.hci-report.hci-pdf-mode .question-card,
+.hci-report.hci-pdf-mode .protect-card,
+.hci-report.hci-pdf-mode .shape-panel,
+.hci-report.hci-pdf-mode .perception-card,
+.hci-report.hci-pdf-mode .human-capital-card,
+.hci-report.hci-pdf-mode .human-capital-priority,
+.hci-report.hci-pdf-mode .looking-ahead-card,
+.hci-report.hci-pdf-mode .tipping-point,
+.hci-report.hci-pdf-mode .closing-reflection-card{
+  break-inside:avoid !important;
+  page-break-inside:avoid !important;
+  box-shadow:none !important;
+}
+
 </style>'''
