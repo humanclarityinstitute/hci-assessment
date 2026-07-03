@@ -6,7 +6,7 @@ PDF, with zero second source of truth for the visuals.
 
 Why PDFShift (and not Playwright/Chromium, WeasyPrint, or wkhtmltopdf):
 the report's charts are HTML/CSS <div>s drawn by the page's own JavaScript
-(renderReport) from the report data. Nothing renders them server-side. Only a
+(renderReport/render) from the report data. Nothing renders them server-side. Only a
 real browser runs that JS. PDFShift is a hosted headless-Chrome service, so it
 reproduces the live page exactly and stays in sync automatically whenever the
 template changes — without needing Chromium installed in the container (the
@@ -16,7 +16,7 @@ How it stays single-source:
 render_report_html() does NOT hand-maintain a separate print layout. It reads
 the canonical template file, injects the already-generated report object inline
 (base64 -> JSON.parse), swaps the page's network bootstrap (init() -> a direct
-renderReport call), and disables animations so the PDF captures the final state.
+renderReport/render call), and disables animations so the PDF captures the final state.
 Point template_path at the same hci-report-page.html the site serves.
 
 The bootstrap swap is whitespace-tolerant (regex), so ordinary edits to the
@@ -52,15 +52,64 @@ _INIT_BOOTSTRAP_RE = re.compile(
     re.DOTALL,
 )
 
-# Replacement bootstrap — stays INSIDE the IIFE, so renderReport is in scope.
-# Also snaps every animated bar/marker to its final position immediately.
-_PRINT_BOOTSTRAP = """function __hciPrintInit(){
+# Replacement bootstrap — stays INSIDE the page IIFE, so render/renderReport is in scope.
+# It supports both versions of the report template:
+#   - the Railway/backend template with renderReport(...)
+#   - the WordPress wrapper template with render(...)
+# It also applies PDF mode after rendering, including inside Shadow DOM if the
+# WordPress wrapper injects the finished report into a shadow root.
+_PRINT_BOOTSTRAP = """function __hciApplyPdfModeStyles(root){
   try{
-    var e=document.getElementById('hci-error'); if(e){e.style.display='none';}
-    renderReport(window.__HCI_REPORT__);
+    root = root || document;
+    if(!root.getElementById || root.getElementById('hci-pdf-mode-style')){return;}
+    var style = root.createElement('style');
+    style.id = 'hci-pdf-mode-style';
+    style.textContent = window.__HCI_PDF_CSS__ || '';
+    var target = root.head || root;
+    target.appendChild(style);
+  }catch(err){console.error('pdf style injection failed', err);}
+}
+
+function __hciPrintInit(){
+  try{
+    document.documentElement.classList.add('hci-pdf-mode');
+    if(document.body){document.body.classList.add('hci-pdf-mode');}
+    __hciApplyPdfModeStyles(document);
+
+    var report = window.__HCI_REPORT__;
+    var rendered = false;
+
+    if(typeof renderReport === 'function'){
+      renderReport(report);
+      rendered = true;
+    }else if(typeof render === 'function'){
+      render(report);
+      rendered = true;
+    }else{
+      console.error('print render failed: no renderReport() or render() function was found');
+    }
+
+    ['hci-generating','hci-error','loading','error'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){el.style.display='none'; el.classList.add('hidden');}
+    });
+    ['hci-report','report'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){el.style.display='block'; el.classList.remove('hidden');}
+    });
+
     document.querySelectorAll('[data-fill]').forEach(function(el){el.style.width=el.dataset.fill+'%';});
     document.querySelectorAll('[data-pos]').forEach(function(el){el.style.left=el.dataset.pos+'%';});
-  }catch(err){console.error('print render failed',err);}
+
+    document.querySelectorAll('*').forEach(function(el){
+      if(el.shadowRoot){__hciApplyPdfModeStyles(el.shadowRoot);}
+    });
+
+    window.__HCI_PDF_READY__ = rendered;
+  }catch(err){
+    console.error('print render failed',err);
+    window.__HCI_PDF_READY__ = true;
+  }
 }
 if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded',__hciPrintInit);
@@ -68,12 +117,96 @@ if(document.readyState==='loading'){
   __hciPrintInit();
 }"""
 
+_PDF_MODE_CSS = r"""
+*{transition:none !important;animation:none !important;scroll-behavior:auto !important;}
+html.hci-pdf-mode,
+body.hci-pdf-mode{background:#fff !important;overflow:visible !important;}
+body.hci-pdf-mode{font-size:15px !important;}
+#hci-generating,#hci-error,#loading,#error,.hci-print-bar{display:none !important;}
+#hci-report,#report{display:block !important;width:100% !important;}
+.hidden{display:none !important;}
+#report.hidden,#hci-report.hidden{display:block !important;}
+
+.page,
+.hci-report,
+main.hci-report,
+#hci-report,
+#report .hci-report{max-width:1080px !important;margin-left:auto !important;margin-right:auto !important;}
+
+.grid,
+.dimension-grid,
+.evidence-grid,
+.distinctive-grid,
+.question-grid,
+.human-capital-grid,
+.capability-grid,
+.priority-grid,
+.forward-grid,
+.looking-forward-grid,
+.trajectory-grid{display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:18px !important;}
+.grid.two,
+.two-col,
+.profile-shape-layout,
+.human-capital-layout,
+.perception-card-grid,
+.perception-grid,
+.comparison-list{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:18px !important;}
+
+.dimension{display:grid !important;grid-template-columns:220px 1fr !important;gap:28px !important;}
+.question-group,
+.question-card,
+.dimension-card,
+.evidence-card,
+.distinctive-card,
+.split-card,
+.card,
+.shape-panel,
+.profile-shape-summary,
+.perception-card,
+.human-capital-card,
+.capability-card,
+.priority-card,
+.forward-card,
+.trajectory-card{break-inside:avoid !important;page-break-inside:avoid !important;}
+.page-section,
+.section,
+.report-opening,
+.dashboard-section,
+.profile-shape-section,
+.questions-section,
+.distinctive-section,
+.perception-section,
+.human-capital-section,
+.trajectory-section,
+.looking-forward-section,
+.closing-reflection-section{break-inside:auto !important;page-break-inside:auto !important;}
+h1,h2,h3,h4{break-after:avoid !important;page-break-after:avoid !important;}
+p{orphans:3 !important;widows:3 !important;}
+
+.inner{padding:52px 64px !important;}
+.topline{padding-left:64px !important;padding-right:64px !important;}
+.section,
+.page-section{padding-left:64px !important;padding-right:64px !important;}
+.footer,
+.report-footer{padding-left:64px !important;padding-right:64px !important;}
+h1{font-size:64px !important;}
+h2{font-size:38px !important;}
+.card,
+.dimension-card,
+.evidence-card,
+.question-card,
+.split-card{padding:20px !important;}
+
+.percentile-track,
+.mini-track,
+.perception-scale-track,
+.bar{border-style:solid !important;background-image:none !important;}
+.percentile-fill,
+.bar span{display:block !important;}
+"""
+
 _PRINT_STYLE = (
-    '<style id="hci-print-overrides">'
-    '*{transition:none !important;animation:none !important}'
-    '#hci-generating,#hci-error,.hci-print-bar{display:none !important}'
-    '#hci-report{display:block !important}'
-    '</style>'
+    '<style id="hci-print-overrides">' + _PDF_MODE_CSS + '</style>'
 )
 
 DEFAULT_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), 'hci-report-page.html')
@@ -102,12 +235,30 @@ def render_report_html(report, template_path=DEFAULT_TEMPLATE_PATH, demographics
     payload = base64.b64encode(
         json.dumps(report, ensure_ascii=True).encode('utf-8')
     ).decode('ascii')
-    inject = f'<script>window.__HCI_REPORT__=JSON.parse(atob("{payload}"));</script>'
+    inject = (
+        f'<script>window.__HCI_REPORT__=JSON.parse(atob("{payload}"));'
+        f'window.__HCI_PDF_CSS__={json.dumps(_PDF_MODE_CSS)};</script>'
+    )
 
-    # 1) Inject the report payload right after <body> (runs before the IIFE).
-    if '<body>' not in html:
+    # 1) Inject the report payload right after <body> (runs before the IIFE),
+    #    and mark the document as PDF mode. This leaves the live desktop and
+    #    mobile HTML untouched; only the generated PDF receives these rules.
+    body_re = re.compile(r'<body([^>]*)>', re.IGNORECASE)
+    match = body_re.search(html)
+    if not match:
         raise ValueError('report template missing <body> anchor')
-    html = html.replace('<body>', '<body>\n' + inject, 1)
+    attrs = match.group(1) or ''
+    if re.search(r'class\s*=', attrs, re.IGNORECASE):
+        attrs = re.sub(
+            r"class=([\"\'])(.*?)\1",
+            lambda m: f'class={m.group(1)}{m.group(2)} hci-pdf-mode{m.group(1)}',
+            attrs,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    else:
+        attrs = attrs + ' class="hci-pdf-mode"'
+    html = html[:match.start()] + f'<body{attrs}>\n' + inject + html[match.end():]
 
     # 2) Inject print overrides before </head>.
     if '</head>' not in html:
@@ -151,7 +302,13 @@ def generate_report_pdf(report_html, wait_ms=1200, css=None):
         'landscape': False,
         'use_print': False,           # use screen styles, not @media print
         'format': 'A4',
-        'margin': {'top': '14mm', 'bottom': '14mm', 'left': '12mm', 'right': '12mm'},
+        # Give the content more usable paper width without changing the live web report.
+        'margin': {'top': '10mm', 'bottom': '10mm', 'left': '8mm', 'right': '8mm'},
+        # Force a desktop browser viewport before PDFShift prints to A4, so the
+        # report does not trip the template's mobile/tablet responsive breakpoint.
+        'viewport': '1440x1600',
+        # Slightly reduce PDF scale for better density and fewer awkward breaks.
+        'zoom': 0.94,
         # The report charts are drawn by the page's own JS after load, so give
         # the browser time to finish before capturing.
         'delay': wait_ms,
