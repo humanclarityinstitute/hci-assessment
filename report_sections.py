@@ -632,19 +632,27 @@ def build_what_to_protect(report_data: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------
 
 def build_if_nothing_changes(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Section 11: Looking Ahead.
+
+    This section replaces the older "If Nothing Changes" trajectory section.
+    Its job is not to add another interpretation layer. It gives the participant
+    a compact measurement roadmap: what looks likely to hold, what is most
+    sensitive to change, what behavioural tipping points to notice, and which
+    questions are worth carrying into the next measurement.
+    """
     data = report_data.get("if_nothing_changes") or {}
-    strengths = enrich_strengths(data.get("strengths_likely_to_deepen", []))
-    monitoring = enrich_monitoring(data.get("areas_worth_monitoring", []))
+    hold = enrich_hold_signals(data.get("strengths_likely_to_deepen", []))
+    sensitive = enrich_sensitive_signals(data.get("areas_worth_monitoring", []))
 
     return {
-        "title": "If Nothing Changes",
-        "subtitle": "Commonly observed patterns associated with similar benchmark profiles, not predictions or prescriptions.",
-        "summary": build_trajectory_summary(strengths, monitoring),
-        "likely_to_continue": narrative_block(report_data, "likely_to_continue", likely_to_continue_fallback(data)),
-        "strengths_likely_to_deepen": strengths,
-        "areas_worth_monitoring": monitoring,
-        "monitoring_intro": "These are not concerns or predictions. They are simply areas that are commonly worth observing among similar profiles as AI becomes more integrated into everyday life.",
-        "overall_outlook": narrative_block(report_data, "overall_outlook", overall_outlook_fallback(data)),
+        "title": "What Will Be Most Interesting to Measure Next Time",
+        "subtitle": "The signals that may tell the clearest story as your relationship with AI continues evolving.",
+        "signals_likely_to_hold": hold,
+        "signals_most_sensitive_to_change": sensitive,
+        "intro": narrative_block(report_data, "looking_ahead_intro", looking_ahead_intro_fallback(data)),
+        "tipping_points": narrative_block(report_data, "behavioural_tipping_points", behavioural_tipping_points_fallback()),
+        "measurement_questions": narrative_block(report_data, "measurement_questions", measurement_questions_fallback()),
     }
 
 
@@ -660,98 +668,110 @@ def trajectory_band(percentile):
     return "Lower"
 
 
-def build_trajectory_summary(strengths, monitoring):
-    """
-    Small scan-first summary for Section 10.
-
-    The renderer uses this before the narrative so the reader can immediately see
-    what is commonly observed, what may continue developing, and what is worth monitoring.
-    """
-    rows = []
-    seen = set()
-
-    for item in strengths or []:
-        key = item.get("key") or item.get("dimension") or item.get("label")
-        if key in seen:
-            continue
-        seen.add(key)
-        rows.append({
-            "label": item.get("label"),
-            "position": trajectory_band(item.get("percentile")),
-            "direction": "May continue developing",
-        })
-        if len(rows) >= 2:
-            break
-
-    for item in monitoring or []:
-        key = item.get("key") or item.get("dimension") or item.get("label")
-        if key in seen:
-            continue
-        seen.add(key)
-        rows.append({
-            "label": item.get("label"),
-            "position": trajectory_band(item.get("percentile")),
-            "direction": "Worth monitoring",
-        })
-        if len(rows) >= 4:
-            break
-
-    return rows
-
-
-def enrich_strengths(strengths):
-    out = []
-    for d in strengths or []:
-        dim = d.get("key") or d.get("dimension")
-        item = dict(d)
-        item["strength_deepening"] = STRENGTH_DEEPENING_COPY.get(dim, {})
-        item["research_summary"] = strength_research_summary(dim)
-        item["deepening_summary"] = strength_deepening_summary(dim)
-        out.append(item)
-    return out
-
-
-def enrich_monitoring(items):
+def enrich_hold_signals(items):
     out = []
     for d in items or []:
         dim = d.get("key") or d.get("dimension")
         item = dict(d)
-        item["monitoring"] = MONITORING_COPY.get(dim, {})
-        item["current_position"] = monitoring_position_sentence(dim, item.get("percentile"))
-        item["why_monitor"] = monitoring_research_summary(dim)
-        item["early_sign"] = monitoring_early_sign(dim)
+        item["hold_copy"] = hold_signal_copy(dim)
         out.append(item)
-    return out
+    return out[:3]
+
+
+def enrich_sensitive_signals(items):
+    out = []
+    for d in items or []:
+        dim = d.get("key") or d.get("dimension")
+        item = dict(d)
+        item["sensitive_copy"] = sensitive_signal_copy(dim)
+        out.append(item)
+    return out[:3]
+
+
+def hold_signal_copy(dim: str) -> str:
+    copy = {
+        "trust": "This currently appears to be part of the participant's settled working posture toward AI. It may change over time, but it is less likely to shift quickly unless accuracy experiences or verification habits change substantially.",
+        "decision_delegation": "This currently appears to reflect a relatively established boundary around how much decision authority AI is given. It may change, but the present pattern suggests the boundary is not simply accidental.",
+        "thought_partnership": "This currently appears to be an established part of how the participant develops ideas and works through complexity. It is likely to remain informative because it shapes the way AI enters the thinking process.",
+        "human_agency": "This currently appears to be one of the stabilising features of the profile: the participant experiences AI as something they direct rather than something that owns the decision process.",
+        "reliance": "This currently appears to be a defining part of the participant's working relationship with AI. It may not shift quickly because embedded tools often become part of the normal operating environment.",
+        "verification": "This currently appears to be part of the participant's checking rhythm. It may hold where accuracy remains important, but it is still worth comparing carefully at the next measurement.",
+        "emotional_regulation": "This currently appears to reflect a clear boundary around AI's role in emotional life. Where this boundary is strong, it can become one of the more stable features of the profile.",
+        "disclosure": "This currently appears to reflect a bounded approach to personal sharing with AI. It may remain stable where privacy habits and role boundaries are already clear.",
+        "social_transparency": "This currently appears to reflect a settled pattern around how visible AI use is to others. It may change as norms shift, but it is not usually the fastest-moving signal.",
+    }
+    return copy.get(dim, "This currently appears to be one of the more established features of the participant's relationship with AI. It may still evolve, but it is less likely to be the first signal to move.")
+
+
+def sensitive_signal_copy(dim: str) -> str:
+    copy = {
+        "verification": "Checking behaviour can become more selective as AI use becomes familiar, fast, and cognitively easy. Small changes here can meaningfully alter how much AI shapes thinking before accuracy is tested.",
+        "reliance": "Reliance can deepen quietly when AI becomes part of the default workflow. The important change is often not more use, but AI becoming harder to separate from ordinary thinking and work.",
+        "human_agency": "Agency is worth re-measuring because a strong identity-level sense of control can remain intact while smaller process-level shifts occur underneath it.",
+        "trust": "Trust can shift gradually when AI outputs repeatedly feel useful. The meaningful signal is whether confidence grows faster than the checking habits that keep it calibrated.",
+        "decision_delegation": "Decision delegation can change when AI moves from providing input to shaping options, recommendations, or next steps that are accepted with less friction.",
+        "thought_partnership": "Thought partnership can expand as AI moves earlier into idea formation, planning, and problem-solving. The key signal is whether AI becomes the starting point rather than the refinement stage.",
+        "emotional_regulation": "Emotional regulation can change when AI becomes an easy first place to process stress, uncertainty, or overload. Even small increases can alter the role AI plays in daily life.",
+        "disclosure": "Disclosure can shift as repeated use changes what feels normal to share. This signal is sensitive because privacy boundaries often move gradually rather than all at once.",
+        "social_transparency": "Social transparency can change as the gap widens or narrows between actual AI use and what other people can see. This often reflects changing norms as much as personal preference.",
+    }
+    return copy.get(dim, "This is one of the areas where repeated AI use can create gradual change. It is worth comparing at the next measurement because small habit shifts may become visible over time.")
+
+
+def looking_ahead_intro_fallback(data: Dict[str, Any]) -> str:
+    return (
+        "Your benchmark profile is a snapshot of your relationship with AI today, not a fixed description of who you are. "
+        "The value of measuring again is not simply seeing whether individual scores rise or fall. It is noticing whether the behavioural architecture described throughout this report remains broadly intact or begins to change in ways that would otherwise be easy to miss."
+    )
+
+
+def behavioural_tipping_points_fallback() -> str:
+    return (
+        "Earlier AI initiation: Notice whether AI becomes the first place you begin thinking rather than a place where you refine an existing view.\n\n"
+        "Reduced verification friction: Notice whether checking starts to feel less necessary, especially when outputs are fluent or familiar.\n\n"
+        "Expanding role boundaries: Notice whether AI begins entering parts of work, decision-making, or personal life where it previously played little role."
+    )
+
+
+def measurement_questions_fallback() -> str:
+    return (
+        "Do I still form my own view before turning to AI?\n"
+        "Has AI become part of more areas of everyday life than it was before?\n"
+        "Am I verifying important outputs as consistently as I used to?\n"
+        "Which of my current boundaries still feel clear?\n"
+        "What feels different about my relationship with AI that I might not have noticed without measuring it?"
+    )
+
+
+# Backwards-compatible helpers retained for any older report_data or imports.
+def build_trajectory_summary(strengths, monitoring):
+    rows = []
+    seen = set()
+    for item in (strengths or []) + (monitoring or []):
+        key = item.get("key") or item.get("dimension") or item.get("label")
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"label": item.get("label"), "position": trajectory_band(item.get("percentile")), "direction": "Worth re-measuring"})
+        if len(rows) >= 4:
+            break
+    return rows
+
+
+def enrich_strengths(strengths):
+    return enrich_hold_signals(strengths)
+
+
+def enrich_monitoring(items):
+    return enrich_sensitive_signals(items)
 
 
 def strength_research_summary(dim: str) -> str:
-    copy = {
-        "trust": "Among similar users, trust is often reinforced as AI becomes more familiar and useful, especially when outputs repeatedly feel helpful.",
-        "decision_delegation": "Decision support is often reinforced when AI is already involved in shaping options, recommendations, or next steps.",
-        "thought_partnership": "Among people who use AI as a thinking partner, idea development, challenge, and refinement often become a more natural part of the workflow.",
-        "human_agency": "People who maintain clear decision authority while using AI often reinforce that sense of authorship through repeated use.",
-        "reliance": "When AI is already embedded in a working rhythm, similar profiles often describe that support as increasingly normal and efficient.",
-        "verification": "Strong verification is often associated with a stable checking rhythm when accuracy remains important to the user.",
-        "emotional_regulation": "When AI is used for emotional processing, similar profiles often describe it as an available reflective space.",
-        "disclosure": "When disclosure to AI is already high, familiarity is often associated with personal expression feeling more normal in that setting.",
-        "social_transparency": "When people are already open about AI use, continued exposure is often associated with easier transparency.",
-    }
-    return copy.get(dim, "Research commonly associates this pattern with greater fluency when it is already part of a person's AI relationship.")
+    return hold_signal_copy(dim)
 
 
 def strength_deepening_summary(dim: str) -> str:
-    copy = {
-        "trust": "Smoother collaboration, faster acceptance of useful outputs, and a more settled sense of when AI is reliable.",
-        "decision_delegation": "More natural use of AI to shape options, compare choices, and move from analysis into action.",
-        "thought_partnership": "More fluent conversations, faster iteration, and deeper exploration of complex ideas.",
-        "human_agency": "Clearer values, sharper judgment calls, and stronger authorship of your decisions.",
-        "reliance": "AI feeling more integrated into ordinary tasks, planning, and thinking routines.",
-        "verification": "A more deliberate checking rhythm, especially when stakes or uncertainty are higher.",
-        "emotional_regulation": "More frequent use of AI as a space to organise feelings, stress, or uncertainty.",
-        "disclosure": "Greater ease sharing personal context, private thoughts, or unfinished reflections with AI.",
-        "social_transparency": "More comfort naming when and how AI contributed to your thinking or work.",
-    }
-    return copy.get(dim, "The behaviour becomes easier, more fluent, and more automatic within the existing pattern.")
+    return hold_signal_copy(dim)
 
 
 def monitoring_position_sentence(dim: str, percentile) -> str:
@@ -765,63 +785,30 @@ def monitoring_position_sentence(dim: str, percentile) -> str:
 
 
 def monitoring_research_summary(dim: str) -> str:
-    copy = {
-        "verification": "Verification is worth noticing because checking can become more selective when AI use becomes frequent or cognitively easy.",
-        "reliance": "Reliance is worth noticing because support that feels useful can gradually become part of the default workflow.",
-        "human_agency": "Agency is worth noticing because identity-level control often remains intact while small process-level shifts can still occur.",
-        "trust": "Trust is worth noticing because confidence can grow faster than checking behaviour, especially when errors are not immediately visible.",
-        "decision_delegation": "Decision delegation is worth noticing because repeated use can make AI-shaped options feel increasingly natural.",
-        "thought_partnership": "Thought partnership is worth noticing because deep cognitive use can become the default way ideas are developed.",
-        "emotional_regulation": "Emotional regulation is worth noticing because availability can make AI feel like an easy first place to process uncertainty or stress.",
-        "disclosure": "Disclosure is worth noticing because repeated personal sharing can shift what feels private or ordinary.",
-        "social_transparency": "Social transparency is worth noticing because actual AI use and visible AI use can drift apart.",
-    }
-    return copy.get(dim, "This area is worth noticing because it is one of the places AI behaviour can shift quietly with repeated use.")
+    return sensitive_signal_copy(dim)
 
 
 def monitoring_early_sign(dim: str) -> str:
     copy = {
-        "verification": "Noticing yourself checking less, or feeling relief when you skip it.",
-        "reliance": "Struggling to function without AI, or avoiding tasks that require independent thinking.",
-        "human_agency": "Realising AI's framing has become your first instinct before you form your own view.",
+        "verification": "Noticing checking becoming more selective or easier to skip.",
+        "reliance": "Noticing AI becoming harder to separate from ordinary workflow.",
+        "human_agency": "Noticing AI's framing appearing before your own first view is formed.",
         "trust": "Accepting AI outputs more quickly because they usually feel right.",
-        "decision_delegation": "Letting AI-shaped recommendations move directly into action without much second-guessing.",
+        "decision_delegation": "Letting AI-shaped recommendations move directly into action with less second-guessing.",
         "thought_partnership": "Finding it harder to develop a first position before consulting AI.",
         "emotional_regulation": "Turning to AI first when you feel stressed, uncertain, or overloaded.",
-        "disclosure": "Sharing more personal context with AI than you would have expected.",
+        "disclosure": "Sharing more personal context with AI than you would previously have expected.",
         "social_transparency": "Using AI more often than other people can see from the outside.",
     }
     return copy.get(dim, "Noticing the behaviour becoming more automatic than deliberate.")
 
 
 def likely_to_continue_fallback(data: Dict[str, Any]) -> str:
-    high = data.get("highest_dimension") or {}
-    if not high:
-        return (
-            "People with profiles like yours are often characterised by a relatively stable overall relationship with AI unless usage frequency changes significantly. "
-            "One commonly observed pattern is that the strongest behaviours continue to organise the rest of the profile. "
-            "What tends to remain stable is not only the behaviour itself, but the internal logic that makes the pattern feel coherent."
-        )
-
-    return (
-        "People with profiles like yours are often characterised by a relatively stable overall relationship with AI unless usage frequency changes significantly. "
-        f"One commonly observed pattern is the role of {high.get('label', 'your strongest dimension').lower()} as an organising feature in similar AI relationships. "
-        "When a behaviour already feels useful and coherent, it often remains part of the working rhythm because there is little friction pushing it to change. "
-        "What tends to remain stable is not just the behaviour, but the internal logic that makes it feel sufficient."
-    )
+    return looking_ahead_intro_fallback(data)
 
 
 def overall_outlook_fallback(data: Dict[str, Any]) -> str:
-    high = data.get("highest_dimension") or {}
-    monitor = data.get("monitoring_anchor") or {}
-
-    return (
-        "Overall, your profile is best read as a measured pattern with common associations, not a personal forecast or a problem to solve. "
-        f"{high.get('label', 'Your strongest dimension')} gives the report its main anchor, while {monitor.get('label', 'one area')} is commonly worth holding in view as usage evolves. "
-        "Research consistently shows that people's sense of identity remains remarkably stable, even as the way they think with AI gradually evolves. "
-        "What this report offers is not a prediction, but a clearer view of the pattern you have today. The next section turns that into the smaller shifts people with similar profiles often notice first."
-    )
-
+    return behavioural_tipping_points_fallback()
 
 # ---------------------------------------------------------------------
 # Section 11
