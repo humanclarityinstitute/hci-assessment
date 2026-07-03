@@ -289,9 +289,15 @@ def participant_meta(age="", country="", date=""):
 
 
 def opening_synthesis_html(text):
-    """Render Claude's opening synthesis as editorial prose with optional subheadings."""
+    """Render Claude's opening synthesis as editorial prose with optional subheadings.
+
+    Tolerates common Markdown artifacts from model output, including **Heading**
+    and ## Heading.
+    """
     if not text:
         return render_empty("No opening synthesis was available.")
+
+    import re
 
     raw = str(text).strip()
     blocks = [b.strip() for b in raw.split("\n\n") if b.strip()]
@@ -300,18 +306,28 @@ def opening_synthesis_html(text):
         lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
         if not lines:
             continue
+
         first = lines[0]
+        bold_match = re.match(r"^\*\*(.+?)\*\*\s*(.*)$", first)
+        if bold_match:
+            heading = bold_match.group(1).strip()
+            inline_body = bold_match.group(2).strip()
+            body = " ".join([inline_body] + lines[1:]).strip()
+            html += f'<h3>{esc(heading)}</h3>'
+            if body:
+                html += f'<p>{inline_text(body)}</p>'
+            continue
+
         clean_first = first.lstrip("#").strip().strip("*").strip()
         if (first.startswith("#") or (len(clean_first) <= 95 and len(lines) > 1 and not clean_first.endswith("."))):
             html += f'<h3>{esc(clean_first)}</h3>'
             body = " ".join(lines[1:]).strip()
             if body:
-                html += f'<p>{esc(body)}</p>'
+                html += f'<p>{inline_text(body)}</p>'
         else:
-            html += f'<p>{esc(" ".join(lines))}</p>'
+            html += f'<p>{inline_text(" ".join(lines))}</p>'
     html += '</div>'
     return html
-
 
 def dim_key(value):
     """Normalize a dimension label/key to a CSS/data key."""
@@ -629,21 +645,27 @@ def render_typicality(x):
 
 def render_rare(x):
     combos = x.get("combinations") or []
+
+    def rounded_rarity(value):
+        try:
+            return str(int(round(float(value))))
+        except Exception:
+            return esc(value)
+
     if not combos:
         body = f'<div class="evidence-callout"><p>{esc(x.get("fallback") or "No rare combination signal was available for this profile.")}</p></div>'
     else:
         body = '<div class="two-col">'
         for c in combos:
-            body += f'''
-            <article class="split-card">
-              <h3>{esc(c.get('label_1'))} + {esc(c.get('label_2'))}</h3>
-              <p class="muted">{esc(c.get('label_1'))}: {esc(safe_ordinal(c.get('percentile_1')))} %ile · {esc(c.get('label_2'))}: {esc(safe_ordinal(c.get('percentile_2')))} %ile</p>
-              <p class="rarity">Appears in roughly <strong>{esc(c.get('rarity_percent'))}%</strong> of participants.</p>
-              <p>{esc(c.get('research_signal'))}</p>
-            </article>'''
+            body += (
+                f'<article class="split-card">'
+                f'<h3>{esc(c.get("label_1"))} + {esc(c.get("label_2"))}</h3>'
+                f'<p class="rarity">Appears in roughly <strong>{rounded_rarity(c.get("rarity_percent"))}%</strong> of participants.</p>'
+                f'<p>{esc(c.get("research_signal"))}</p>'
+                f'</article>'
+            )
         body += '</div>'
     return f'<section class="page-section">{section_kicker("Combinations")}<h2>{esc(x.get("title") or "What Is Different About Your Pattern")}</h2>{body}<div class="narrative narrow">{paras(x.get("narrative"))}</div></section>'
-
 
 def render_story(x):
     return f'<section class="page-section story-section">{section_kicker("Interpretation")}<h2>{esc(x.get("title") or "Your Behaviour Story")}</h2><div class="narrative narrow">{paras(x.get("body")) or render_empty("No behaviour story was available.")}</div></section>'
@@ -760,11 +782,9 @@ def render_perception(x):
 
     def perception_scale(item):
         p = pct(item.get('actual_percentile'))
-        active_count = max(1, round(p / 5))
-        dots = ''.join(f'<span class="{"active" if i <= active_count else ""}"></span>' for i in range(1, 21))
         return (f'<div class="perception-scale" style="--perception-position:{p}%">'
                 f'<div class="perception-scale-label perception-scale-label-you">You<br><strong>{esc(safe_ordinal(p))} percentile</strong></div>'
-                f'<div class="perception-scale-track">{dots}<i></i></div>'
+                f'<div class="perception-scale-track"><i></i></div>'
                 '<div class="perception-scale-captions"><span>Lower<br>than most people</span><span>About average</span><span>Higher<br>than most people</span></div></div>')
 
     cards = []
@@ -1107,147 +1127,104 @@ def render_protect(x, report_data=None):
 
 
 def trajectory_card_percentile(item):
-    return f"{esc(safe_ordinal(item.get('percentile')))} percentile"
+    value = item.get('percentile')
+    if value in (None, ""):
+        return ""
+    return f"{esc(safe_ordinal(value))} percentile"
 
 
-def trajectory_research_text(item):
-    return (
-        item.get("research_summary")
-        or (item.get("strength_deepening") or {}).get("research")
-        or item.get("research_insight")
-        or "Research shows this pattern can become more fluent when it is already part of a person's AI relationship."
-    )
+def looking_ahead_signal_card(item, mode="hold"):
+    label = item.get("label") or labelize(item.get("dimension") or item.get("key"))
+    text = item.get("hold_copy") if mode == "hold" else item.get("sensitive_copy")
+    if not text:
+        text = (
+            "This signal appears to be one of the more established features of the current profile."
+            if mode == "hold"
+            else "This signal is worth comparing at the next measurement because it can shift gradually with repeated AI use."
+        )
+    percentile = trajectory_card_percentile(item)
+    key = item.get("dimension") or item.get("key") or label
+    percentile_html = f'<p class="trajectory-percentile">{percentile}</p>' if percentile else ''
+    return f'''
+      <article class="looking-ahead-card" style="--look-accent:{esc(dim_accent(key))};">
+        <h3>{esc(label)}</h3>
+        {percentile_html}
+        <p>{esc(text)}</p>
+      </article>'''
 
 
-def trajectory_deepening_text(item):
-    return (
-        item.get("deepening_summary")
-        or (item.get("strength_deepening") or {}).get("deepening")
-        or (item.get("strength_deepening") or {}).get("looks_like")
-        or "The behaviour becomes easier, more fluent, and more automatic within the existing pattern."
-    )
+def render_tipping_points(text):
+    raw = str(text or "").strip()
+    if not raw:
+        return render_empty("No behavioural tipping points were available.")
+    blocks = [b.strip() for b in raw.split("\n\n") if b.strip()]
+    html = '<div class="tipping-point-list">'
+    for block in blocks:
+        if ':' in block:
+            title, body = block.split(':', 1)
+            html += f'<article class="tipping-point"><h3>{esc(title.strip())}</h3><p>{inline_text(body.strip())}</p></article>'
+        else:
+            html += f'<article class="tipping-point"><p>{inline_text(block)}</p></article>'
+    return html + '</div>'
 
 
-def trajectory_monitor_text(item):
-    return (
-        item.get("why_monitor")
-        or (item.get("monitoring") or {}).get("research")
-        or item.get("research_insight")
-        or "This area is worth noticing because it is one of the places AI behaviour can shift quietly with repeated use."
-    )
-
-
-def trajectory_monitor_position(item):
-    return (
-        item.get("current_position")
-        or item.get("positioning")
-        or position_without_percentile(item)
-        or "This dimension is part of your current benchmark profile."
-    )
-
-
-def trajectory_monitor_early_sign(item):
-    return (
-        item.get("early_sign")
-        or (item.get("monitoring") or {}).get("early_sign")
-        or "Noticing the behaviour becoming more automatic than deliberate."
-    )
+def render_measurement_questions(text):
+    raw = str(text or "").strip()
+    if not raw:
+        return render_empty("No measurement questions were available.")
+    lines = []
+    for line in raw.replace("\r", "").split("\n"):
+        clean = line.strip().lstrip("-•0123456789. ").strip()
+        if clean:
+            lines.append(clean)
+    if not lines:
+        return paras(raw)
+    return '<ol class="measurement-question-list">' + ''.join(f'<li>{inline_text(q)}</li>' for q in lines[:6]) + '</ol>'
 
 
 def render_trajectory(x):
-    summary_rows = "".join(
-        f'''
-        <div class="trajectory-summary-row">
-          <span>{esc(r.get('label'))}</span>
-          <strong>{esc(r.get('position'))}</strong>
-          <em>{esc(r.get('direction'))}</em>
-        </div>'''
-        for r in x.get("summary", [])
+    hold_cards = "".join(
+        looking_ahead_signal_card(d, "hold")
+        for d in x.get("signals_likely_to_hold", [])
+    )
+    sensitive_cards = "".join(
+        looking_ahead_signal_card(d, "sensitive")
+        for d in x.get("signals_most_sensitive_to_change", [])
     )
 
-    summary = f'''
-      <article class="trajectory-summary">
-        <h3>At a glance</h3>
-        <div class="trajectory-summary-row trajectory-summary-head">
-          <span>Pattern</span>
-          <strong>Current position</strong>
-          <em>Common association</em>
-        </div>
-        {summary_rows or '<p class="muted">No trajectory summary was available.</p>'}
-      </article>'''
-
-    strengths = ""
-    for d in x.get("strengths_likely_to_deepen", []):
-        strengths += f'''
-        <article class="trajectory-card strength-card">
-          <div class="card-topline">May continue developing</div>
-          <h3>{esc(d.get("label"))}</h3>
-          <p class="trajectory-percentile">{trajectory_card_percentile(d)}</p>
-
-          <div class="trajectory-divider"></div>
-
-          <h4>What research shows</h4>
-          <p>{esc(trajectory_research_text(d))}</p>
-
-          <div class="trajectory-divider"></div>
-
-          <h4>What this commonly looks like</h4>
-          <p>{esc(trajectory_deepening_text(d))}</p>
-        </article>'''
-
-    monitors = ""
-    for d in x.get("areas_worth_monitoring", []):
-        monitors += f'''
-        <article class="trajectory-card monitor-card">
-          <div class="card-topline">Area worth monitoring</div>
-          <h3>{esc(d.get("label"))}</h3>
-          <p class="trajectory-percentile">{trajectory_card_percentile(d)}</p>
-
-          <div class="trajectory-divider"></div>
-
-          <h4>Current position</h4>
-          <p>{esc(trajectory_monitor_position(d))}</p>
-
-          <div class="trajectory-divider"></div>
-
-          <h4>Worth noticing</h4>
-          <p>{esc(trajectory_monitor_text(d))}</p>
-
-          <div class="trajectory-divider"></div>
-
-          <h4>What people often notice first</h4>
-          <p>{esc(trajectory_monitor_early_sign(d))}</p>
-        </article>'''
-
     return f'''
-    <section class="page-section trajectory-section">
-      {section_kicker('Trajectory')}
-      <h2>{esc(x.get('title') or 'If Nothing Changes')}</h2>
-      <p class="section-intro compact">{esc(x.get('subtitle') or 'Commonly observed patterns associated with similar benchmark profiles, not predictions or prescriptions.')}</p>
+    <section class="page-section trajectory-section looking-ahead-section">
+      {section_kicker('Looking ahead')}
+      <h2>{esc(x.get('title') or 'What Will Be Most Interesting to Measure Next Time')}</h2>
+      <p class="section-intro compact">{esc(x.get('subtitle') or 'The signals that may tell the clearest story as your relationship with AI continues evolving.')}</p>
 
-      {summary}
-
-      <article class="trajectory-narrative-block">
-        <h3>Commonly observed</h3>
-        <div class="narrative narrow">{paras(x.get('likely_to_continue'))}</div>
+      <article class="looking-ahead-intro narrative narrow">
+        {paras(x.get('intro')) or render_empty('No looking-ahead introduction was available.')}
       </article>
 
-      <div class="trajectory-subsection">
-        <h3>Strengths That May Continue Developing</h3>
-        <p class="trajectory-note">Among similar profiles, these strengths are often reinforced through continued use. This is an association, not a prediction about your individual future.</p>
-        <div class="trajectory-grid">{strengths or render_empty('No strengths were available for this section.')}</div>
+      <div class="trajectory-subsection looking-ahead-subsection">
+        <h3>Signals Likely to Hold</h3>
+        <p class="trajectory-note">These dimensions appear to reflect relatively established aspects of the current AI relationship. They may still evolve, but they are less likely to be the first signals to move quickly.</p>
+        <div class="looking-ahead-grid">{hold_cards or render_empty('No hold signals were available for this section.')}</div>
       </div>
 
-      <div class="trajectory-subsection">
-        <h3>Areas worth monitoring</h3>
-        <p class="trajectory-note">{esc(x.get('monitoring_intro') or 'These are not concerns or predictions. They are simply areas that are commonly worth observing among similar profiles as AI becomes more integrated into everyday life.')}</p>
-        <div class="trajectory-grid">{monitors or render_empty('No monitoring areas were available for this section.')}</div>
+      <div class="trajectory-subsection looking-ahead-subsection">
+        <h3>Signals Most Sensitive to Change</h3>
+        <p class="trajectory-note">These dimensions often become informative as AI use becomes more familiar, embedded, or automatic. They are not warnings; they are the places where gradual change is most worth noticing.</p>
+        <div class="looking-ahead-grid">{sensitive_cards or render_empty('No sensitive signals were available for this section.')}</div>
       </div>
 
-      <article class="trajectory-narrative-block outlook">
-        <h3>Overall outlook</h3>
-        <div class="narrative narrow">{paras(x.get('overall_outlook'))}</div>
-      </article>
+      <div class="trajectory-subsection looking-ahead-subsection">
+        <h3>Behavioural Tipping Points</h3>
+        <p class="trajectory-note">Relationships with AI rarely change through one large event. More often, small shifts accumulate until the overall pattern begins to take a different shape.</p>
+        {render_tipping_points(x.get('tipping_points'))}
+      </div>
+
+      <div class="trajectory-subsection looking-ahead-subsection questions-next">
+        <h3>Questions for Your Next Measurement</h3>
+        <p class="trajectory-note">The most useful comparison next time may not be the numbers alone, but the habits sitting behind those numbers.</p>
+        {render_measurement_questions(x.get('measurement_questions'))}
+      </div>
     </section>'''
 
 
@@ -1305,13 +1282,66 @@ def render_closing_reflection(x):
     </section>'''
 
 
-def render_deep_dive(x):
-    return f'''<section class="page-section dimension-deep-dives">{section_kicker("Dimension reference")}
-      <h2>{esc(x.get("title") or "Dimension Deep Dives")}</h2>
-      <p class="section-intro compact">{esc(x.get("subtitle") or "A closer look at each behavioural dimension in your benchmark profile.")}</p>
-      <div class="narrative narrow dimension-deep-dive-body">{paras(x.get("body"))}</div>
-    </section>'''
+def dimension_reference_body(text):
+    """Render Dimension Reference text while cleaning Markdown artifacts."""
+    if not text:
+        return render_empty("No dimension reference was available.")
 
+    raw = str(text).strip()
+    known_headings = {
+        "reliance", "trust", "verification", "decision delegation", "human agency",
+        "emotional regulation", "disclosure", "thought partnership", "social transparency"
+    }
+
+    html = ''
+    current_paras = []
+
+    def flush_paras():
+        nonlocal html, current_paras
+        if current_paras:
+            html += ''.join(f'<p>{inline_text(p)}</p>' for p in current_paras if p.strip())
+            current_paras = []
+
+    for block in [b.strip() for b in raw.split("\n\n") if b.strip()]:
+        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+        if not lines:
+            continue
+        lines = [ln for ln in lines if ln.strip() not in {"---", "–––", "—", "***"}]
+        if not lines:
+            continue
+
+        first = lines[0].lstrip("#").strip().strip("*").strip()
+        is_heading = (
+            lines[0].startswith("#") or
+            (
+                len(lines) > 1 and
+                len(first) <= 60 and
+                not first.endswith(('.', ':', '?', '!')) and
+                (first.lower() in known_headings or len(first.split()) <= 4)
+            )
+        )
+
+        if is_heading:
+            flush_paras()
+            html += f'<h3>{esc(first)}</h3>'
+            body = " ".join(lines[1:]).strip()
+            if body:
+                current_paras.append(body)
+        else:
+            current_paras.append(" ".join(lines).strip())
+
+    flush_paras()
+    return html
+
+
+def render_deep_dive(x):
+    return (
+        f'<section class="page-section dimension-deep-dives">{section_kicker("Dimension reference")}'
+        f'<h2>{esc(x.get("title") or "Dimension Deep Dives")}</h2>'
+        f'<p class="section-intro compact">{esc(x.get("subtitle") or "A closer look at each behavioural dimension in your benchmark profile.")}</p>'
+        f'<div class="narrative narrow dimension-deep-dive-body">{dimension_reference_body(x.get("body"))}</div>'
+        f'</section>'
+    )
 
 def render_quality(report_data):
     warnings = (report_data.get("data_quality") or {}).get("warnings") or []
@@ -1434,6 +1464,19 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .trajectory-card p{font-size:15px;line-height:1.58;color:#344054;margin:0}
 .trajectory-narrative-block.outlook{background:var(--cream);border-left:3px solid var(--accent);padding:24px 28px;margin-top:44px}
 .trajectory-narrative-block.outlook h3{font-size:26px}
+.looking-ahead-section .looking-ahead-intro{margin:24px 0 30px}
+.looking-ahead-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;max-width:1040px}
+.looking-ahead-card{background:#fff;border:1px solid var(--line);border-top:3px solid var(--look-accent);padding:22px 22px 24px;break-inside:avoid;page-break-inside:avoid;box-shadow:0 1px 0 rgba(16,24,40,.04)}
+.looking-ahead-card h3{font-family:Georgia,"Times New Roman",serif;font-size:24px;font-weight:500;margin:0 0 6px;color:#111827}
+.looking-ahead-card p{font-size:15px;line-height:1.58;color:#344054;margin:0}
+.tipping-point-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;max-width:1040px}
+.tipping-point{background:var(--cream);border:1px solid var(--line);padding:20px 22px;break-inside:avoid;page-break-inside:avoid}
+.tipping-point h3{font-family:Georgia,"Times New Roman",serif;font-size:22px;font-weight:500;margin:0 0 8px;color:#111827}
+.tipping-point p{font-size:15px;line-height:1.58;color:#344054;margin:0}
+.measurement-question-list{max-width:900px;background:#fff;border:1px solid var(--line);padding:18px 28px 18px 46px;margin:0}
+.measurement-question-list li{font-size:16px;line-height:1.55;color:#253044;margin:8px 0;padding-left:4px}
+@media(max-width:900px){.looking-ahead-grid,.tipping-point-list{grid-template-columns:1fr}}
+
 
 .dimension-deep-dives{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:42px 0}.dimension-deep-dives .dimension-deep-dive-body p{font-size:16px;line-height:1.62;color:#253044}.quality{background:#fff7ed;border:1px solid #fed7aa;padding:20px}.report-footer{border-top:1px solid var(--line);padding-top:24px;color:var(--muted);font-size:13px}
 
@@ -1934,7 +1977,7 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 
 
 /* Section 8 — Perception Gap rebuilt: perception vs measured pattern */
-.hci-report .perception-section{padding-top:72px}.hci-report .perception-explainer{max-width:860px;margin-top:18px;color:#253044}.hci-report .perception-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;max-width:1160px;margin-top:34px}.hci-report .perception-card{background:#fff;border:1px solid var(--line);box-shadow:0 12px 30px rgba(16,24,40,.04);padding:28px 28px 30px;min-height:520px;display:flex;flex-direction:column}.hci-report .perception-card-head{display:flex;gap:16px;align-items:flex-start}.hci-report .perception-number{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:800;font-size:15px;box-shadow:0 8px 18px rgba(0,94,112,.18)}.hci-report .perception-card-head h3{margin:2px 0 7px;font-size:22px;color:#101828;letter-spacing:-.01em}.hci-report .perception-card-head p{margin:0;font-size:15px;line-height:1.45;color:#253044}.hci-report .perception-divider{height:1px;background:var(--line);margin:24px 0 22px}.hci-report .perception-block{padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid rgba(208,213,221,.75)}.hci-report .perception-block span,.hci-report .perception-interpretation span{display:block;font-size:11px;line-height:1.2;letter-spacing:.13em;text-transform:uppercase;color:#005e70;font-weight:900;margin-bottom:10px}.hci-report .perception-self-view strong{display:block;background:#fbfaf7;border:1px solid var(--line);border-radius:8px;padding:15px 16px;font-size:16px;line-height:1.35;color:#101828}.hci-report .perception-measured-view p{margin:0 0 18px;font-size:14px;line-height:1.55;color:#253044}.hci-report .perception-measured-view > strong{display:block;margin-top:16px;font-size:16px;color:#101828}.hci-report .perception-scale{position:relative;padding-top:32px;margin-top:4px}.hci-report .perception-scale-label-you{position:absolute;left:var(--perception-position);top:0;transform:translateX(-50%);font-size:12px;line-height:1.15;color:#005e70;text-align:center;font-weight:800;white-space:nowrap}.hci-report .perception-scale-label-you strong{font-size:12px;color:#253044;font-weight:700}.hci-report .perception-scale-track{position:relative;display:flex;align-items:center;justify-content:space-between;height:28px}.hci-report .perception-scale-track:before{content:"";position:absolute;left:0;right:0;top:50%;height:3px;background:#d0d5dd;border-radius:999px;transform:translateY(-50%)}.hci-report .perception-scale-track span{position:relative;z-index:1;width:7px;height:7px;border-radius:50%;background:#d0d5dd}.hci-report .perception-scale-track span.active{background:#0f7d87}.hci-report .perception-scale-track i{position:absolute;z-index:3;left:var(--perception-position);top:50%;width:24px;height:24px;border-radius:50%;background:#0f7d87;border:3px solid #fff;box-shadow:0 4px 14px rgba(0,94,112,.28);transform:translate(-50%,-50%)}.hci-report .perception-scale-captions{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:12px;line-height:1.35;color:#475467}.hci-report .perception-scale-captions span:nth-child(2){text-align:center}.hci-report .perception-scale-captions span:nth-child(3){text-align:right}.hci-report .perception-interpretation{margin-top:auto;padding-top:4px}.hci-report .perception-interpretation p{margin:0;font-size:15px;line-height:1.55;color:#101828}.hci-report .perception-footnote{max-width:980px;margin:24px 0 0;padding-left:22px;border-left:3px solid rgba(0,94,112,.28);font-size:13px;line-height:1.55;color:#667085}.hci-report .perception-narrative-block{margin-top:58px}.hci-report .perception-narrative-block h3{margin:0 0 18px;font-size:22px;color:#101828}@media(max-width:1000px){.hci-report .perception-grid{grid-template-columns:1fr}.hci-report .perception-card{min-height:0}}
+.hci-report .perception-section{padding-top:72px}.hci-report .perception-explainer{max-width:860px;margin-top:18px;color:#253044}.hci-report .perception-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;max-width:1160px;margin-top:34px}.hci-report .perception-card{background:#fff;border:1px solid var(--line);box-shadow:0 12px 30px rgba(16,24,40,.04);padding:28px 28px 30px;min-height:520px;display:flex;flex-direction:column}.hci-report .perception-card-head{display:flex;gap:16px;align-items:flex-start}.hci-report .perception-number{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:800;font-size:15px;box-shadow:0 8px 18px rgba(0,94,112,.18)}.hci-report .perception-card-head h3{margin:2px 0 7px;font-size:22px;color:#101828;letter-spacing:-.01em}.hci-report .perception-card-head p{margin:0;font-size:15px;line-height:1.45;color:#253044}.hci-report .perception-divider{height:1px;background:var(--line);margin:24px 0 22px}.hci-report .perception-block{padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid rgba(208,213,221,.75)}.hci-report .perception-block span,.hci-report .perception-interpretation span{display:block;font-size:11px;line-height:1.2;letter-spacing:.13em;text-transform:uppercase;color:#005e70;font-weight:900;margin-bottom:10px}.hci-report .perception-self-view strong{display:block;background:#fbfaf7;border:1px solid var(--line);border-radius:8px;padding:15px 16px;font-size:16px;line-height:1.35;color:#101828}.hci-report .perception-measured-view p{margin:0 0 18px;font-size:14px;line-height:1.55;color:#253044}.hci-report .perception-measured-view > strong{display:block;margin-top:16px;font-size:16px;color:#101828}.hci-report .perception-scale{position:relative;padding-top:32px;margin-top:4px}.hci-report .perception-scale-label-you{position:absolute;left:var(--perception-position);top:0;transform:translateX(-50%);font-size:12px;line-height:1.15;color:#005e70;text-align:center;font-weight:800;white-space:nowrap}.hci-report .perception-scale-label-you strong{font-size:12px;color:#253044;font-weight:700}.hci-report .perception-scale-track{position:relative;display:flex;align-items:center;justify-content:space-between;height:28px}.hci-report .perception-scale-track:before{content:"";position:absolute;left:0;right:0;top:50%;height:3px;background:#d0d5dd;border-radius:999px;transform:translateY(-50%)}.hci-report .perception-scale-track span{display:none}.hci-report .perception-scale-track span.active{display:none}.hci-report .perception-scale-track i{position:absolute;z-index:3;left:var(--perception-position);top:50%;width:24px;height:24px;border-radius:50%;background:#0f7d87;border:3px solid #fff;box-shadow:0 4px 14px rgba(0,94,112,.28);transform:translate(-50%,-50%)}.hci-report .perception-scale-captions{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:12px;line-height:1.35;color:#475467}.hci-report .perception-scale-captions span:nth-child(2){text-align:center}.hci-report .perception-scale-captions span:nth-child(3){text-align:right}.hci-report .perception-interpretation{margin-top:auto;padding-top:4px}.hci-report .perception-interpretation p{margin:0;font-size:15px;line-height:1.55;color:#101828}.hci-report .perception-footnote{max-width:980px;margin:24px 0 0;padding-left:22px;border-left:3px solid rgba(0,94,112,.28);font-size:13px;line-height:1.55;color:#667085}.hci-report .perception-narrative-block{margin-top:58px}.hci-report .perception-narrative-block h3{margin:0 0 18px;font-size:22px;color:#101828}@media(max-width:1000px){.hci-report .perception-grid{grid-template-columns:1fr}.hci-report .perception-card{min-height:0}}
 
 /* Distinctive responses V2 */
 .hci-report .distinctive-explainer{font-size:15px;line-height:1.55;margin-bottom:24px;max-width:860px}
