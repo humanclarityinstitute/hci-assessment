@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 from typing import Any, Dict, List
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import time
@@ -55,34 +54,40 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
         "calls": {},
     }
 
-    # Run the first three calls in parallel because they are independent.
-    # Then run Human Capital and Deep Dive after the first three so they can
-    # use earlier narrative_blocks as context.
-    parallel_calls = [
-        ("profile_narrative", generate_profile_narrative),
-        ("distinctive_and_perception", generate_distinctive_and_perception_narrative),
-        ("trajectory", generate_trajectory_narrative),
-    ]
+    # Run all calls sequentially for stability and predictability.
+    # Each call can optionally use narrative_blocks from prior calls as context.
+    
+    # Call 1: Profile Narrative
+    try:
+        blocks = generate_profile_narrative(report_data, api_key)
+        report_data["narrative_blocks"].update(blocks)
+        status["calls"]["profile_narrative"] = "success"
+    except Exception as e:
+        print(f"[CLAUDE] profile_narrative failed: {e}")
+        traceback.print_exc()
+        status["calls"]["profile_narrative"] = f"failed: {str(e)}"
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        future_map = {
-            executor.submit(fn, report_data, api_key): name
-            for name, fn in parallel_calls
-        }
+    # Call 2: Distinctive and Perception Narrative
+    try:
+        blocks = generate_distinctive_and_perception_narrative(report_data, api_key)
+        report_data["narrative_blocks"].update(blocks)
+        status["calls"]["distinctive_and_perception"] = "success"
+    except Exception as e:
+        print(f"[CLAUDE] distinctive_and_perception failed: {e}")
+        traceback.print_exc()
+        status["calls"]["distinctive_and_perception"] = f"failed: {str(e)}"
 
-        for future in as_completed(future_map):
-            name = future_map[future]
-            try:
-                blocks = future.result()
-                report_data["narrative_blocks"].update(blocks)
-                status["calls"][name] = "success"
-            except Exception as e:
-                print(f"[CLAUDE] {name} failed: {e}")
-                traceback.print_exc()
-                status["calls"][name] = f"failed: {str(e)}"
+    # Call 3: Trajectory Narrative
+    try:
+        blocks = generate_trajectory_narrative(report_data, api_key)
+        report_data["narrative_blocks"].update(blocks)
+        status["calls"]["trajectory"] = "success"
+    except Exception as e:
+        print(f"[CLAUDE] trajectory failed: {e}")
+        traceback.print_exc()
+        status["calls"]["trajectory"] = f"failed: {str(e)}"
 
-    # Human Capital runs after the first three so it can translate the
-    # participant's established pattern into human capabilities.
+    # Call 4: Human Capital Narrative
     try:
         blocks = generate_human_capital_narrative(report_data, api_key)
         report_data["narrative_blocks"].update(blocks)
@@ -92,7 +97,7 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
         traceback.print_exc()
         status["calls"]["human_capital"] = f"failed: {str(e)}"
 
-    # Deep Dive runs after the synthesis calls so it can use earlier narrative_blocks as context.
+    # Call 5: Deep Dive Narrative
     try:
         blocks = generate_deep_dive_narrative(report_data, api_key)
         report_data["narrative_blocks"].update(blocks)
@@ -102,8 +107,7 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
         traceback.print_exc()
         status["calls"]["deep_dive"] = f"failed: {str(e)}"
 
-    # Closing Reflection runs last because it distils the completed report into
-    # one enduring question and one final perspective.
+    # Call 6: Closing Reflection Narrative
     try:
         blocks = generate_closing_reflection_narrative(report_data, api_key)
         report_data["narrative_blocks"].update(blocks)
@@ -135,9 +139,6 @@ def compact_context(context: Any, max_chars: int = 26000) -> str:
 # ---------------------------------------------------------------------
 
 def generate_profile_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    print(f"[CLAUDE] Starting profile_narrative...")
-    start = time.time()
-    
     context = {
         "opening": build_context_for_claude_section(report_data, "opening"),
         "rare_combinations": build_context_for_claude_section(report_data, "rare_combinations"),
@@ -280,11 +281,7 @@ Use only this context:
         },
     }
 
-    blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] profile_narrative completed in {elapsed:.1f}s")
-    return blocks
+    return call_claude_structured(api_key, prompt, schema)
 
 
 
@@ -358,9 +355,6 @@ def build_compact_distinctive_perception_context(report_data: Dict[str, Any]) ->
 # ---------------------------------------------------------------------
 
 def generate_distinctive_and_perception_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    print(f"[CLAUDE] Starting distinctive_and_perception_narrative...")
-    start = time.time()
-    
     context = build_compact_distinctive_perception_context(report_data)
 
     prompt = f"""
@@ -432,11 +426,7 @@ Use only this compact context:
         },
     }
 
-    blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] distinctive_and_perception_narrative completed in {elapsed:.1f}s")
-    return blocks
+    return call_claude_structured(api_key, prompt, schema)
 
 
 # ---------------------------------------------------------------------
@@ -444,9 +434,6 @@ Use only this compact context:
 # ---------------------------------------------------------------------
 
 def generate_trajectory_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    print(f"[CLAUDE] Starting trajectory_narrative...")
-    start = time.time()
-    
     context = build_context_for_claude_section(report_data, "trajectory")
 
     prompt = f"""
@@ -544,11 +531,7 @@ Use only this context:
         },
     }
 
-    blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] trajectory_narrative completed in {elapsed:.1f}s")
-    return blocks
+    return call_claude_structured(api_key, prompt, schema)
 
 
 
@@ -557,9 +540,6 @@ Use only this context:
 # ---------------------------------------------------------------------
 
 def generate_human_capital_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, Any]:
-    print(f"[CLAUDE] Starting human_capital_narrative...")
-    start = time.time()
-    
     context = build_context_for_claude_section(report_data, "human_capital")
 
     prompt = f"""
@@ -711,9 +691,6 @@ Use only this context:
     blocks = call_claude_structured(api_key, prompt, schema)
     if isinstance(blocks, dict) and "human_capital_closing" in blocks and "closing" not in blocks:
         blocks["closing"] = blocks.get("human_capital_closing")
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] human_capital_narrative completed in {elapsed:.1f}s")
     return {"human_capital": blocks}
 
 
@@ -723,9 +700,6 @@ Use only this context:
 # ---------------------------------------------------------------------
 
 def generate_deep_dive_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    print(f"[CLAUDE] Starting deep_dive_narrative...")
-    start = time.time()
-    
     context = build_context_for_claude_section(report_data, "deep_dive")
 
     prompt = f"""
@@ -801,11 +775,7 @@ Use only this context:
         },
     }
 
-    blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] deep_dive_narrative completed in {elapsed:.1f}s")
-    return blocks
+    return call_claude_structured(api_key, prompt, schema)
 
 
 
@@ -911,9 +881,6 @@ def build_closing_reflection_context(report_data: Dict[str, Any]) -> Dict[str, A
 
 
 def generate_closing_reflection_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, Any]:
-    print(f"[CLAUDE] Starting closing_reflection_narrative...")
-    start = time.time()
-    
     context = build_context_for_claude_section(report_data, "closing_reflection")
 
     prompt = f"""
@@ -1015,9 +982,6 @@ Use only this completed-report context:
     }
 
     blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] closing_reflection_narrative completed in {elapsed:.1f}s")
     return {"closing_reflection": blocks}
 
 
@@ -1056,9 +1020,6 @@ def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict
         ],
     }
 
-    print(f"[CLAUDE-API] Starting request: model={CLAUDE_MODEL}, properties={list(properties.keys())}")
-    start_time = time.time()
-
     req = urllib.request.Request(
         ANTHROPIC_URL,
         data=json.dumps(payload).encode("utf-8"),
@@ -1073,15 +1034,8 @@ def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict
     try:
         with urllib.request.urlopen(req, timeout=90) as response:
             raw = json.loads(response.read().decode("utf-8"))
-            elapsed = time.time() - start_time
-            
-            tokens_in = raw.get("usage", {}).get("input_tokens", "?")
-            tokens_out = raw.get("usage", {}).get("output_tokens", "?")
-            print(f"[CLAUDE-API] Response received in {elapsed:.1f}s | tokens: {tokens_in}→{tokens_out}")
     except urllib.error.HTTPError as e:
-        elapsed = time.time() - start_time
         body = e.read().decode("utf-8", errors="replace")
-        print(f"[CLAUDE-API] FAILED after {elapsed:.1f}s | HTTP {e.code}: {body[:500]}")
         raise RuntimeError(f"Anthropic HTTP {e.code}: {body[:500]}")
 
     for block in raw.get("content", []):
