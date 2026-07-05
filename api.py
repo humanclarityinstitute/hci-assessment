@@ -955,7 +955,7 @@ def premium():
                     pdf_url = upload_report_pdf(session_id, pdf_bytes)
                     print(f'PDF generated and uploaded for session {session_id}')
                 else:
-                    print('PDF generation returned None')
+                    print(f'PDF generated but upload failed for session {session_id}')
             except Exception as e:
                 print(f'PDF generation/upload failed non-fatally: {e}')
                 traceback.print_exc()
