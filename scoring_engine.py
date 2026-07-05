@@ -806,7 +806,117 @@ class ScoringEngine:
         # Sort so true rare appears before notable, then by rarity/distinctiveness.
         rank = {'true_rare': 0, 'notable': 1}
         combos.sort(key=lambda x: (rank.get(x.get('combo_classification'), 9), x.get('rarity_percent', 99), -x.get('distinctiveness_score', 0)))
-        return combos[:2]
+
+        if combos:
+            return combos[:2]
+
+        return self._build_distinctive_dimension_relationships(scored)
+
+    def _build_distinctive_dimension_relationships(self, scored):
+        """
+        Build Section 4 fallback relationships when no true rare/notable pair qualifies.
+
+        These are not labelled as statistically rare. They identify the strongest
+        relationship or contrast in the participant's profile so the section can
+        still explain what is behaviourally distinctive about the score pattern.
+        """
+        candidates = []
+
+        for rule in COMBINATION_RULES:
+            dim1, dim2 = rule['dims']
+            if dim1 not in scored or dim2 not in scored:
+                continue
+
+            p1 = scored[dim1]
+            p2 = scored[dim2]
+            band1 = self._soft_band(p1)
+            band2 = self._soft_band(p2)
+
+            # Prefer relationships where at least one dimension sits outside the
+            # broad centre, or where the pair has a meaningful internal contrast.
+            if band1 == 'mid' and band2 == 'mid' and abs(p1 - p2) < 25:
+                continue
+
+            distance_score = abs(p1 - 50) + abs(p2 - 50)
+            contrast_score = abs(p1 - p2)
+            if band1 != band2:
+                distance_score += contrast_score * 0.35
+            else:
+                distance_score += min(p1, p2, 100 - p1, 100 - p2) * 0.1
+
+            candidates.append({
+                'combo': [dim1, dim2],
+                'percentiles': [int(round(p1)), int(round(p2))],
+                'dimension_1': dim1,
+                'dimension_2': dim2,
+                'percentile_dim1': int(round(p1)),
+                'percentile_dim2': int(round(p2)),
+                'band_dim1': band1,
+                'band_dim2': band2,
+                'description': self._describe_distinctive_relationship(dim1, dim2, p1, p2, rule),
+                'combination_id': f"distinctive_{rule['id']}",
+                'signal_type': rule.get('signal_type'),
+                'is_distinctive': True,
+                'combo_classification': 'distinctive_relationship',
+                'rarity_percent': 25.0,
+                'frequency_pct': 25.0,
+                'distinctiveness_score': round(distance_score, 2),
+            })
+
+        if not candidates:
+            ranked = sorted(scored.items(), key=lambda item: item[1], reverse=True)
+            if len(ranked) < 2:
+                return []
+            high_dim, high_pct = ranked[0]
+            low_dim, low_pct = ranked[-1]
+            candidates.append({
+                'combo': [high_dim, low_dim],
+                'percentiles': [int(round(high_pct)), int(round(low_pct))],
+                'dimension_1': high_dim,
+                'dimension_2': low_dim,
+                'percentile_dim1': int(round(high_pct)),
+                'percentile_dim2': int(round(low_pct)),
+                'band_dim1': self._soft_band(high_pct),
+                'band_dim2': self._soft_band(low_pct),
+                'description': self._describe_distinctive_relationship(high_dim, low_dim, high_pct, low_pct),
+                'combination_id': 'distinctive_profile_contrast',
+                'signal_type': 'profile_contrast',
+                'is_distinctive': True,
+                'combo_classification': 'distinctive_relationship',
+                'rarity_percent': 25.0,
+                'frequency_pct': 25.0,
+                'distinctiveness_score': round(abs(high_pct - 50) + abs(low_pct - 50) + abs(high_pct - low_pct) * 0.35, 2),
+            })
+
+        candidates.sort(key=lambda x: -x.get('distinctiveness_score', 0))
+        return candidates[:2]
+
+    def _soft_band(self, percentile):
+        try:
+            p = float(percentile)
+        except Exception:
+            return 'mid'
+        if p >= 65:
+            return 'high'
+        if p <= 35:
+            return 'low'
+        return 'mid'
+
+    def _describe_distinctive_relationship(self, dim1, dim2, p1, p2, rule=None):
+        label1 = DIMENSION_LABELS.get(dim1, dim1.replace('_', ' ').title())
+        label2 = DIMENSION_LABELS.get(dim2, dim2.replace('_', ' ').title())
+
+        if p1 >= 65 and p2 >= 65:
+            return f"{label1} + {label2}"
+        if p1 <= 35 and p2 <= 35:
+            return f"Lower {label1} + Lower {label2}"
+        if abs(p1 - p2) >= 20:
+            if p1 > p2:
+                return f"Higher {label1} + Lower {label2}"
+            return f"Higher {label2} + Lower {label1}"
+        if rule and rule.get('description'):
+            return rule['description']
+        return f"{label1} + {label2}"
 
     def _matches_band(self, percentile, band):
         try:
