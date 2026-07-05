@@ -251,7 +251,10 @@ def upload_report_pdf(session_id, pdf_bytes):
         return public_url
 
     except Exception as e:
-        print(f'PDF upload failed (non-fatal): {e}')
+        error_str = str(e)
+        print(f'PDF upload failed: {error_str}')
+        import traceback
+        traceback.print_exc()  # Full stack trace
         return None
 
 
