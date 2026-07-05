@@ -1075,7 +1075,7 @@ def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=90) as response:
+        with urllib.request.urlopen(req, timeout=120) as response:
             raw = json.loads(response.read().decode("utf-8"))
             elapsed = time.time() - start_time
             
