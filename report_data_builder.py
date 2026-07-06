@@ -263,7 +263,7 @@ def canonical_lookup(value: Any, available_keys: List[str]) -> Optional[str]:
         text = text.replace("–", "-").replace("—", "-").replace("−", "-")
         text = " ".join(text.split())
         compact = text.replace(" ", "")
-         aliases = {
+        aliases = {
             "18-24": "18-24", "18to24": "18-24", "18_24": "18-24",
             "25-34": "25-34", "25to34": "25-34", "25_34": "25-34",
             "35-44": "35-44", "35to44": "35-44", "35_44": "35-44",
