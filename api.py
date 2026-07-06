@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 # Import Layer 1 (Scoring)
 from scoring_engine import score_assessment
 from benchmark_builder import get_benchmark
+from question_metadata import QUESTION_MAP
 
 # Import Layer 2 (API integrations)
 from supabase_client import get_supabase_client
@@ -371,195 +372,101 @@ def health():
 
 def generate_percentiles(responses, demographics, scoring_results):
     """
-    Generate percentiles for each individual question response.
-    
-    For each of the 39 questions, calculate:
-    - User's response (1-7)
-    - Percentile vs all participants
-    - Percentile vs age group
-    - Question text
-    - Dimension
-    - Sample sizes
-    
-    Args:
-        responses (dict): User's 39 question responses
-        demographics (dict): Age group, gender, country, frequency
-        scoring_results (dict): Output from scoring_engine (has dimension_scores)
-    
-    Returns:
-        dict: {question_key: {response, percentile_overall, percentile_age_group, ...}}
+    Generate percentiles and histogram data for each individual question response.
+
+    Important:
+    - Question text comes from question_metadata. Do not use rewritten or shortened
+      question text here.
+    - Distributions are question-level distributions from benchmark_tables["variables"],
+      not dimension-level distributions.
+    - The results page needs three comparison views: everyone, people your age,
+      and AI users with the same usage frequency.
     """
     try:
-        # Load benchmark to calculate percentiles
         benchmark = get_benchmark()
-        
-        # Map questions to dimensions
-        dimension_variables = {
-            'trust': ['trust_q1', 'trust_q2', 'trust_q3', 'trust_q4'],
-            'disclosure': ['disc_q1', 'disc_q2', 'disc_q3', 'disc_q4'],
-            'reliance': ['rel_q1', 'rel_q2', 'rel_q3', 'rel_q4', 'rel_q5'],
-            'decision_delegation': ['del_q1', 'del_q2', 'del_q3', 'del_q4', 'del_q5'],
-            'verification': ['ver_q1', 'ver_q2', 'ver_q3', 'ver_q4'],
-            'human_agency': ['agency_q1', 'agency_q2', 'agency_q3', 'agency_q4', 'agency_q5'],
-            'emotional_regulation': ['emot_q1', 'emot_q2', 'emot_q3', 'emot_q4'],
-            'thought_partnership': ['thought_q1', 'thought_q2', 'thought_q3', 'thought_q4'],
-            'social_transparency': ['soc_q1', 'soc_q2', 'soc_q3', 'soc_q4']
-        }
-        
-        # Fallback question text mapping.
-        # Prefer canonical text from question_metadata when available so the
-        # results page uses the exact assessment wording rather than shortened labels.
-        fallback_question_text_map = {
-            'trust_q1': 'I feel confident trusting information from AI',
-            'trust_q2': 'I would rely on AI output without additional verification',
-            'trust_q3': 'I worry that AI might present false information to me',
-            'trust_q4': 'I trust AI to give me accurate information',
-            'disc_q1': 'I share personal thoughts and feelings with AI',
-            'disc_q2': 'I tell AI things I haven\'t told other people',
-            'disc_q3': 'I am more open with AI than I am with people',
-            'disc_q4': 'I use AI as a space to think through personal concerns',
-            'rel_q1': 'I feel restless when I don\'t have access to AI',
-            'rel_q2': 'I struggle to work without access to my AI tools',
-            'rel_q3': 'I feel confident relying on AI outputs',
-            'rel_q4': 'I would have difficulty doing my work without AI assistance',
-            'rel_q5': 'I rely on AI regularly in my daily work',
-            'del_q1': 'I rely on AI to make decisions for me',
-            'del_q2': 'I tend to follow AI recommendations even if I\'m unsure',
-            'del_q3': 'I worry my skills are declining from delegating to AI',
-            'del_q4': 'I regularly hand over tasks to AI',
-            'del_q5': 'I accept AI suggestions without much modification',
-            'ver_q1': 'I double-check information that AI provides',
-            'ver_q2': 'I skip verification because the effort isn\'t worth it',
-            'ver_q3': 'I use external sources to verify AI outputs',
-            'ver_q4': 'I proceed without checking AI information',
-            'agency_q1': 'I feel self-directed when using AI',
-            'agency_q2': 'I feel in control of my decisions when AI is involved',
-            'agency_q3': 'I trust my own judgement over AI suggestions',
-            'agency_q4': 'AI nudges influence me without my realizing it',
-            'agency_q5': 'I feel ownership over decisions I make with AI help',
-            'emot_q1': 'AI provides me emotional support',
-            'emot_q2': 'I use AI as an alternative to human emotional support',
-            'emot_q3': 'AI helps me process difficult emotions',
-            'emot_q4': 'I use AI to cope with stress or anxiety',
-            'thought_q1': 'AI helps me think more deeply',
-            'thought_q2': 'AI validates my existing beliefs rather than challenging them',
-            'thought_q3': 'I use AI as a thinking partner to develop ideas',
-            'thought_q4': 'AI helps me challenge my assumptions',
-            'soc_q1': 'I am transparent with others about my use of AI',
-            'soc_q2': 'I conceal how much I use AI from others',
-            'soc_q3': 'I am comfortable telling people about my AI use',
-            'soc_q4': 'There\'s a gap between how much AI I actually use and what others think',
-        }
-
-        def canonical_question_text(q_key):
-            try:
-                import question_metadata as qm
-                candidate_attrs = [
-                    'QUESTION_TEXTS',
-                    'QUESTION_TEXT_MAP',
-                    'QUESTION_METADATA',
-                    'QUESTIONS',
-                    'QUESTION_BANK',
-                    'ASSESSMENT_QUESTIONS',
-                ]
-                text_fields = ['question_text', 'text', 'prompt', 'label', 'title']
-                for attr in candidate_attrs:
-                    source = getattr(qm, attr, None)
-                    if not isinstance(source, dict) or q_key not in source:
-                        continue
-                    value = source[q_key]
-                    if isinstance(value, str) and value.strip():
-                        return value.strip()
-                    if isinstance(value, dict):
-                        for field in text_fields:
-                            text = value.get(field)
-                            if isinstance(text, str) and text.strip():
-                                return text.strip()
-            except Exception:
-                pass
-
-            return fallback_question_text_map.get(q_key, f'Question {q_key}')
-
-        def distribution_from_values(values):
-            out = []
-            for i in range(1, 8):
-                count = 0
-                for v in values or []:
-                    try:
-                        if int(float(v)) == i:
-                            count += 1
-                    except Exception:
-                        continue
-                out.append(count)
-            return out
-
-        def variable_distribution(q_key, segment_type=None, segment_value=None):
-            variable_data = (benchmark.data.get('variables') or {}).get(q_key) or {}
-            if segment_type == 'age_group':
-                values = (
-                    variable_data.get('by_age', {})
-                    .get(segment_value, {})
-                    .get('values', [])
-                )
-            elif segment_type == 'frequency':
-                values = (
-                    variable_data.get('by_frequency', {})
-                    .get(segment_value, {})
-                    .get('values', [])
-                )
-            else:
-                values = (variable_data.get('overall') or {}).get('values', [])
-
-            return distribution_from_values(values)
+        benchmark_data = getattr(benchmark, 'data', {}) or {}
+        variables_data = benchmark_data.get('variables', {}) or {}
 
         percentiles = {}
-        age_group = demographics.get('age_group', 'unknown')
-        frequency = demographics.get('ai_tool_use_frequency', 'unknown')
-        
-        # Process each question
-        for dim_name, questions in dimension_variables.items():
-            for q_key in questions:
-                if q_key not in responses:
+        age_group = demographics.get('age_group')
+        frequency = demographics.get('ai_tool_use_frequency')
+
+        def _normalise_label(value):
+            if value is None:
+                return None
+            return str(value).replace(' - ', '-').replace(' ', '').strip().lower()
+
+        def _find_segment(container, label):
+            if not container or label is None:
+                return None
+            if label in container:
+                return container.get(label)
+            target = _normalise_label(label)
+            for key, value in container.items():
+                if _normalise_label(key) == target:
+                    return value
+            return None
+
+        def _distribution_from_values(values):
+            counts = [0, 0, 0, 0, 0, 0, 0]
+            for value in values or []:
+                try:
+                    idx = int(float(value))
+                    if 1 <= idx <= 7:
+                        counts[idx - 1] += 1
+                except (TypeError, ValueError):
                     continue
-                
-                user_response = responses[q_key]
-                
-                # Get percentiles from benchmark
-                pct_overall = benchmark.get_percentile(q_key, user_response, segment=None)
-                pct_age_group = benchmark.get_percentile(q_key, user_response, segment=('age_group', age_group))
-                pct_frequency = benchmark.get_percentile(q_key, user_response, segment=('frequency', frequency))
+            return counts
 
-                # Get sample sizes
-                n_overall = benchmark.get_sample_size(q_key, segment=None)
-                n_age_group = benchmark.get_sample_size(q_key, segment=('age_group', age_group))
-                n_frequency = benchmark.get_sample_size(q_key, segment=('frequency', frequency))
+        for q_key, meta in QUESTION_MAP.items():
+            if q_key not in responses:
+                continue
 
-                # Determine if rare or distinctive
-                is_rare = pct_overall >= 86 or pct_overall <= 14
+            user_response = responses.get(q_key)
+            dim_name = meta.get('dimension')
 
-                percentiles[q_key] = {
-                    'response': user_response,
-                    'percentile_overall': pct_overall,
-                    'percentile_age_group': pct_age_group,
-                    'percentile_frequency': pct_frequency,
-                    'question_text': canonical_question_text(q_key),
-                    'dimension': dim_name,
-                    'n_overall': n_overall,
-                    'n_age_group': n_age_group,
-                    'n_frequency': n_frequency,
-                    'is_rare': is_rare,
-                    'distribution': variable_distribution(q_key),
-                    'distribution_overall': variable_distribution(q_key),
-                    'distribution_age_group': variable_distribution(q_key, 'age_group', age_group),
-                    'distribution_frequency': variable_distribution(q_key, 'frequency', frequency),
-                }
-        
+            pct_overall = benchmark.get_percentile(q_key, user_response, segment=None)
+            pct_age_group = benchmark.get_percentile(q_key, user_response, segment=('age_group', age_group)) if age_group else None
+            pct_frequency = benchmark.get_percentile(q_key, user_response, segment=('frequency', frequency)) if frequency else None
+
+            n_overall = benchmark.get_sample_size(q_key, segment=None)
+            n_age_group = benchmark.get_sample_size(q_key, segment=('age_group', age_group)) if age_group else None
+            n_frequency = benchmark.get_sample_size(q_key, segment=('frequency', frequency)) if frequency else None
+
+            variable_entry = variables_data.get(q_key, {}) or {}
+            overall_entry = variable_entry.get('overall') or {}
+            age_entry = _find_segment(variable_entry.get('by_age') or {}, age_group) or {}
+            frequency_entry = _find_segment(variable_entry.get('by_frequency') or {}, frequency) or {}
+
+            distribution_overall = _distribution_from_values(overall_entry.get('values'))
+            distribution_age = _distribution_from_values(age_entry.get('values'))
+            distribution_frequency = _distribution_from_values(frequency_entry.get('values'))
+
+            # Keep legacy keys for the current frontend, and add explicit keys for the
+            # upgraded three-way toggle.
+            percentiles[q_key] = {
+                'response': user_response,
+                'percentile_overall': pct_overall,
+                'percentile_age_group': pct_age_group,
+                'percentile_frequency': pct_frequency,
+                'question_text': meta.get('text') or f'Question {q_key}',
+                'dimension': dim_name,
+                'n_overall': n_overall,
+                'n_age_group': n_age_group,
+                'n_frequency': n_frequency,
+                'is_rare': pct_overall is not None and (pct_overall >= 86 or pct_overall <= 14),
+                'distribution': distribution_overall,
+                'distribution_overall': distribution_overall,
+                'distribution_age': distribution_age or distribution_overall,
+                'distribution_frequency': distribution_frequency or distribution_overall,
+            }
+
         return percentiles
-    
+
     except Exception as e:
         print(f'Error generating response percentiles: {e}')
+        traceback.print_exc()
         return {}
-
 
 # ============================================================
 # ASSESSMENT SCORING (POST /score)
