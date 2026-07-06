@@ -141,7 +141,6 @@ DEPENDENCE_VARIABLES = ["rel_q1", "rel_q2", "rel_q5"]
 FREQUENCY_ORDER = [
     "Never",
     "Rarely",
-    "Occasionally",
     "Sometimes",
     "Often",
     "Very often",
@@ -264,7 +263,7 @@ def canonical_lookup(value: Any, available_keys: List[str]) -> Optional[str]:
         text = text.replace("–", "-").replace("—", "-").replace("−", "-")
         text = " ".join(text.split())
         compact = text.replace(" ", "")
-        aliases = {
+         aliases = {
             "18-24": "18-24", "18to24": "18-24", "18_24": "18-24",
             "25-34": "25-34", "25to34": "25-34", "25_34": "25-34",
             "35-44": "35-44", "35to44": "35-44", "35_44": "35-44",
@@ -272,10 +271,26 @@ def canonical_lookup(value: Any, available_keys: List[str]) -> Optional[str]:
             "55-64": "55-64", "55to64": "55-64", "55_64": "55-64",
             "55-65": "55-64", "55to65": "55-64",
             "65+": "65+", "over65": "65+", "65andover": "65+", "65plus": "65+",
-            "everyday": "everyday", "every day": "everyday", "daily": "everyday",
-            "often": "often", "veryoften": "often", "very often": "often",
-            "sometimes": "sometimes", "occasionally": "sometimes", "occasional": "sometimes",
-            "rarely": "rarely", "rare": "rarely",
+
+            "everyday": "everyday",
+            "every day": "everyday",
+            "every_day": "everyday",
+            "daily": "everyday",
+
+            "veryoften": "very often",
+            "very often": "very often",
+            "very_often": "very often",
+            "very-often": "very often",
+
+            "often": "often",
+
+            "sometimes": "sometimes",
+            "occasionally": "sometimes",
+            "occasional": "sometimes",
+
+            "rarely": "rarely",
+            "rare": "rarely",
+
             "never": "never",
         }
         return aliases.get(compact, aliases.get(text, compact))
