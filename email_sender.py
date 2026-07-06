@@ -392,6 +392,147 @@ def send_report_email(
         }
 
 
+
+# ============================================================
+# FAILURE / DELAY NOTIFICATION EMAILS
+# ============================================================
+
+def build_admin_error_email_html(
+    session_id: str,
+    customer_email: str,
+    failed_step: str,
+    error_message: str,
+    traceback_text: str = '',
+    report_url: str = '',
+    context: Optional[Dict[str, Any]] = None
+) -> str:
+    context = context or {}
+    safe_traceback = (traceback_text or '').replace('<', '&lt;').replace('>', '&gt;')
+    safe_error = (error_message or '').replace('<', '&lt;').replace('>', '&gt;')
+    context_rows = ''.join(
+        f'<tr><td style="padding:6px;border-bottom:1px solid #eee;font-weight:600;">{str(k)}</td>'
+        f'<td style="padding:6px;border-bottom:1px solid #eee;">{str(v)}</td></tr>'
+        for k, v in context.items()
+    )
+
+    return f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#222;">
+  <div style="max-width:760px;margin:0 auto;padding:20px;">
+    <h1 style="color:#b00020;margin-bottom:8px;">HCI Report Failure</h1>
+    <p style="font-size:14px;color:#555;">A paid report generation or delivery step failed and needs review.</p>
+    <table style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;">
+      <tr><td style="padding:6px;border-bottom:1px solid #eee;font-weight:600;">Session ID</td><td style="padding:6px;border-bottom:1px solid #eee;">{session_id or 'unknown'}</td></tr>
+      <tr><td style="padding:6px;border-bottom:1px solid #eee;font-weight:600;">Customer Email</td><td style="padding:6px;border-bottom:1px solid #eee;">{customer_email or 'unknown'}</td></tr>
+      <tr><td style="padding:6px;border-bottom:1px solid #eee;font-weight:600;">Failed Step</td><td style="padding:6px;border-bottom:1px solid #eee;">{failed_step or 'unknown'}</td></tr>
+      <tr><td style="padding:6px;border-bottom:1px solid #eee;font-weight:600;">Timestamp UTC</td><td style="padding:6px;border-bottom:1px solid #eee;">{datetime.utcnow().isoformat()}</td></tr>
+      <tr><td style="padding:6px;border-bottom:1px solid #eee;font-weight:600;">Report URL</td><td style="padding:6px;border-bottom:1px solid #eee;">{report_url or 'not available'}</td></tr>
+      {context_rows}
+    </table>
+    <h2 style="font-size:18px;margin-top:24px;">Error</h2>
+    <pre style="white-space:pre-wrap;background:#fff3f3;border:1px solid #ffd0d0;padding:12px;border-radius:6px;font-size:13px;">{safe_error}</pre>
+    <h2 style="font-size:18px;margin-top:24px;">Traceback</h2>
+    <pre style="white-space:pre-wrap;background:#f6f8fa;border:1px solid #ddd;padding:12px;border-radius:6px;font-size:12px;">{safe_traceback or 'No traceback supplied'}</pre>
+  </div>
+</body>
+</html>
+"""
+
+
+def build_customer_delay_email_html(session_id: str, report_url: str = '') -> str:
+    link_block = ''
+    if report_url:
+        link_block = f"""
+        <p style="text-align:center;margin:26px 0;">
+            <a href="{report_url}" style="display:inline-block;background:#0066cc;color:white;padding:12px 22px;text-decoration:none;border-radius:4px;font-weight:600;">Check Your Report Link</a>
+        </p>
+        """
+
+    return f"""
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#333;">
+  <div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:#0066cc;color:white;padding:20px;text-align:center;border-radius:4px;">
+      <h1 style="margin:0;font-size:22px;">We're generating your report</h1>
+    </div>
+    <div style="background:#fafafa;padding:28px;margin:20px 0;border-radius:4px;">
+      <p>Hi there,</p>
+      <p>We detected an unexpected technical issue while generating your AI Identity Report.</p>
+      <p>Your assessment has been safely saved, your payment has been recorded, and no action is required from you.</p>
+      <p>We've already been notified and will regenerate your report as soon as possible. If we're unable to deliver it promptly, we'll arrange a full refund.</p>
+      {link_block}
+      <p style="font-size:13px;color:#666;margin-top:20px;">Assessment ID: {session_id[:8] if session_id else 'unknown'}...</p>
+      <p style="font-size:13px;color:#666;">Questions? Reply to this email or contact Human Clarity Institute.</p>
+    </div>
+    <div style="font-size:12px;color:#777;text-align:center;">
+      <p>Human Clarity Institute</p>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+def send_admin_error_email(
+    to_email: str,
+    resend_api_key: str,
+    session_id: str,
+    customer_email: str,
+    failed_step: str,
+    error_message: str,
+    traceback_text: str = '',
+    report_url: str = '',
+    context: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    if not to_email:
+        return {'success': False, 'error': 'No admin recipient email'}
+    if not resend_api_key:
+        return {'success': False, 'error': 'Resend API key not configured'}
+
+    html = build_admin_error_email_html(
+        session_id=session_id,
+        customer_email=customer_email,
+        failed_step=failed_step,
+        error_message=error_message,
+        traceback_text=traceback_text,
+        report_url=report_url,
+        context=context
+    )
+    subject = f"HCI Report Failure - {failed_step} - {session_id[:8] if session_id else 'unknown'}"
+    return send_via_resend(
+        to_email=to_email,
+        subject=subject,
+        html=html,
+        attachment=None,
+        resend_api_key=resend_api_key
+    )
+
+
+def send_customer_delay_email(
+    to_email: str,
+    resend_api_key: str,
+    session_id: str,
+    report_url: str = ''
+) -> Dict[str, Any]:
+    if not to_email:
+        return {'success': False, 'error': 'No customer recipient email'}
+    if not resend_api_key:
+        return {'success': False, 'error': 'Resend API key not configured'}
+
+    html = build_customer_delay_email_html(session_id=session_id, report_url=report_url)
+    return send_via_resend(
+        to_email=to_email,
+        subject="We're generating your AI Identity Report",
+        html=html,
+        attachment=None,
+        resend_api_key=resend_api_key
+    )
+
+
 # ============================================================
 # FOR TESTING
 # ============================================================
@@ -404,6 +545,8 @@ if __name__ == '__main__':
     print('  ✓ create_pdf_attachment() - Prepare PDF for attachment')
     print('  ✓ send_via_resend() - Call Resend API')
     print('  ✓ send_report_email() - Main function')
+    print('  ✓ send_admin_error_email() - Admin failure alerts')
+    print('  ✓ send_customer_delay_email() - Customer delay notifications')
     print('\nRequired environment variable:')
     print('  RESEND_API_KEY - API key from resend.com')
     print('\nUsage:')
