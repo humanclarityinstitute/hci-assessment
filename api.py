@@ -406,8 +406,10 @@ def generate_percentiles(responses, demographics, scoring_results):
             'social_transparency': ['soc_q1', 'soc_q2', 'soc_q3', 'soc_q4']
         }
         
-        # Question text mapping (basic — can be enhanced)
-        question_text_map = {
+        # Fallback question text mapping.
+        # Prefer canonical text from question_metadata when available so the
+        # results page uses the exact assessment wording rather than shortened labels.
+        fallback_question_text_map = {
             'trust_q1': 'I feel confident trusting information from AI',
             'trust_q2': 'I would rely on AI output without additional verification',
             'trust_q3': 'I worry that AI might present false information to me',
@@ -448,9 +450,71 @@ def generate_percentiles(responses, demographics, scoring_results):
             'soc_q3': 'I am comfortable telling people about my AI use',
             'soc_q4': 'There\'s a gap between how much AI I actually use and what others think',
         }
-        
+
+        def canonical_question_text(q_key):
+            try:
+                import question_metadata as qm
+                candidate_attrs = [
+                    'QUESTION_TEXTS',
+                    'QUESTION_TEXT_MAP',
+                    'QUESTION_METADATA',
+                    'QUESTIONS',
+                    'QUESTION_BANK',
+                    'ASSESSMENT_QUESTIONS',
+                ]
+                text_fields = ['question_text', 'text', 'prompt', 'label', 'title']
+                for attr in candidate_attrs:
+                    source = getattr(qm, attr, None)
+                    if not isinstance(source, dict) or q_key not in source:
+                        continue
+                    value = source[q_key]
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+                    if isinstance(value, dict):
+                        for field in text_fields:
+                            text = value.get(field)
+                            if isinstance(text, str) and text.strip():
+                                return text.strip()
+            except Exception:
+                pass
+
+            return fallback_question_text_map.get(q_key, f'Question {q_key}')
+
+        def distribution_from_values(values):
+            out = []
+            for i in range(1, 8):
+                count = 0
+                for v in values or []:
+                    try:
+                        if int(float(v)) == i:
+                            count += 1
+                    except Exception:
+                        continue
+                out.append(count)
+            return out
+
+        def variable_distribution(q_key, segment_type=None, segment_value=None):
+            variable_data = (benchmark.data.get('variables') or {}).get(q_key) or {}
+            if segment_type == 'age_group':
+                values = (
+                    variable_data.get('by_age', {})
+                    .get(segment_value, {})
+                    .get('values', [])
+                )
+            elif segment_type == 'frequency':
+                values = (
+                    variable_data.get('by_frequency', {})
+                    .get(segment_value, {})
+                    .get('values', [])
+                )
+            else:
+                values = (variable_data.get('overall') or {}).get('values', [])
+
+            return distribution_from_values(values)
+
         percentiles = {}
         age_group = demographics.get('age_group', 'unknown')
+        frequency = demographics.get('ai_tool_use_frequency', 'unknown')
         
         # Process each question
         for dim_name, questions in dimension_variables.items():
@@ -463,25 +527,31 @@ def generate_percentiles(responses, demographics, scoring_results):
                 # Get percentiles from benchmark
                 pct_overall = benchmark.get_percentile(q_key, user_response, segment=None)
                 pct_age_group = benchmark.get_percentile(q_key, user_response, segment=('age_group', age_group))
-                
+                pct_frequency = benchmark.get_percentile(q_key, user_response, segment=('frequency', frequency))
+
                 # Get sample sizes
                 n_overall = benchmark.get_sample_size(q_key, segment=None)
                 n_age_group = benchmark.get_sample_size(q_key, segment=('age_group', age_group))
-                
+                n_frequency = benchmark.get_sample_size(q_key, segment=('frequency', frequency))
+
                 # Determine if rare or distinctive
                 is_rare = pct_overall >= 86 or pct_overall <= 14
-                
-                                
+
                 percentiles[q_key] = {
                     'response': user_response,
                     'percentile_overall': pct_overall,
                     'percentile_age_group': pct_age_group,
-                    'question_text': question_text_map.get(q_key, f'Question {q_key}'),
+                    'percentile_frequency': pct_frequency,
+                    'question_text': canonical_question_text(q_key),
                     'dimension': dim_name,
                     'n_overall': n_overall,
                     'n_age_group': n_age_group,
+                    'n_frequency': n_frequency,
                     'is_rare': is_rare,
-                    'distribution': [sum(1 for v in benchmark.data['dimensions'][dim_name]['overall']['values'] if int(v) == i) for i in range(1, 8)],
+                    'distribution': variable_distribution(q_key),
+                    'distribution_overall': variable_distribution(q_key),
+                    'distribution_age_group': variable_distribution(q_key, 'age_group', age_group),
+                    'distribution_frequency': variable_distribution(q_key, 'frequency', frequency),
                 }
         
         return percentiles
