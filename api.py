@@ -26,6 +26,7 @@ import os
 import sys
 import json
 import traceback
+import time
 import urllib.request
 import urllib.parse
 from datetime import datetime
@@ -62,9 +63,15 @@ from claude_narrative import add_claude_narratives
 # Optional legacy helpers kept only for email/PDF fallback paths.
 # The clean report flow does not depend on old report_generator or report_page_builder.
 try:
-    from email_sender import send_report_email
+    from email_sender import (
+        send_report_email,
+        send_admin_error_email,
+        send_customer_delay_email,
+    )
 except ImportError:
     send_report_email = None
+    send_admin_error_email = None
+    send_customer_delay_email = None
     print('WARNING: email_sender module not found. Report email sending disabled.')
 
 try:
@@ -257,6 +264,83 @@ def upload_report_pdf(session_id, pdf_bytes):
         traceback.print_exc()  # Full stack trace
         return None
 
+
+
+# ============================================================
+# REPORT FAILURE SAFETY NETS
+# ============================================================
+
+ADMIN_ERROR_EMAIL = os.environ.get('ADMIN_ERROR_EMAIL', 'info@humanclarityinstitute.com')
+ENABLE_ERROR_EMAILS = os.environ.get('ENABLE_ERROR_EMAILS', 'true').lower() not in ('0', 'false', 'no')
+
+
+def run_with_retries(step_name, operation, attempts=3, base_delay_seconds=1):
+    """Run an operation with simple exponential backoff before surfacing failure."""
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            print(f'[{step_name}] Attempt {attempt}/{attempts}')
+            return operation()
+        except Exception as e:
+            last_error = e
+            print(f'[{step_name}] Attempt {attempt}/{attempts} failed: {e}')
+            traceback.print_exc()
+            if attempt < attempts:
+                time.sleep(base_delay_seconds * attempt)
+    raise last_error
+
+
+def notify_report_failure(
+    session_id=None,
+    customer_email=None,
+    failed_step='unknown',
+    error=None,
+    traceback_text=None,
+    notify_customer=False,
+    context=None,
+):
+    """Send admin/customer failure emails without breaking the main error path."""
+    if not ENABLE_ERROR_EMAILS:
+        print('[FAILURE_NOTIFY] Skipped because ENABLE_ERROR_EMAILS is disabled')
+        return
+
+    resend_key = os.environ.get('RESEND_API_KEY')
+    report_url = make_report_url(session_id) if session_id else ''
+    error_message = str(error) if error else 'Unknown error'
+    traceback_text = traceback_text or traceback.format_exc()
+
+    if send_admin_error_email and resend_key and ADMIN_ERROR_EMAIL:
+        try:
+            result = send_admin_error_email(
+                to_email=ADMIN_ERROR_EMAIL,
+                resend_api_key=resend_key,
+                session_id=session_id or '',
+                customer_email=customer_email or '',
+                failed_step=failed_step,
+                error_message=error_message,
+                traceback_text=traceback_text,
+                report_url=report_url,
+                context=context or {}
+            )
+            print(f'[FAILURE_NOTIFY] Admin alert result: {result}')
+        except Exception as notify_error:
+            print(f'[FAILURE_NOTIFY] Admin alert failed: {notify_error}')
+            traceback.print_exc()
+    else:
+        print('[FAILURE_NOTIFY] Admin alert not sent: missing sender, RESEND_API_KEY, or ADMIN_ERROR_EMAIL')
+
+    if notify_customer and customer_email and send_customer_delay_email and resend_key:
+        try:
+            result = send_customer_delay_email(
+                to_email=customer_email,
+                resend_api_key=resend_key,
+                session_id=session_id or '',
+                report_url=report_url
+            )
+            print(f'[FAILURE_NOTIFY] Customer delay email result: {result}')
+        except Exception as notify_error:
+            print(f'[FAILURE_NOTIFY] Customer delay email failed: {notify_error}')
+            traceback.print_exc()
 
 # ============================================================
 # HEALTH CHECK
@@ -593,6 +677,11 @@ def create_checkout():
         "url": "https://checkout.stripe.com/..."
     }
     """
+    session_id = None
+    stripe_session_id = None
+    report_email = None
+    delivery_email = None
+    failed_step = 'premium_start'
     try:
         request_data = request.get_json() or {}
         session_id = request_data.get('session_id')
@@ -832,6 +921,7 @@ def premium():
         db = get_supabase_client()
 
         # Step 1: Recover session_id from Stripe if not provided
+        failed_step = 'stripe_session_recovery'
         stripe_session = None
         if stripe_session_id:
             stripe_session = fetch_stripe_session(stripe_session_id)
@@ -846,6 +936,7 @@ def premium():
             }), 400
 
         # Step 2: Check cached report first
+        failed_step = 'cached_report_lookup'
         cached_report = db.get_cached_report(session_id)
         if cached_report:
             print(f'Report cache hit for session {session_id}')
@@ -857,6 +948,7 @@ def premium():
             }), 200
 
         # Step 3: Verify payment when Stripe session is provided
+        failed_step = 'payment_verification'
         if stripe_session_id:
             if not stripe_session:
                 return jsonify({
@@ -883,6 +975,7 @@ def premium():
                 print(f'Updated assessment report_email to: {stripe_email}')
 
         # Step 4: Load assessment
+        failed_step = 'assessment_load'
         assessment = db.get_assessment(session_id)
         if not assessment:
             return jsonify({
@@ -908,6 +1001,7 @@ def premium():
             full_results['rare_combinations'] = assessment.get('patterns', [])
 
         # Step 5: Mark as paid
+        failed_step = 'mark_paid'
         db.update_assessment(
             session_id=session_id,
             paid=True,
@@ -917,6 +1011,7 @@ def premium():
         )
 
         # Step 6: Ensure canonical report_data exists
+        failed_step = 'build_report_data'
         report_data = assessment.get('report_data')
 
         if not report_data:
@@ -930,10 +1025,15 @@ def premium():
             assert_report_data_contract(report_data)
 
         # Step 7: Add Claude narrative blocks
+        failed_step = 'claude_narrative_generation'
         api_key = os.environ.get('ANTHROPIC_API_KEY')
-        report_data = add_claude_narratives(
-            report_data=report_data,
-            api_key=api_key
+        report_data = run_with_retries(
+            failed_step,
+            lambda: add_claude_narratives(
+                report_data=report_data,
+                api_key=api_key
+            ),
+            attempts=3
         )
 
         db.update_assessment(
@@ -943,25 +1043,47 @@ def premium():
         )
 
         # Step 8: Render final HTML, generate PDF, upload PDF, cache HTML, and send email
-        report_html_str = render_report(report_data)
+        failed_step = 'report_html_render'
+        report_html_str = run_with_retries(
+            failed_step,
+            lambda: render_report(report_data),
+            attempts=3
+        )
 
         pdf_bytes = None
         pdf_url = None
 
         if build_report_pdf:
+            failed_step = 'pdf_generation_upload'
             try:
-                pdf_bytes = build_report_pdf(report_html_str)
-                if pdf_bytes:
-                    pdf_url = upload_report_pdf(session_id, pdf_bytes)
-                    print(f'PDF generated and uploaded for session {session_id}')
-                else:
-                    print(f'PDF generated but upload failed for session {session_id}')
+                def generate_and_upload_pdf():
+                    generated_pdf = build_report_pdf(report_html_str)
+                    if not generated_pdf:
+                        raise RuntimeError('PDF generation returned empty bytes')
+                    generated_pdf_url = upload_report_pdf(session_id, generated_pdf)
+                    return generated_pdf, generated_pdf_url
+
+                pdf_bytes, pdf_url = run_with_retries(
+                    failed_step,
+                    generate_and_upload_pdf,
+                    attempts=3
+                )
+                print(f'PDF generated and uploaded for session {session_id}')
             except Exception as e:
                 print(f'PDF generation/upload failed non-fatally: {e}')
-                traceback.print_exc()
+                notify_report_failure(
+                    session_id=session_id,
+                    customer_email=report_email or assessment.get('report_email'),
+                    failed_step=failed_step,
+                    error=e,
+                    traceback_text=traceback.format_exc(),
+                    notify_customer=False,
+                    context={'impact': 'Report HTML still generated; customer email may send without PDF'}
+                )
         else:
             print('PDF generation skipped: build_report_pdf is not available')
 
+        failed_step = 'cache_report'
         db.update_report(
             session_id=session_id,
             report_html=report_html_str,
@@ -973,21 +1095,54 @@ def premium():
         delivery_email = report_email or assessment.get('report_email')
 
         if send_report_email and resend_key and delivery_email:
+            failed_step = 'customer_report_email'
             try:
-                send_report_email(
-                    to_email=delivery_email,
-                    report_html=report_html_str,
-                    demographics=demographics,
-                    resend_api_key=resend_key,
-                    session_id=session_id,
-                    pdf_bytes=pdf_bytes
+                def send_customer_report_email():
+                    result = send_report_email(
+                        to_email=delivery_email,
+                        report_html=report_html_str,
+                        demographics=demographics,
+                        resend_api_key=resend_key,
+                        session_id=session_id,
+                        pdf_bytes=pdf_bytes
+                    )
+                    if not result or not result.get('success'):
+                        raise RuntimeError(f'Resend report email failed: {result}')
+                    return result
+
+                email_result = run_with_retries(
+                    failed_step,
+                    send_customer_report_email,
+                    attempts=3
                 )
-                print(f'Report email sent to {delivery_email}')
+                print(f'Report email sent to {delivery_email}: {email_result}')
             except Exception as e:
                 print(f'Email sending failed non-fatally: {e}')
-                traceback.print_exc()
+                notify_report_failure(
+                    session_id=session_id,
+                    customer_email=delivery_email,
+                    failed_step=failed_step,
+                    error=e,
+                    traceback_text=traceback.format_exc(),
+                    notify_customer=False,
+                    context={'impact': 'Report generated and cached, but customer email failed'}
+                )
         else:
             print('Email not sent: missing send_report_email, RESEND_API_KEY, or delivery email')
+            if delivery_email:
+                notify_report_failure(
+                    session_id=session_id,
+                    customer_email=delivery_email,
+                    failed_step='customer_report_email_configuration',
+                    error=RuntimeError('Missing send_report_email, RESEND_API_KEY, or delivery email'),
+                    traceback_text='',
+                    notify_customer=False,
+                    context={
+                        'has_send_report_email': bool(send_report_email),
+                        'has_resend_key': bool(resend_key),
+                        'has_delivery_email': bool(delivery_email)
+                    }
+                )
 
         return jsonify({
             'success': True,
@@ -1000,8 +1155,18 @@ def premium():
             'narrative_generation': report_data.get('narrative_generation', {})
         }), 200
     except Exception as e:
+        tb = traceback.format_exc()
         print(f'Premium endpoint error: {e}')
         traceback.print_exc()
+        notify_report_failure(
+            session_id=session_id,
+            customer_email=delivery_email or report_email,
+            failed_step=failed_step,
+            error=e,
+            traceback_text=tb,
+            notify_customer=bool(delivery_email or report_email),
+            context={'endpoint': '/premium', 'stripe_session_id': stripe_session_id or ''}
+        )
         return jsonify({
             'success': False,
             'error': 'Report generation failed'
@@ -1085,6 +1250,41 @@ def get_report():
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Could not retrieve report'}), 500
 
+
+
+# ============================================================
+# TEST FAILURE EMAILS (POST /test-error-email)
+# ============================================================
+
+@app.route('/test-error-email', methods=['POST'])
+def test_error_email():
+    """Send test admin/customer failure notifications without generating a real report."""
+    try:
+        data = request.get_json() or {}
+        test_customer_email = data.get('customer_email') or data.get('email')
+        test_session_id = data.get('session_id') or 'test-session-id'
+        try:
+            raise RuntimeError('Test report failure notification')
+        except Exception as test_error:
+            notify_report_failure(
+                session_id=test_session_id,
+                customer_email=test_customer_email,
+                failed_step='test_error_email',
+                error=test_error,
+                traceback_text=traceback.format_exc(),
+                notify_customer=bool(test_customer_email),
+                context={'endpoint': '/test-error-email', 'test': True}
+            )
+        return jsonify({
+            'success': True,
+            'message': 'Test failure notification attempted',
+            'admin_email': ADMIN_ERROR_EMAIL,
+            'customer_email': test_customer_email
+        }), 200
+    except Exception as e:
+        print(f'Test error email endpoint failed: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ============================================================
 # TEST OPENING SECTION (GET /test-opening)
@@ -1190,11 +1390,11 @@ def test_opening():
 
 
 # ============================================================
-# ERROR HANDLERS
+# MANUAL REPORT RECOVERY
 # ============================================================
 
-@app.errorhandler(404)
-def not_found(e):
+@app.route('/recover-report', methods=['GET'])
+def recover_report_page():
     """
     UI for manually regenerating reports.
     Paste a session ID and click Generate to:
@@ -1420,12 +1620,15 @@ def not_found(e):
 @app.route('/recover-report-action', methods=['POST'])
 def recover_report_action():
     """
-    Backend for clean report recovery.
-    Takes session_id, rebuilds report_data, renders HTML, and caches it.
+    Manual recovery action for paid report delivery.
+
+    Takes a session_id, rebuilds report_data, regenerates the HTML report,
+    generates/uploads the PDF when available, caches the report, and sends
+    the customer report email again.
     """
     try:
         data = request.json or {}
-        session_id = data.get('session_id', '').strip()
+        session_id = (data.get('session_id') or '').strip()
 
         if not session_id:
             return jsonify({'success': False, 'error': 'session_id required'}), 400
@@ -1438,9 +1641,10 @@ def recover_report_action():
         if not assessment:
             return jsonify({'success': False, 'error': 'Session not found in database'}), 404
 
-        responses = assessment.get('responses', {})
-        demographics = assessment.get('demographics', {})
-        full_results = assessment.get('full_results', {})
+        responses = assessment.get('responses') or {}
+        demographics = assessment.get('demographics') or {}
+        full_results = assessment.get('full_results') or {}
+        delivery_email = assessment.get('report_email')
 
         if not responses or not demographics or not full_results:
             return jsonify({
@@ -1448,37 +1652,123 @@ def recover_report_action():
                 'error': 'Assessment row missing responses, demographics, or full_results'
             }), 500
 
+        if not delivery_email:
+            return jsonify({
+                'success': False,
+                'error': 'Assessment row has no report_email/customer email to send to'
+            }), 500
+
+        # Preserve stored gap/pattern fields if full_results is missing them.
+        if not full_results.get('perception_gaps'):
+            full_results['perception_gaps'] = assessment.get('perception_gaps', [])
+        if not full_results.get('rare_combinations'):
+            full_results['rare_combinations'] = assessment.get('patterns', [])
+
+        # Rebuild the canonical report_data source of truth.
         report_data = build_report_data(
             scoring_results=full_results,
             responses=responses,
             demographics=demographics,
-            email=assessment.get('report_email'),
+            email=delivery_email,
             session_id=session_id
         )
         assert_report_data_contract(report_data)
 
+        # Regenerate Claude narrative blocks where the API key is configured.
+        api_key = os.environ.get('ANTHROPIC_API_KEY')
+        if api_key:
+            report_data = add_claude_narratives(
+                report_data=report_data,
+                api_key=api_key
+            )
+        else:
+            print('[RECOVER] ANTHROPIC_API_KEY not configured; using deterministic report fallback')
+
         report_html = render_report(report_data)
 
-        db.update_assessment(session_id=session_id, report_data=report_data)
+        # Generate and upload PDF, matching the live /premium path.
+        pdf_bytes = None
+        pdf_url = None
+        if build_report_pdf:
+            try:
+                pdf_bytes = build_report_pdf(report_html)
+                if pdf_bytes:
+                    pdf_url = upload_report_pdf(session_id, pdf_bytes)
+                    print(f'[RECOVER] PDF generated for session {session_id}')
+                else:
+                    print(f'[RECOVER] PDF generation returned empty bytes for session {session_id}')
+            except Exception as pdf_error:
+                print(f'[RECOVER] PDF generation/upload failed: {pdf_error}')
+                traceback.print_exc()
+        else:
+            print('[RECOVER] PDF generation skipped: build_report_pdf is not available')
+
+        # Cache report_data and HTML before email, so the customer link works even if email has no PDF.
+        db.update_assessment(
+            session_id=session_id,
+            report_data=report_data,
+            paid=True,
+            report_email=delivery_email
+        )
         db.update_report(
             session_id=session_id,
             report_html=report_html,
             report_generated_at=datetime.utcnow().isoformat()
         )
 
-        print(f'[RECOVER] ✓ Clean report recovery complete for {session_id}')
+        # Send the customer email with PDF attachment when available.
+        resend_key = os.environ.get('RESEND_API_KEY')
+        email_result = {'success': False, 'error': 'Email not attempted'}
+        if send_report_email and resend_key:
+            email_result = send_report_email(
+                to_email=delivery_email,
+                report_html=report_html,
+                demographics=demographics,
+                resend_api_key=resend_key,
+                session_id=session_id,
+                pdf_bytes=pdf_bytes
+            )
+            if not email_result.get('success'):
+                print(f'[RECOVER] Email send failed for {session_id}: {email_result}')
+                return jsonify({
+                    'success': False,
+                    'error': 'Report rebuilt, but email sending failed',
+                    'session_id': session_id,
+                    'report_url': make_report_url(session_id),
+                    'pdf_url': pdf_url,
+                    'email_result': email_result
+                }), 500
+        else:
+            missing = []
+            if not send_report_email:
+                missing.append('send_report_email')
+            if not resend_key:
+                missing.append('RESEND_API_KEY')
+            return jsonify({
+                'success': False,
+                'error': 'Report rebuilt, but email could not be sent because configuration is missing: ' + ', '.join(missing),
+                'session_id': session_id,
+                'report_url': make_report_url(session_id),
+                'pdf_url': pdf_url
+            }), 500
+
+        print(f'[RECOVER] ✓ Report recovered and emailed to {delivery_email} for {session_id}')
         return jsonify({
             'success': True,
-            'message': 'Report data and HTML rebuilt successfully',
+            'message': 'Report regenerated and emailed successfully',
+            'session_id': session_id,
             'report_url': make_report_url(session_id),
-            'data_quality': report_data.get('data_quality', {})
+            'pdf_url': pdf_url,
+            'email_sent_to': delivery_email,
+            'email_result': email_result,
+            'data_quality': report_data.get('data_quality', {}),
+            'narrative_generation': report_data.get('narrative_generation', {})
         }), 200
 
     except Exception as e:
         print(f'[RECOVER] Error: {e}')
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 # ============================================================
 # ERROR HANDLERS
