@@ -212,7 +212,6 @@ DEPENDENCE_VARIABLES = ['rel_q1', 'rel_q2', 'rel_q5']
 FREQUENCY_ORDER = [
     'Never',
     'Rarely',
-    'Occasionally',
     'Sometimes',
     'Often',
     'Very often',
@@ -540,21 +539,36 @@ class ScoringEngine:
         if not frequency:
             return None
 
-        def norm(value):
-            text = str(value).strip().lower().replace(' ', '')
+               def norm(value):
+            text = str(value).strip().lower()
+            text = text.replace('–', '-').replace('—', '-').replace('−', '-')
+            text = ' '.join(text.split())
+            compact = text.replace(' ', '')
+
             aliases = {
                 'everyday': 'everyday',
                 'every day': 'everyday',
+                'every_day': 'everyday',
                 'daily': 'everyday',
+
                 'veryoften': 'veryoften',
                 'very often': 'veryoften',
+                'very_often': 'veryoften',
+                'very-often': 'veryoften',
+
                 'often': 'often',
+
                 'sometimes': 'sometimes',
-                'occasionally': 'occasionally',
+                'occasionally': 'sometimes',
+                'occasional': 'sometimes',
+
                 'rarely': 'rarely',
+                'rare': 'rarely',
+
                 'never': 'never',
             }
-            return aliases.get(text, text)
+
+            return aliases.get(compact, aliases.get(text, compact))
 
         data = getattr(self.benchmark, 'data', {}) or {}
         frequency_counts = {}
@@ -577,6 +591,8 @@ class ScoringEngine:
                 'rarely': 20,
                 'sometimes': 45,
                 'occasionally': 45,
+                'very_often': 82,
+                'very-often': 82,
                 'often': 70,
                 'veryoften': 82,
                 'everyday': 90,
