@@ -530,7 +530,7 @@ class ScoringEngine:
         
         return results
     
-    def _frequency_percentile(self, demographics):
+        def _frequency_percentile(self, demographics):
         """
         Estimate percentile position from reported AI-use frequency using
         benchmark frequency cohort sample sizes.
@@ -539,7 +539,7 @@ class ScoringEngine:
         if not frequency:
             return None
 
-               def norm(value):
+        def norm(value):
             text = str(value).strip().lower()
             text = text.replace('–', '-').replace('—', '-').replace('−', '-')
             text = ' '.join(text.split())
