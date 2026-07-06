@@ -62,12 +62,22 @@ p { font-size: 13px !important; margin: 0 0 8px !important; }
 .narrative p { font-size: 14px !important; line-height: 1.45 !important; }
 
 /* Reduce spacing in components */
-.percentile-block { margin: 8px 0 !important; }
+.percentile-block { margin: 6px 0 !important; }
 .percentile-track { height: 4px !important; }
-.insight { font-size: 11px !important; margin-top: auto !important; padding-top: 8px !important; }
-.dimension-definition { font-size: 11px !important; margin: 0 0 6px !important; }
-.dimension-footnote { font-size: 9px !important; margin: 6px 0 0 !important; }
+.insight { font-size: 11px !important; margin-top: auto !important; padding-top: 6px !important; }
+.dimension-definition { font-size: 11px !important; margin: 0 0 4px !important; }
+.dimension-footnote { font-size: 9px !important; margin: 4px 0 0 !important; }
 .percentile-context { font-size: 11px !important; }
+
+/* Question-Level Profile: tight continuous flow, no whitespace */
+.question-group { margin-top: 12px !important; margin-bottom: 0 !important; break-inside: auto !important; page-break-inside: auto !important; }
+.group-definition { margin-bottom: 8px !important; max-width: none !important; }
+.question-card { margin-bottom: 12px !important; break-inside: avoid !important; page-break-inside: avoid !important; }
+.question-grid { gap: 10px !important; margin-bottom: 0 !important; }
+
+/* Remove excessive margins in question sections */
+.question-group h3 { margin-bottom: 8px !important; }
+.comparison-note { margin-top: 8px !important; margin-bottom: 0 !important; }
 
 /* Remove shadows for cleaner print */
 .cover-panel, .dimension-card, .evidence-card, .split-card, .question-card, .protect-card, .standing-card {
