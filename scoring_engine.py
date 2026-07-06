@@ -530,7 +530,7 @@ class ScoringEngine:
         
         return results
     
-        def _frequency_percentile(self, demographics):
+    def _frequency_percentile(self, demographics):
         """
         Estimate percentile position from reported AI-use frequency using
         benchmark frequency cohort sample sizes.
