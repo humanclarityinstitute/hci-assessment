@@ -1,0 +1,570 @@
+{
+  "version": "1.0",
+  "section_id": "section_1_recognition",
+  "fixed_copy": {
+    "section_label": "01 · Your AI Behaviour",
+    "section_heading": "What Stands Out First",
+    "highlight_label": "One signal behind this pattern",
+    "transition": "Next, we place your individual responses in context to show which behaviours stand out most clearly."
+  },
+  "profiles": [
+    {
+      "profile_id": "RP01_ACTIVE_THINKING_PARTNER",
+      "short_id": "RP01",
+      "profile_name": "Active Thinking Partner",
+      "profile_type": "primary",
+      "headline": "You appear to use AI as an active thinking partner while keeping important judgements recognisably your own.",
+      "paragraph_1": "AI appears to enter your thinking while ideas are still taking shape. Rather than using it only to retrieve information or complete a finished task, you seem willing to use it to test possibilities, organise thoughts and see an issue from more than one direction.",
+      "paragraph_2": "At the same time, your responses suggest that involvement does not automatically give AI the final word. You appear to remain engaged in deciding which suggestions fit, which assumptions deserve challenge and what conclusion still feels recognisably your own.",
+      "required_summary": "Thought Partnership strongly elevated or distinctive relative to AI-use frequency, plus one supporting control/agency signal.",
+      "corroborating_summary": "High Human Agency; low Decision Delegation; strong override behaviour; low tendency to follow AI against personal judgement; strong belief-challenging.",
+      "contradictions_summary": "Strong Decision Delegation; strong following-AI-despite-disagreement; clearly low agency.",
+      "priority": 1,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-TP01",
+        "HL-TP02",
+        "HL-TP03",
+        "HL-AG01",
+        "HL-AG02",
+        "HL-AG03",
+        "HL-CL02"
+      ],
+      "headline_word_count": 17,
+      "interpretation_word_count": 84
+    },
+    {
+      "profile_id": "RP02_DEEPLY_INTEGRATED_SELF_DIRECTED",
+      "short_id": "RP02",
+      "profile_name": "Deeply Integrated, Still Self-Directed",
+      "profile_type": "primary",
+      "headline": "AI appears deeply integrated into how you work and think, while you continue to direct the process.",
+      "paragraph_1": "AI appears to have become a regular and meaningful part of how you approach work, problems or demanding mental tasks. Its role seems broader than occasional assistance, forming part of the process through which you move from uncertainty toward action.",
+      "paragraph_2": "Despite that level of integration, you still appear to experience yourself as directing the interaction. You seem willing to use AI extensively while retaining responsibility for where the process goes, what is accepted and when its contribution should be set aside.",
+      "required_summary": "High Reliance, very frequent use or broad behavioural integration, plus one strong self-direction signal.",
+      "corroborating_summary": "High Human Agency; low/moderate Decision Delegation; retained responsibility; strong override behaviour.",
+      "contradictions_summary": "Strong authority-shift indicators; absence-related unease combined with low agency; frequent following of AI against personal judgement.",
+      "priority": 2,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-AG01",
+        "HL-AG02",
+        "HL-AG03",
+        "HL-PR03",
+        "HL-RL03"
+      ],
+      "headline_word_count": 17,
+      "interpretation_word_count": 81
+    },
+    {
+      "profile_id": "RP03_CLARITY_BEFORE_AUTHORITY",
+      "short_id": "RP03",
+      "profile_name": "Clarity Before Authority",
+      "profile_type": "primary",
+      "headline": "Your responses suggest AI helps you clarify what you think without routinely deciding what you should do.",
+      "paragraph_1": "Your responses suggest that AI is especially useful when your own thinking feels unfinished, crowded or uncertain. It appears to help you organise competing considerations, put possibilities into words and identify what matters most before reaching a conclusion.",
+      "paragraph_2": "The value seems to come less from handing over the choice than from making the choice easier to see. AI may help you create structure around a decision, while the final judgement and responsibility continue to sit mainly with you.",
+      "required_summary": "Strong AI-supported clarity, confidence or decision support, with low/moderate delegation and retained responsibility or agency.",
+      "corroborating_summary": "Thought Partnership; verification; low following-AI-despite-disagreement; use during mentally difficult decisions.",
+      "contradictions_summary": "AI regularly settles decisions; strongly elevated delegation; frequent action against personal judgement.",
+      "priority": 3,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-CL01",
+        "HL-CL02",
+        "HL-CL03",
+        "HL-AG01",
+        "HL-TP02"
+      ],
+      "headline_word_count": 17,
+      "interpretation_word_count": 78
+    },
+    {
+      "profile_id": "RP04_PRACTICAL_AND_BOUNDED",
+      "short_id": "RP04",
+      "profile_name": "Practical and Bounded",
+      "profile_type": "primary",
+      "headline": "Your relationship with AI appears purposeful and practical, with clear boundaries around its role in your personal life.",
+      "paragraph_1": "Your use of AI appears centred on what it can help you accomplish. It seems most relevant when there is a task to complete, a problem to solve, information to organise or effort to reduce.",
+      "paragraph_2": "That usefulness does not appear to extend equally into every part of your life. Your responses suggest clearer boundaries around emotional, private or personally revealing interaction, making the relationship feel more functional than intimate.",
+      "required_summary": "Meaningful practical AI use plus at least two low private/emotional integration signals.",
+      "corroborating_summary": "Low Disclosure; low Emotional Regulation use; low Psychological Safety; low emotional-support use; low absence-related unease.",
+      "contradictions_summary": "Strong private disclosure; strong emotional processing; AI experienced as an emotionally safe private space.",
+      "priority": 4,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-PR01",
+        "HL-PR02",
+        "HL-PR03",
+        "HL-AG01",
+        "HL-VR01",
+        "HL-VR02"
+      ],
+      "headline_word_count": 18,
+      "interpretation_word_count": 69
+    },
+    {
+      "profile_id": "RP05_PRIVATE_REFLECTIVE_RELATIONSHIP",
+      "short_id": "RP05",
+      "profile_name": "Private Reflective Relationship",
+      "profile_type": "primary",
+      "headline": "AI appears to provide a private space where you can explore thoughts or experiences with unusual openness.",
+      "paragraph_1": "AI appears to offer you a space in which thoughts can be expressed before they are fully formed or ready to be shared elsewhere. The interaction seems to allow a degree of openness that may be harder to access in some human settings.",
+      "paragraph_2": "This does not necessarily mean AI is replacing human connection. It suggests that the low-pressure nature of the exchange may make it useful for organising personal experiences, articulating difficult thoughts or exploring feelings without needing to manage another person’s immediate reaction.",
+      "required_summary": "At least one strongly elevated private/emotional signal plus one related supporting signal.",
+      "corroborating_summary": "Private Disclosure; Psychological Safety; Emotional Regulation; emotional-support use.",
+      "contradictions_summary": "Mostly low private/emotional-use signals; purely task-focused pattern; only one mildly elevated answer.",
+      "priority": 5,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-PV01",
+        "HL-PV02",
+        "HL-PV03",
+        "HL-EM01",
+        "HL-EM02"
+      ],
+      "headline_word_count": 17,
+      "interpretation_word_count": 84
+    },
+    {
+      "profile_id": "RP06_PERSONALLY_OPEN_SOCIALLY_RESERVED",
+      "short_id": "RP06",
+      "profile_name": "Personally Open, Socially Reserved",
+      "profile_type": "primary",
+      "headline": "You appear more comfortable engaging openly with AI than making that relationship visible to other people.",
+      "paragraph_1": "Your responses suggest a meaningful difference between how comfortable you feel using AI privately and how comfortable you feel making that use visible to others. The interaction itself may feel natural, while explaining its importance can feel more exposed.",
+      "paragraph_2": "This can create a relationship that is significant in practice but less apparent socially. AI may play a larger role in your thinking, reflection or emotional life than people around you would reasonably assume from what you share with them.",
+      "required_summary": "Strong private integration plus high concealment or low Social Transparency.",
+      "corroborating_summary": "Disclosure; Psychological Safety; Emotional Regulation; low comfort discussing AI use.",
+      "contradictions_summary": "High social openness; weak private integration; isolated concealment without support.",
+      "priority": 6,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-SO01",
+        "HL-SO02",
+        "HL-SO03",
+        "HL-PV01",
+        "HL-PV02",
+        "HL-PV03"
+      ],
+      "headline_word_count": 16,
+      "interpretation_word_count": 79
+    },
+    {
+      "profile_id": "RP07_RESHAPING_CONFIDENCE",
+      "short_id": "RP07",
+      "profile_name": "AI Influence Is Reshaping Confidence",
+      "profile_type": "primary",
+      "headline": "AI appears to be influencing how you evaluate your own judgement, not only the answers you reach.",
+      "paragraph_1": "AI appears to affect more than the content of your thinking. Your responses suggest it may also influence how confidently you view your own judgement, how readily you reconsider an answer and how clearly you separate your contribution from AI’s.",
+      "paragraph_2": "This can emerge when AI becomes involved early enough that ideas are developed jointly rather than simply checked at the end. The result may be greater clarity in some moments, alongside more uncertainty about where your own thinking ends and AI’s influence begins.",
+      "required_summary": "Strong changed self-trust or authorship uncertainty plus one supporting cognition/influence signal.",
+      "corroborating_summary": "Second-guessing after AI disagreement; high Thought Partnership; high Reliance; following AI despite disagreement; reduced confidence without AI.",
+      "contradictions_summary": "Stable self-trust; clear authorship boundaries; only one moderate supporting answer.",
+      "priority": 7,
+      "sensitivity": "high",
+      "compatible_highlights": [
+        "HL-CF01",
+        "HL-CF02",
+        "HL-CF03",
+        "HL-TP01",
+        "HL-TP02"
+      ],
+      "headline_word_count": 17,
+      "interpretation_word_count": 83
+    },
+    {
+      "profile_id": "RP08_AI_CARRYING_MORE_AUTHORITY",
+      "short_id": "RP08",
+      "profile_name": "AI Is Beginning to Carry More Authority",
+      "profile_type": "primary",
+      "headline": "Your responses suggest AI sometimes moves beyond offering input and begins to shape what you ultimately decide.",
+      "paragraph_1": "Your responses suggest that AI sometimes plays a role beyond offering options or helping you think. In particular situations, its recommendation may become part of what determines the action you take or the conclusion you accept.",
+      "paragraph_2": "This does not mean that every decision is being handed over. It indicates that the boundary between receiving advice and following direction may be becoming less distinct in some contexts, especially when the decision is difficult or AI’s answer appears confident.",
+      "required_summary": "Very strong Decision Delegation or following-AI-despite-disagreement plus one direct corroborating signal.",
+      "corroborating_summary": "Convenience reliance; low Verification; reduced self-trust; low override behaviour; high reliance in consequential decisions.",
+      "contradictions_summary": "High Human Agency; strong override behaviour; strong checking; consistent retained decision ownership.",
+      "priority": 8,
+      "sensitivity": "high",
+      "compatible_highlights": [
+        "HL-DA01",
+        "HL-DA02",
+        "HL-DA03",
+        "HL-CF01",
+        "HL-VR02"
+      ],
+      "headline_word_count": 17,
+      "interpretation_word_count": 77
+    },
+    {
+      "profile_id": "RP09_RELIANCE_NOTICEABLE",
+      "short_id": "RP09",
+      "profile_name": "Reliance Has Become Noticeable",
+      "profile_type": "primary",
+      "headline": "AI appears integrated enough into your routines that its absence can noticeably change how you work or think.",
+      "paragraph_1": "AI appears to have become part of your expected way of approaching certain tasks, questions or decisions. Its role may now feel sufficiently familiar that working without it requires a noticeable adjustment.",
+      "paragraph_2": "The important feature is not simply how often you use it, but how its absence affects the process. When a tool becomes embedded in a routine, being unable to access it can alter confidence, momentum or the ease with which thinking gets started.",
+      "required_summary": "Strongly elevated absence-related unease plus high Reliance, very frequent use or strong Thought Partnership.",
+      "corroborating_summary": "Convenience reliance; high Thought Partnership; reduced confidence without AI; regular decision support.",
+      "contradictions_summary": "Low Reliance; occasional use; little reported effect when AI is unavailable.",
+      "priority": 9,
+      "sensitivity": "high",
+      "compatible_highlights": [
+        "HL-RL01",
+        "HL-RL02",
+        "HL-RL03"
+      ],
+      "headline_word_count": 18,
+      "interpretation_word_count": 75
+    },
+    {
+      "profile_id": "SP01_STRONG_THOUGHT_PARTNERSHIP",
+      "short_id": "SP01",
+      "profile_name": "Strong Thought Partnership",
+      "profile_type": "single_pattern",
+      "headline": "AI appears to play an unusually active role in how you develop, test and refine ideas.",
+      "paragraph_1": "You seem willing to bring AI into the thinking process before your ideas are fully formed. Its role appears to involve exploring possibilities, testing language and helping you see a subject from different angles.",
+      "paragraph_2": "The available evidence is strongest around thought development itself. Your other responses do not point clearly enough toward a broader pattern involving decision authority, emotional use or reliance.",
+      "required_summary": "Thought Partnership highly distinctive; no primary profile qualifies.",
+      "corroborating_summary": "Not required beyond minimum confidence in the single signal.",
+      "contradictions_summary": "A stronger coherent primary profile qualifies.",
+      "priority": 20,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-TP01",
+        "HL-TP02",
+        "HL-TP03"
+      ],
+      "headline_word_count": 16,
+      "interpretation_word_count": 62
+    },
+    {
+      "profile_id": "SP02_STRONG_HUMAN_AGENCY",
+      "short_id": "SP02",
+      "profile_name": "Strong Human Agency",
+      "profile_type": "single_pattern",
+      "headline": "You appear especially likely to remain involved in directing decisions and conclusions when AI contributes.",
+      "paragraph_1": "Your responses suggest that AI input does not easily displace your sense of responsibility for the final outcome. You appear willing to consider assistance while continuing to decide what should be accepted, questioned or rejected.",
+      "paragraph_2": "This pattern is clearest around retained direction and judgement. The wider role AI plays in your thinking is more mixed, so the strongest conclusion concerns how closely you remain involved.",
+      "required_summary": "Human Agency or retained decision ownership highly distinctive; no primary profile qualifies.",
+      "corroborating_summary": "Not required beyond minimum confidence in the single signal.",
+      "contradictions_summary": "A stronger coherent primary profile qualifies.",
+      "priority": 21,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-AG01",
+        "HL-AG02",
+        "HL-AG03"
+      ],
+      "headline_word_count": 15,
+      "interpretation_word_count": 65
+    },
+    {
+      "profile_id": "SP03_STRONG_PRIVATE_DISCLOSURE",
+      "short_id": "SP03",
+      "profile_name": "Strong Private Disclosure",
+      "profile_type": "single_pattern",
+      "headline": "AI appears to provide you with an unusually private channel for expressing thoughts or experiences.",
+      "paragraph_1": "Your responses suggest that there are things you can articulate to AI that may be harder to say elsewhere. The relative privacy and lack of immediate social reaction may make some forms of expression feel easier.",
+      "paragraph_2": "Other emotional and social signals are more mixed, so the clearest observation is not a broader emotional identity. It is the distinct role AI appears to play as a private outlet.",
+      "required_summary": "Disclosure highly distinctive; no primary profile qualifies.",
+      "corroborating_summary": "Not required beyond minimum confidence in the single signal.",
+      "contradictions_summary": "A stronger coherent primary profile qualifies.",
+      "priority": 22,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-PV01",
+        "HL-PV02",
+        "HL-PV03"
+      ],
+      "headline_word_count": 15,
+      "interpretation_word_count": 67
+    },
+    {
+      "profile_id": "SP04_STRONG_DECISION_DELEGATION",
+      "short_id": "SP04",
+      "profile_name": "Strong Decision Delegation",
+      "profile_type": "single_pattern",
+      "headline": "You appear more willing to let AI settle particular choices than to keep it solely in an advisory role.",
+      "paragraph_1": "In some situations, your use of AI appears to move beyond gathering information or comparing options. You may be willing to accept its conclusion as the practical resolution to a choice.",
+      "paragraph_2": "The wider evidence does not show a consistent transfer of authority across your behaviour. The pattern is narrower: selected decisions appear more open to being settled by AI.",
+      "required_summary": "Decision Delegation highly distinctive; no RP08 or other primary profile qualifies.",
+      "corroborating_summary": "Not required beyond minimum confidence in the single signal.",
+      "contradictions_summary": "A stronger coherent authority-shift profile qualifies.",
+      "priority": 23,
+      "sensitivity": "high",
+      "compatible_highlights": [
+        "HL-DA01",
+        "HL-DA02",
+        "HL-DA03"
+      ],
+      "headline_word_count": 19,
+      "interpretation_word_count": 59
+    },
+    {
+      "profile_id": "SP05_HIGH_ACTIVE_VERIFICATION",
+      "short_id": "SP05-HIGH",
+      "profile_name": "Active Verification",
+      "profile_type": "single_pattern",
+      "headline": "Checking appears to be a defining part of how you engage with AI-generated information.",
+      "paragraph_1": "You appear reluctant to treat an AI response as complete simply because it sounds convincing. Your behaviour suggests an active process of confirming, comparing or testing what has been provided.",
+      "paragraph_2": "This checking pattern stands out more clearly than any broader identity across your responses. It seems to be one of the main ways you remain involved in judging the quality of AI’s contribution.",
+      "required_summary": "Verification highly distinctive in the high direction; no primary profile qualifies.",
+      "corroborating_summary": "Not required beyond minimum confidence in the single signal.",
+      "contradictions_summary": "A stronger coherent primary profile qualifies.",
+      "priority": 24,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-VR01"
+      ],
+      "headline_word_count": 14,
+      "interpretation_word_count": 63
+    },
+    {
+      "profile_id": "SP05_LOW_LIGHT_VERIFICATION",
+      "short_id": "SP05-LOW",
+      "profile_name": "Light Verification",
+      "profile_type": "single_pattern",
+      "headline": "AI appears integrated into your thinking with relatively little external checking of what it provides.",
+      "paragraph_1": "Your responses suggest that AI outputs are often used without a separate verification step. This may reflect familiarity, convenience, confidence in the system or the kinds of tasks for which you use it.",
+      "paragraph_2": "The evidence does not support a broader conclusion about your relationship with AI. The clearest individual pattern concerns how rarely external checking becomes part of the interaction.",
+      "required_summary": "Verification highly distinctive in the low direction; no primary profile qualifies.",
+      "corroborating_summary": "Not required beyond minimum confidence in the single signal.",
+      "contradictions_summary": "A stronger coherent primary profile qualifies.",
+      "priority": 25,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-VR02"
+      ],
+      "headline_word_count": 15,
+      "interpretation_word_count": 60
+    },
+    {
+      "profile_id": "BF01_BALANCED_CONTEXT_DEPENDENT",
+      "short_id": "BF01",
+      "profile_name": "Balanced and Context-Dependent",
+      "profile_type": "balanced_fallback",
+      "headline": "Your relationship with AI appears flexible, with its role changing according to the task rather than following one dominant pattern.",
+      "paragraph_1": "Your responses do not point toward a single behaviour that consistently defines how you use AI. Instead, its role appears to change depending on whether you are seeking information, working through an idea, completing a task or considering a decision.",
+      "paragraph_2": "This does not make the pattern less meaningful. It suggests a context-dependent relationship in which AI can be useful and influential in some situations while remaining limited or unnecessary in others.",
+      "required_summary": "No primary or single-pattern profile meets threshold.",
+      "corroborating_summary": "Moderate, mixed or context-dependent responses.",
+      "contradictions_summary": "Any stronger coherent profile.",
+      "priority": 99,
+      "sensitivity": "standard",
+      "compatible_highlights": [
+        "HL-PR03",
+        "HL-AG03",
+        "HL-CL02",
+        "HL-BF01"
+      ],
+      "headline_word_count": 20,
+      "interpretation_word_count": 71
+    }
+  ],
+  "highlights": [
+    {
+      "highlight_id": "HL-TP01",
+      "theme": "Thinking partnership",
+      "text": "You appear to involve AI while ideas are still developing, rather than waiting until your thinking is already complete.",
+      "word_count": 19
+    },
+    {
+      "highlight_id": "HL-TP02",
+      "theme": "Thinking partnership",
+      "text": "AI seems most useful to you as a sounding board—something to test ideas against before deciding what you think.",
+      "word_count": 20
+    },
+    {
+      "highlight_id": "HL-TP03",
+      "theme": "Thinking partnership",
+      "text": "You appear willing to use AI to expose alternative viewpoints rather than only confirm an existing conclusion.",
+      "word_count": 17
+    },
+    {
+      "highlight_id": "HL-AG01",
+      "theme": "Agency and retained direction",
+      "text": "Even when AI contributes substantially, you appear likely to retain responsibility for the conclusion or action that follows.",
+      "word_count": 18
+    },
+    {
+      "highlight_id": "HL-AG02",
+      "theme": "Agency and retained direction",
+      "text": "You seem comfortable rejecting AI input when it does not fit your own understanding of the situation.",
+      "word_count": 17
+    },
+    {
+      "highlight_id": "HL-AG03",
+      "theme": "Agency and retained direction",
+      "text": "AI may influence the path of your thinking, but your responses suggest you remain closely involved in directing where it ends.",
+      "word_count": 21
+    },
+    {
+      "highlight_id": "HL-CL01",
+      "theme": "Clarity and decisions",
+      "text": "You appear most likely to turn to AI when a decision feels mentally difficult, uncertain or hard to organise.",
+      "word_count": 19
+    },
+    {
+      "highlight_id": "HL-CL02",
+      "theme": "Clarity and decisions",
+      "text": "AI seems to help you make competing considerations easier to see without automatically resolving the choice for you.",
+      "word_count": 18
+    },
+    {
+      "highlight_id": "HL-CL03",
+      "theme": "Clarity and decisions",
+      "text": "The strongest decision pattern is not delegation, but the use of AI to create greater structure before acting.",
+      "word_count": 18
+    },
+    {
+      "highlight_id": "HL-PR01",
+      "theme": "Practical boundaries",
+      "text": "Your AI use appears considerably more task-focused than emotionally focused.",
+      "word_count": 10
+    },
+    {
+      "highlight_id": "HL-PR02",
+      "theme": "Practical boundaries",
+      "text": "You seem willing to rely on AI for efficiency while maintaining clearer limits around private or personal interaction.",
+      "word_count": 18
+    },
+    {
+      "highlight_id": "HL-PR03",
+      "theme": "Practical boundaries",
+      "text": "AI appears useful across practical situations without becoming equally important in every area of your life.",
+      "word_count": 16
+    },
+    {
+      "highlight_id": "HL-PV01",
+      "theme": "Private reflection and disclosure",
+      "text": "You appear able to express some thoughts to AI that you would be less likely to share directly with another person.",
+      "word_count": 21
+    },
+    {
+      "highlight_id": "HL-PV02",
+      "theme": "Private reflection and disclosure",
+      "text": "The privacy of the interaction seems to make AI a useful place to articulate thoughts before they are ready to be shared.",
+      "word_count": 22
+    },
+    {
+      "highlight_id": "HL-PV03",
+      "theme": "Private reflection and disclosure",
+      "text": "AI appears to provide a lower-pressure setting for working through experiences that may be difficult to explain immediately to others.",
+      "word_count": 20
+    },
+    {
+      "highlight_id": "HL-EM01",
+      "theme": "Emotional processing",
+      "text": "You appear to use AI not only to solve problems, but also to put emotional experiences into words.",
+      "word_count": 18
+    },
+    {
+      "highlight_id": "HL-EM02",
+      "theme": "Emotional processing",
+      "text": "AI seems to provide a space where difficult feelings can be organised before you decide what to do with them.",
+      "word_count": 20
+    },
+    {
+      "highlight_id": "HL-SO01",
+      "theme": "Social reserve",
+      "text": "AI appears to play a larger private role than people around you may realise.",
+      "word_count": 14
+    },
+    {
+      "highlight_id": "HL-SO02",
+      "theme": "Social reserve",
+      "text": "You seem more comfortable using AI in meaningful ways than discussing the extent of that use with other people.",
+      "word_count": 19
+    },
+    {
+      "highlight_id": "HL-SO03",
+      "theme": "Social reserve",
+      "text": "Your responses suggest a noticeable gap between your private AI behaviour and how openly you present it socially.",
+      "word_count": 18
+    },
+    {
+      "highlight_id": "HL-CF01",
+      "theme": "Confidence and authorship",
+      "text": "AI appears to have changed how readily you trust your first judgement when its answer points in another direction.",
+      "word_count": 19
+    },
+    {
+      "highlight_id": "HL-CF02",
+      "theme": "Confidence and authorship",
+      "text": "You may sometimes find it difficult to identify which parts of a developed idea began with you and which emerged through AI.",
+      "word_count": 22
+    },
+    {
+      "highlight_id": "HL-CF03",
+      "theme": "Confidence and authorship",
+      "text": "The influence of AI appears strongest not only in what you conclude, but in how you assess the quality of your own thinking.",
+      "word_count": 23
+    },
+    {
+      "highlight_id": "HL-DA01",
+      "theme": "Decision authority",
+      "text": "You appear willing in some situations to let AI’s recommendation become the practical resolution to a choice.",
+      "word_count": 17
+    },
+    {
+      "highlight_id": "HL-DA02",
+      "theme": "Decision authority",
+      "text": "There are moments when AI seems able to outweigh an initial sense that another answer may be more appropriate.",
+      "word_count": 19
+    },
+    {
+      "highlight_id": "HL-DA03",
+      "theme": "Decision authority",
+      "text": "AI appears more likely to shape the final action when the decision is difficult or mentally demanding.",
+      "word_count": 17
+    },
+    {
+      "highlight_id": "HL-RL01",
+      "theme": "Reliance",
+      "text": "Being unable to use AI appears capable of disrupting your usual momentum or way of approaching a task.",
+      "word_count": 18
+    },
+    {
+      "highlight_id": "HL-RL02",
+      "theme": "Reliance",
+      "text": "AI seems established enough in your routine that its absence is more noticeable than usage frequency alone might suggest.",
+      "word_count": 19
+    },
+    {
+      "highlight_id": "HL-RL03",
+      "theme": "Reliance",
+      "text": "The relationship appears to involve not only frequent use, but an expectation that AI will normally be available when needed.",
+      "word_count": 20
+    },
+    {
+      "highlight_id": "HL-VR01",
+      "theme": "Verification",
+      "text": "You appear to treat checking as a normal part of using AI rather than as an occasional response to uncertainty.",
+      "word_count": 20
+    },
+    {
+      "highlight_id": "HL-VR02",
+      "theme": "Verification",
+      "text": "AI answers seem likely to enter your thinking without a separate external verification step.",
+      "word_count": 14
+    },
+    {
+      "highlight_id": "HL-BF01",
+      "theme": "Balanced fallback",
+      "text": "You appear more open to using AI for thinking and practical support than for emotional processing or final decision-making.",
+      "word_count": 19
+    }
+  ],
+  "highlight_block_definition": {
+    "purpose": "Provide a short corroborating observation that helps the participant understand why the Section 1 recognition profile was selected.",
+    "rules": [
+      "The highlight must support the winning recognition profile.",
+      "It must be grounded in the participant's actual responses.",
+      "It must not claim to be the assessment's most distinctive finding.",
+      "It must not claim to be the assessment's most interesting finding.",
+      "It must not claim to be the assessment's most surprising finding.",
+      "It must not introduce an unrelated behavioural theme."
+    ]
+  }
+}

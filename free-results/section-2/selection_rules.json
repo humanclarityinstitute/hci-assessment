@@ -1,0 +1,519 @@
+{
+  "schema_version": "1.0.0",
+  "section": "results.section_2.behaviour_in_context",
+  "required_card_count": 3,
+  "configuration_status": "implementation_ready_default",
+  "response_scale": {
+    "minimum": 1,
+    "maximum": 7,
+    "high_answers": [
+      5,
+      6,
+      7
+    ],
+    "low_answers": [
+      1,
+      2,
+      3
+    ],
+    "neutral_answer": [
+      4
+    ]
+  },
+  "comparison_defaults": {
+    "comparison_field": "ai_tool_use_frequency",
+    "minimum_subgroup_n": 25,
+    "high_subgroup_percentile_threshold": 85,
+    "low_subgroup_percentile_threshold": 15,
+    "note": "Comparison-dependent variants require both directional response eligibility and deviation from the participant's usage-frequency subgroup."
+  },
+  "distinctiveness_scoring": {
+    "total_points": 100,
+    "components": {
+      "response_rarity": {
+        "max_points": 40,
+        "description": "Rarity of the participant's response in the relevant overall distribution."
+      },
+      "subgroup_deviation": {
+        "max_points": 40,
+        "description": "Deviation from the expected response among participants with similar AI-use frequency; for non-comparison cards use the most relevant benchmark distribution."
+      },
+      "behavioural_significance": {
+        "max_points": 10,
+        "description": "Fixed editorial importance attached to the finding."
+      },
+      "evidence_strength": {
+        "max_points": 5,
+        "description": "Fixed evidence-quality score attached to the finding."
+      },
+      "tier_bonus": {
+        "max_points": 5,
+        "tier_1": 5,
+        "tier_2": 0
+      }
+    },
+    "minimum_distinctive_score": 65,
+    "exceptional_score": 80
+  },
+  "selection_order": [
+    "Generate all eligible distinctive candidates.",
+    "Rank by distinctiveness score, then behavioural significance, evidence strength, and card ID for deterministic ties.",
+    "Prefer three different thematic families.",
+    "Allow two cards from one family only when both score at least 80, or the second is within 8 points of the best candidate from another family.",
+    "Never select three cards from the same family.",
+    "Apply overlap penalties before final ranking.",
+    "Fill remaining positions with typical fallback cards in priority order, avoiding duplicate findings and unnecessary family repetition."
+  ],
+  "family_rules": {
+    "prefer_unique_families": true,
+    "maximum_cards_per_family": 2,
+    "same_family_exception": {
+      "both_minimum_score": 80,
+      "within_points_of_alternative": 8
+    }
+  },
+  "overlap_penalties": {
+    "strong": {
+      "penalty_points": 15,
+      "pairs": [
+        [
+          "SF01",
+          "SF07"
+        ],
+        [
+          "SF02",
+          "SF06"
+        ],
+        [
+          "SF04",
+          "SF12"
+        ],
+        [
+          "SF08",
+          "SF09"
+        ],
+        [
+          "ST01",
+          "ST02"
+        ]
+      ]
+    },
+    "moderate": {
+      "penalty_points": 8,
+      "pairs": [
+        [
+          "SF03",
+          "SF11"
+        ],
+        [
+          "SF03",
+          "SF10"
+        ],
+        [
+          "SF05",
+          "SF09"
+        ],
+        [
+          "SF06",
+          "SF07"
+        ],
+        [
+          "SF02",
+          "ST02"
+        ]
+      ]
+    }
+  },
+  "fallback_order": [
+    "SF13_TYPICAL",
+    "SF03_TYPICAL",
+    "SF08_TYPICAL",
+    "SF01_TYPICAL",
+    "SF09_TYPICAL"
+  ],
+  "findings": {
+    "SF01": {
+      "finding_id": "SF01",
+      "variable": "emot_q2",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "emotional_personal",
+      "overlap_group": "emotional_support",
+      "variants": {
+        "HIGH": {
+          "card_id": "SF01_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        },
+        "TYPICAL": {
+          "card_id": "SF01_TYPICAL",
+          "selection_role": "fallback",
+          "direction": "typical",
+          "fallback_priority": 4,
+          "only_when_needed": true
+        }
+      }
+    },
+    "SF02": {
+      "finding_id": "SF02",
+      "variable": "disc_q3",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "emotional_personal",
+      "overlap_group": "private_openness",
+      "variants": {
+        "HIGH": {
+          "card_id": "SF02_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        }
+      }
+    },
+    "SF03": {
+      "finding_id": "SF03",
+      "variable": "thought_q1",
+      "eligibility_type": "comparison_dependent",
+      "tier": 1,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "thought_partnership",
+      "variants": {
+        "COMPARISON_HIGH": {
+          "card_id": "SF03_COMPARISON_HIGH",
+          "selection_role": "distinctive",
+          "direction": "higher_than_expected",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ],
+          "comparison_field": "ai_tool_use_frequency",
+          "minimum_subgroup_percentile": 85,
+          "minimum_subgroup_n": 25
+        },
+        "COMPARISON_LOW": {
+          "card_id": "SF03_COMPARISON_LOW",
+          "selection_role": "distinctive",
+          "direction": "lower_than_expected",
+          "eligible_answers": [
+            1,
+            2,
+            3
+          ],
+          "comparison_field": "ai_tool_use_frequency",
+          "maximum_subgroup_percentile": 15,
+          "minimum_subgroup_n": 25
+        },
+        "TYPICAL": {
+          "card_id": "SF03_TYPICAL",
+          "selection_role": "fallback",
+          "direction": "typical",
+          "fallback_priority": 2,
+          "only_when_needed": true
+        }
+      }
+    },
+    "SF04": {
+      "finding_id": "SF04",
+      "variable": "rel_q4",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "reliance_control_decision",
+      "overlap_group": "convenience_reliance",
+      "variants": {
+        "HIGH": {
+          "card_id": "SF04_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        }
+      }
+    },
+    "SF05": {
+      "finding_id": "SF05",
+      "variable": "agency_q3",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "judgement_confidence",
+      "variants": {
+        "HIGH": {
+          "card_id": "SF05_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        }
+      }
+    },
+    "SF06": {
+      "finding_id": "SF06",
+      "variable": "disc_q2",
+      "eligibility_type": "comparison_dependent",
+      "tier": 1,
+      "family": "emotional_personal",
+      "overlap_group": "private_openness",
+      "variants": {
+        "COMPARISON_HIGH": {
+          "card_id": "SF06_COMPARISON_HIGH",
+          "selection_role": "distinctive",
+          "direction": "higher_than_expected",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ],
+          "comparison_field": "ai_tool_use_frequency",
+          "minimum_subgroup_percentile": 85,
+          "minimum_subgroup_n": 25
+        },
+        "COMPARISON_LOW": {
+          "card_id": "SF06_COMPARISON_LOW",
+          "selection_role": "distinctive",
+          "direction": "lower_than_expected",
+          "eligible_answers": [
+            1,
+            2,
+            3
+          ],
+          "comparison_field": "ai_tool_use_frequency",
+          "maximum_subgroup_percentile": 15,
+          "minimum_subgroup_n": 25
+        }
+      }
+    },
+    "SF07": {
+      "finding_id": "SF07",
+      "variable": "emot_q4",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "emotional_personal",
+      "overlap_group": "emotional_support",
+      "variants": {
+        "HIGH": {
+          "card_id": "SF07_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        }
+      }
+    },
+    "SF08": {
+      "finding_id": "SF08",
+      "variable": "del_q1",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "reliance_control_decision",
+      "overlap_group": "decision_authority",
+      "variants": {
+        "HIGH": {
+          "card_id": "SF08_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        },
+        "TYPICAL": {
+          "card_id": "SF08_TYPICAL",
+          "selection_role": "fallback",
+          "direction": "typical",
+          "fallback_priority": 3,
+          "only_when_needed": true
+        }
+      }
+    },
+    "SF09": {
+      "finding_id": "SF09",
+      "variable": "del_q3",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "reliance_control_decision",
+      "overlap_group": "decision_authority",
+      "variants": {
+        "HIGH": {
+          "card_id": "SF09_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        },
+        "TYPICAL": {
+          "card_id": "SF09_TYPICAL",
+          "selection_role": "fallback",
+          "direction": "typical",
+          "fallback_priority": 5,
+          "only_when_needed": true
+        }
+      }
+    },
+    "SF10": {
+      "finding_id": "SF10",
+      "variable": "agency_q5",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "cognitive_authorship",
+      "variants": {
+        "HIGH": {
+          "card_id": "SF10_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        }
+      }
+    },
+    "SF11": {
+      "finding_id": "SF11",
+      "variable": "thought_q2",
+      "eligibility_type": "comparison_dependent",
+      "tier": 2,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "thought_partnership",
+      "variants": {
+        "COMPARISON_HIGH": {
+          "card_id": "SF11_COMPARISON_HIGH",
+          "selection_role": "distinctive",
+          "direction": "higher_than_expected",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ],
+          "comparison_field": "ai_tool_use_frequency",
+          "minimum_subgroup_percentile": 85,
+          "minimum_subgroup_n": 25
+        },
+        "COMPARISON_LOW": {
+          "card_id": "SF11_COMPARISON_LOW",
+          "selection_role": "distinctive",
+          "direction": "lower_than_expected",
+          "eligible_answers": [
+            1,
+            2,
+            3
+          ],
+          "comparison_field": "ai_tool_use_frequency",
+          "maximum_subgroup_percentile": 15,
+          "minimum_subgroup_n": 25
+        }
+      }
+    },
+    "SF12": {
+      "finding_id": "SF12",
+      "variable": "rel_q1",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "reliance_control_decision",
+      "overlap_group": "convenience_reliance",
+      "variants": {
+        "HIGH": {
+          "card_id": "SF12_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        }
+      }
+    },
+    "SF13": {
+      "finding_id": "SF13",
+      "variable": "ver_q1",
+      "eligibility_type": "low_only",
+      "tier": 1,
+      "family": "verification",
+      "overlap_group": "independent_verification",
+      "variants": {
+        "LOW": {
+          "card_id": "SF13_LOW",
+          "selection_role": "distinctive",
+          "direction": "low",
+          "eligible_answers": [
+            1,
+            2,
+            3
+          ]
+        },
+        "TYPICAL": {
+          "card_id": "SF13_TYPICAL",
+          "selection_role": "fallback",
+          "direction": "typical",
+          "fallback_priority": 1,
+          "only_when_needed": true
+        }
+      }
+    },
+    "ST01": {
+      "finding_id": "ST01",
+      "variable": "soc_q3",
+      "eligibility_type": "low_only",
+      "tier": 2,
+      "family": "social_transparency",
+      "overlap_group": "social_disclosure",
+      "variants": {
+        "LOW": {
+          "card_id": "ST01_LOW",
+          "selection_role": "distinctive",
+          "direction": "low",
+          "eligible_answers": [
+            1,
+            2,
+            3
+          ]
+        }
+      }
+    },
+    "ST02": {
+      "finding_id": "ST02",
+      "variable": "soc_q2",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "social_transparency",
+      "overlap_group": "social_disclosure",
+      "variants": {
+        "HIGH": {
+          "card_id": "ST02_HIGH",
+          "selection_role": "distinctive",
+          "direction": "high",
+          "eligible_answers": [
+            5,
+            6,
+            7
+          ]
+        }
+      }
+    }
+  }
+}

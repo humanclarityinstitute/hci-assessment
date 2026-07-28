@@ -1,0 +1,861 @@
+{
+  "schema_version": "1.0.0",
+  "section": "results.section_2.behaviour_in_context",
+  "title": "Your Behaviour in Context",
+  "card_count": 23,
+  "finding_count": 15,
+  "copy_status": "locked",
+  "cards": [
+    {
+      "card_id": "SF01_HIGH",
+      "finding_id": "SF01",
+      "variant": "HIGH",
+      "variable": "emot_q2",
+      "assessment_question": "I receive emotional support or comfort from AI tools.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "emotional_personal",
+      "overlap_group": "emotional_support",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "Emotional support is a more established part of your AI use than it is for most people",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "AI appears to be a recurring source of comfort, reassurance or emotional reflection for you—not only a practical tool. This role is more established than it is across the wider benchmark."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "This result describes how prominent AI’s emotional role has become. It does not show whether that support is beneficial, harmful or replacing human connection."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Across two independent HCI datasets, only around 18% of participants identified emotional support as a primary use of AI. Your response places you within a smaller group for whom AI occupies a more established emotional and reflective role. HCI also finds that this behaviour becomes more common as AI use increases, but remains unevenly distributed."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Research from OpenAI and the MIT Media Lab found that emotionally intensive and companionship-oriented AI use is concentrated among a smaller group of highly engaged users."
+        }
+      },
+      "quality": {
+        "body_word_count": 137,
+        "full_word_count": 166
+      }
+    },
+    {
+      "card_id": "SF02_HIGH",
+      "finding_id": "SF02",
+      "variant": "HIGH",
+      "variable": "disc_q3",
+      "assessment_question": "There are things I have told AI that I have never told another person.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "emotional_personal",
+      "overlap_group": "private_openness",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI may have become a private space for thoughts you have not shared elsewhere",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "AI appears to hold a more private and personal role for you than it does for most participants. You may use it to explore thoughts, feelings or experiences before—or instead of—sharing them with another person."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "This does not necessarily mean you trust AI as you would a person. Disclosure can also be shaped by reduced fear of judgement, privacy expectations and the ease of returning to the conversation."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Among participants who use AI very often, 63% said they had told it something they had never told another person. This pattern becomes much less common as usage decreases, placing your response toward the more pronounced end of a strong usage-related shift."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Nature Portfolio research found that emotionally engaging AI conversations can increase personal disclosure, while reciprocal disclosure from the AI was associated with stronger feelings of closeness."
+        }
+      },
+      "quality": {
+        "body_word_count": 138,
+        "full_word_count": 164
+      }
+    },
+    {
+      "card_id": "SF03_COMPARISON_HIGH",
+      "finding_id": "SF03",
+      "variant": "COMPARISON_HIGH",
+      "variable": "thought_q1",
+      "assessment_question": "I use AI as a sounding board—thinking out loud and developing ideas through conversation.",
+      "selection_role": "distinctive",
+      "eligibility_type": "comparison_dependent",
+      "tier": 1,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "thought_partnership",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI has become part of how you think earlier than the benchmark would predict",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You use AI as a sounding board more than is typical among people who use it as frequently as you. Conversational thinking appears unusually established relative to your overall level of AI use."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "Thinking with AI is different from simply asking it for answers. It means using conversation to organise, test and develop your own reasoning."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Among participants who use AI very often, 75% use it as a sounding board, compared with just 12% of rare users. Your response stands out because this behaviour appears more developed than HCI would normally expect at your usage level."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Research in Nature Human Behaviour found that ChatGPT users generated more creative ideas than people using search or no AI, while potentially reducing idea diversity across groups."
+        }
+      },
+      "quality": {
+        "body_word_count": 123,
+        "full_word_count": 149
+      }
+    },
+    {
+      "card_id": "SF03_COMPARISON_LOW",
+      "finding_id": "SF03",
+      "variant": "COMPARISON_LOW",
+      "variable": "thought_q1",
+      "assessment_question": "I use AI as a sounding board—thinking out loud and developing ideas through conversation.",
+      "selection_role": "distinctive",
+      "eligibility_type": "comparison_dependent",
+      "tier": 1,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "thought_partnership",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "You use AI frequently without making it part of your thinking process",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "Although you use AI regularly, you are less likely than comparable users to think aloud or develop ideas through conversation with it. AI appears to remain mainly a tool for answers, tasks or execution."
+        },
+        "distinction": {
+          "heading": "A common assumption",
+          "text": "Frequent AI use naturally develops into thought partnership.\n\nHCI observes this across much of the benchmark, but your result shows it is not inevitable. High use can remain practical without becoming conversational or reflective."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Among participants who use AI very often, 75% use it as a sounding board. Your result stands out because it runs against one of the strongest usage-related patterns in the assessment."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Research in Nature Human Behaviour found that ChatGPT can support idea generation, but the outcome depends on how it is used. AI may change the process of developing ideas without automatically becoming a thinking partner."
+        }
+      },
+      "quality": {
+        "body_word_count": 134,
+        "full_word_count": 158
+      }
+    },
+    {
+      "card_id": "SF04_HIGH",
+      "finding_id": "SF04",
+      "variant": "HIGH",
+      "variable": "rel_q4",
+      "assessment_question": "I often rely on AI even when I could work things out on my own.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "reliance_control_decision",
+      "overlap_group": "convenience_reliance",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI appears to reduce effort for you even when you could work things out independently",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "AI appears to help you reduce the effort involved in thinking, not only handle difficult tasks. This is more pronounced than it is for most participants, suggesting convenience now plays an important role in when you involve it."
+        },
+        "distinction": {
+          "heading": "A common assumption",
+          "text": "Reliance on AI means dependence.\n\nHCI does not treat these as the same. Frequent use can coexist with strong agency and decision ownership. The more useful question is whether reliance remains deliberate."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Only 9% of participants said they often rely on AI when they could work something out themselves. This rose to 16% among everyday users, showing that convenience-based reliance remains a minority behaviour even among those most familiar with AI."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Harvard research found that AI-assisted knowledge workers often completed complex tasks faster and produced stronger outputs, while shifting from generating everything independently toward directing, evaluating and refining AI-supported work."
+        }
+      },
+      "quality": {
+        "body_word_count": 138,
+        "full_word_count": 165
+      }
+    },
+    {
+      "card_id": "SF05_HIGH",
+      "finding_id": "SF05",
+      "variant": "HIGH",
+      "variable": "agency_q3",
+      "assessment_question": "Using AI tools has changed how much I trust my own judgement.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "judgement_confidence",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI appears to be changing how much you trust your own judgement",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "AI appears to influence not only the decisions you consider, but how certain you feel about your own conclusions. This effect is more pronounced for you than it is across the wider benchmark."
+        },
+        "distinction": {
+          "heading": "A common assumption",
+          "text": "If AI changes your confidence, you have stopped thinking for yourself.\n\nHCI observes a more nuanced pattern. People can remain responsible for their decisions while still using AI to reinforce, weaken or reshape how confident they feel about their own judgement."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Across HCI’s wider research, 91% of participants report retaining personal responsibility for AI-influenced decisions. Your result suggests responsibility may still remain yours, while the confidence surrounding your judgement is more affected than it is for most participants."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Harvard research found that generative AI can become part of how people evaluate, refine and validate ideas—not simply automate the final decision."
+        }
+      },
+      "quality": {
+        "body_word_count": 134,
+        "full_word_count": 158
+      }
+    },
+    {
+      "card_id": "SF06_COMPARISON_HIGH",
+      "finding_id": "SF06",
+      "variant": "COMPARISON_HIGH",
+      "variable": "disc_q2",
+      "assessment_question": "I feel emotionally safer expressing myself to AI than I do to many people in my life.",
+      "selection_role": "distinctive",
+      "eligibility_type": "comparison_dependent",
+      "tier": 1,
+      "family": "emotional_personal",
+      "overlap_group": "private_openness",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "Expressing yourself to AI feels safer than it does in many human interactions",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You report greater emotional safety with AI than is typical among people who use it as frequently as you. The distinctive feature is not simply disclosure; expressing yourself to AI feels easier than doing so with many people in your life."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "Psychological safety is different from disclosure. Someone may reveal something private without generally feeling safe—or feel comfortable without sharing deeply personal information."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Among participants who use AI very often, 72% said expressing themselves to AI felt safer than expressing themselves to many people, compared with just 8% of rare users. Your result stands out because this sense of safety is stronger than your usage level would normally predict."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "A nine-study programme in Nature Human Behaviour found that people can experience AI responses as empathic while continuing to value human empathy more highly."
+        }
+      },
+      "quality": {
+        "body_word_count": 134,
+        "full_word_count": 159
+      }
+    },
+    {
+      "card_id": "SF06_COMPARISON_LOW",
+      "finding_id": "SF06",
+      "variant": "COMPARISON_LOW",
+      "variable": "disc_q2",
+      "assessment_question": "I feel emotionally safer expressing myself to AI than I do to many people in my life.",
+      "selection_role": "distinctive",
+      "eligibility_type": "comparison_dependent",
+      "tier": 1,
+      "family": "emotional_personal",
+      "overlap_group": "private_openness",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "You use AI without finding it emotionally safer than people in your life",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "Although you use AI at a level where emotional openness often becomes more common, you are less likely than comparable users to feel safer expressing yourself to it. AI may support reflection without becoming your preferred place for emotional openness."
+        },
+        "distinction": {
+          "heading": "A common assumption",
+          "text": "Frequent AI use naturally makes people more comfortable disclosing personal thoughts.\n\nHCI observes this often, but your result shows it is not inevitable. Familiarity can deepen practical use without changing where someone feels safest being vulnerable."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Among participants who use AI very often, 72% said expressing themselves to AI felt safer than expressing themselves to many people. Your result stands out because deeper use has not translated into the emotional preference seen across much of the benchmark."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Research in Nature Human Behaviour found that people can respond positively to AI-generated empathy while continuing to value human empathy more highly."
+        }
+      },
+      "quality": {
+        "body_word_count": 139,
+        "full_word_count": 164
+      }
+    },
+    {
+      "card_id": "SF07_HIGH",
+      "finding_id": "SF07",
+      "variant": "HIGH",
+      "variable": "emot_q4",
+      "assessment_question": "When I feel stressed, anxious, or emotionally overwhelmed, I often turn to AI to help me process my thoughts.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "emotional_personal",
+      "overlap_group": "emotional_support",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI appears to help you regain clarity when emotions become difficult to organise",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "AI appears to have become part of how you respond during stress, anxiety or emotional overload. Its role may extend beyond comfort by helping you slow down, organise thoughts and decide how to respond."
+        },
+        "distinction": {
+          "heading": "A common assumption",
+          "text": "Turning to AI during stress means emotional dependence.\n\nHCI does not support that conclusion from this behaviour alone. AI may provide reflective dialogue, structure, reassurance or a pause before action. The more useful distinction is whether it supports your own processing or becomes the only route through it."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Across two independent HCI datasets, around 18% of participants identified emotional support as a primary AI use. Your response places you toward the more established end of that pattern."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "OpenAI and MIT analysed nearly 40 million interactions and ran a four-week trial with almost 1,000 participants. Emotionally expressive use was concentrated among a smaller group, with outcomes varying by conversation type, intensity and individual circumstances."
+        }
+      },
+      "quality": {
+        "body_word_count": 148,
+        "full_word_count": 173
+      }
+    },
+    {
+      "card_id": "SF08_HIGH",
+      "finding_id": "SF08",
+      "variant": "HIGH",
+      "variable": "del_q1",
+      "assessment_question": "I regularly hand over decisions to AI systems that I previously made myself.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "reliance_control_decision",
+      "overlap_group": "decision_authority",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI may have moved beyond advising your decisions and into making some of them for you",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You report regularly handing some decisions to AI rather than using it only for advice. This is more pronounced than it is for most participants and suggests AI sometimes occupies the final point of judgement."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "Reliance and delegation are different. Reliance means using AI to inform a choice; delegation begins when AI makes a decision you previously would have made yourself."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Only 9% of participants strongly reported regularly handing decisions over to AI. Most people retain the final choice: across HCI’s wider research, 91% say responsibility remains theirs despite AI involvement."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Microsoft’s Work Trend Index, based on 31,000 workers across 31 countries, found that 70% would delegate as much work as possible to AI to reduce their workload. Comfort was also high for analytical work (79%) and creative work (73%), showing that delegation is extending beyond administration into tasks involving judgement and ideas."
+        }
+      },
+      "quality": {
+        "body_word_count": 144,
+        "full_word_count": 172
+      }
+    },
+    {
+      "card_id": "SF09_HIGH",
+      "finding_id": "SF09",
+      "variant": "HIGH",
+      "variable": "del_q3",
+      "assessment_question": "I sometimes follow AI recommendations even when they do not feel right to me.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "reliance_control_decision",
+      "overlap_group": "decision_authority",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "You may sometimes follow AI guidance before resolving your own doubts about it",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You report sometimes acting on AI guidance even when it does not fully feel right. This suggests the recommendation can carry more behavioural weight than your own hesitation, even though the final decision remains yours."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "This does not necessarily mean the AI is wrong or that you trust it blindly. Your initial instinct may also be incomplete. The important signal is whether disagreement prompts further reflection or is treated as friction to move past."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Across HCI’s wider research, 87–88% of participants feel able to override AI recommendations, yet 59% still report feeling steered toward particular choices. Your response places you toward the more pronounced end of this tension between formal control and behavioural influence."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Two studies involving 1,925 participants, published in Scientific Reports, found that ChatGPT advice influenced decisions across multiple domains at levels comparable to expert advice—even without unusually high trust in AI."
+        }
+      },
+      "quality": {
+        "body_word_count": 147,
+        "full_word_count": 172
+      }
+    },
+    {
+      "card_id": "SF10_HIGH",
+      "finding_id": "SF10",
+      "variant": "HIGH",
+      "variable": "agency_q5",
+      "assessment_question": "I sometimes question what is genuinely ‘mine’ versus shaped by suggestions from AI tools.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "cognitive_authorship",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "It may sometimes be difficult to separate your own thinking from ideas shaped with AI",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You report sometimes questioning which parts of an AI-assisted idea or decision feel genuinely yours. This is more pronounced than it is for most participants and suggests AI has become closely involved in how some of your thinking develops."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "AI influence does not automatically remove human authorship. People have always been shaped by conversations, books and other perspectives. The more useful question is whether you can still recognise your own intention, judgement and contribution within the result."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Around 31% of participants agreed that they sometimes question what is genuinely theirs versus shaped by AI suggestions. This rose to 41% among 18–24-year-olds, making authorship uncertainty a meaningful—but not universal—feature of AI-assisted thinking. HCI’s wider research similarly finds that 34–38% question whether AI-assisted choices feel fully their own."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Two experiments published in Scientific Reports found that people produced stronger creative work when they actively co-created with AI rather than mainly editing AI-generated content. The difference was linked to whether participants experienced themselves as meaningfully shaping the work."
+        }
+      },
+      "quality": {
+        "body_word_count": 169,
+        "full_word_count": 196
+      }
+    },
+    {
+      "card_id": "SF11_COMPARISON_HIGH",
+      "finding_id": "SF11",
+      "variant": "COMPARISON_HIGH",
+      "variable": "thought_q2",
+      "assessment_question": "I use AI to challenge or stress-test my own beliefs and assumptions.",
+      "selection_role": "distinctive",
+      "eligibility_type": "comparison_dependent",
+      "tier": 2,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "thought_partnership",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "You use AI to create resistance against conclusions you might otherwise accept",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You use AI to challenge your beliefs and assumptions more than is typical among people who use it as frequently as you. AI appears to function not only as support, but as a deliberate counterweight to your existing thinking."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "Generating disagreement is not the same as exercising judgement. AI can produce persuasive objections that are incomplete or wrong. The meaningful behaviour is testing your position while retaining responsibility for evaluating the challenge."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Among participants who use AI very often, 53% use it to challenge their beliefs, compared with 4% of rare users. Your result stands out because this adversarial form of thought partnership is more developed than your usage level would normally predict."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "An ACM CHI study involving 48 participants across 12 groups found that an AI Devil’s Advocate created more flexible discussions and improved satisfaction, particularly for people holding minority positions."
+        }
+      },
+      "quality": {
+        "body_word_count": 142,
+        "full_word_count": 166
+      }
+    },
+    {
+      "card_id": "SF11_COMPARISON_LOW",
+      "finding_id": "SF11",
+      "variant": "COMPARISON_LOW",
+      "variable": "thought_q2",
+      "assessment_question": "I use AI to challenge or stress-test my own beliefs and assumptions.",
+      "selection_role": "distinctive",
+      "eligibility_type": "comparison_dependent",
+      "tier": 2,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "thought_partnership",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "You use AI frequently without routinely asking it to challenge your thinking",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "Although you use AI regularly, you are less likely than comparable users to ask it to test your beliefs or expose weaknesses in your assumptions. AI may help advance your thinking without often creating deliberate resistance to it."
+        },
+        "distinction": {
+          "heading": "A common assumption",
+          "text": "Frequent conversational use naturally produces more critical engagement.\n\nHCI finds that ordinary thought partnership develops readily with familiarity, but belief-challenging is less automatic. It appears to reflect a more deliberate way of structuring the interaction."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Among participants who use AI very often, 53% use it to challenge their beliefs, compared with 4% of rare users. Your result runs against this usage-related pattern, although you may stress-test your thinking through people, research or private reflection instead."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "An ACM CHI study involving 48 participants across 12 groups found that AI-generated counterarguments supported more flexible discussion, particularly by helping surface perspectives that group dynamics might otherwise suppress."
+        }
+      },
+      "quality": {
+        "body_word_count": 142,
+        "full_word_count": 166
+      }
+    },
+    {
+      "card_id": "SF12_HIGH",
+      "finding_id": "SF12",
+      "variant": "HIGH",
+      "variable": "rel_q1",
+      "assessment_question": "I feel uneasy or restless when I cannot use AI tools for an extended period.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 1,
+      "family": "reliance_control_decision",
+      "overlap_group": "convenience_reliance",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI’s absence may feel emotionally disruptive, not merely inconvenient",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You report feeling uneasy or restless when you cannot use AI for an extended period. This is more pronounced than it is for most participants and suggests AI may now provide cognitive, practical or emotional support that is noticeably missed when unavailable."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "Feeling uncomfortable without AI does not by itself indicate addiction or clinical dependence. It may reflect disrupted routines, reduced confidence, habit interruption or the temporary loss of a highly useful support tool."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Only 9% of participants reported feeling uneasy or restless without access to AI. Even among everyday users, this rose to just 16%, making your response distinctive rather than an expected consequence of frequent use."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "A four-week OpenAI and MIT Media Lab study involving 981 participants and more than 300,000 messages found that heavier daily chatbot use was associated with greater emotional dependence and problematic-use indicators, although outcomes varied substantially by person and usage pattern."
+        }
+      },
+      "quality": {
+        "body_word_count": 149,
+        "full_word_count": 170
+      }
+    },
+    {
+      "card_id": "SF13_LOW",
+      "finding_id": "SF13",
+      "variant": "LOW",
+      "variable": "ver_q1",
+      "assessment_question": "I regularly double-check information provided by AI using other sources.",
+      "selection_role": "distinctive",
+      "eligibility_type": "low_only",
+      "tier": 1,
+      "family": "verification",
+      "overlap_group": "independent_verification",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "You are less likely than most participants to check AI answers against outside evidence",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You report rarely double-checking AI information using other sources. AI may still be questioned or reviewed, but independent verification appears less established in your usual process."
+        },
+        "distinction": {
+          "heading": "A common assumption",
+          "text": "People naturally become better at checking AI the more they use it.\n\nHCI does not observe this. Familiarity may increase comfort and integration, but verification remains relatively stable rather than strengthening automatically with experience."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Across HCI’s wider research, 84–99% of participants report checking, questioning or verifying information before accepting or acting on it. Your response therefore sits outside one of the most consistently observed protective behaviours in the research series."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Research in Nature Machine Intelligence found that people often overestimated AI accuracy, while longer explanations increased confidence without necessarily improving correctness."
+        }
+      },
+      "quality": {
+        "body_word_count": 118,
+        "full_word_count": 144
+      }
+    },
+    {
+      "card_id": "ST01_LOW",
+      "finding_id": "ST01",
+      "variant": "LOW",
+      "variable": "soc_q3",
+      "assessment_question": "I feel comfortable telling people in my life how I really use AI.",
+      "selection_role": "distinctive",
+      "eligibility_type": "low_only",
+      "tier": 2,
+      "family": "social_transparency",
+      "overlap_group": "social_disclosure",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "You may feel less comfortable than most people describing how you really use AI",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You report feeling uncomfortable telling people in your life how you actually use AI. This suggests there may be a gap between AI’s private role in your life and the version of that role you feel socially comfortable discussing."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "This does not mean you should disclose every AI interaction. Privacy is different from feeling unable to be honest because you expect judgement about your ability, authenticity or independence."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Across the benchmark, 73% of participants felt comfortable describing their AI use honestly. This fell to 57% among 18–24-year-olds, suggesting that social comfort has not developed as quickly as AI adoption for younger adults."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Microsoft and LinkedIn surveyed 31,000 workers across 31 countries and found that 52% of AI users were reluctant to admit using it for important work, while 53% feared appearing replaceable."
+        }
+      },
+      "quality": {
+        "body_word_count": 134,
+        "full_word_count": 160
+      }
+    },
+    {
+      "card_id": "ST02_HIGH",
+      "finding_id": "ST02",
+      "variant": "HIGH",
+      "variable": "soc_q2",
+      "assessment_question": "I downplay or hide how much I use AI when talking to friends or family.",
+      "selection_role": "distinctive",
+      "eligibility_type": "high_only",
+      "tier": 2,
+      "family": "social_transparency",
+      "overlap_group": "social_disclosure",
+      "fallback_priority": null,
+      "status": "Locked",
+      "copy": {
+        "headline": "The role AI plays in your life may be larger than the version you describe to others",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "You report downplaying or hiding how much you use AI when talking with friends or family. This is more pronounced than it is for most participants and suggests you expect fuller disclosure to affect how others see you."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "Concealment does not necessarily mean your AI use is inappropriate. It may reflect privacy, uncertain social norms or concern about appearing less capable, authentic or independent."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Only 16% of participants said they downplay or hide their AI use. This rose to 23% among 18–24-year-olds, compared with 12% among those aged 45–54, showing that concealment is particularly concentrated among younger adults."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Microsoft and LinkedIn surveyed 31,000 workers across 31 countries and found that 52% of AI users were reluctant to admit using it for their most important tasks, while 53% worried it would make them appear replaceable."
+        }
+      },
+      "quality": {
+        "body_word_count": 137,
+        "full_word_count": 166
+      }
+    },
+    {
+      "card_id": "SF01_TYPICAL",
+      "finding_id": "SF01",
+      "variant": "TYPICAL",
+      "variable": "emot_q2",
+      "assessment_question": "I receive emotional support or comfort from AI tools.",
+      "selection_role": "fallback",
+      "eligibility_type": "fallback_only",
+      "tier": 2,
+      "family": "emotional_personal",
+      "overlap_group": "emotional_support",
+      "fallback_priority": 4,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI may be expanding beyond a practical tool—but it is not replacing human support",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "Like many participants, you receive little or moderate emotional support from AI. It may help with thinking and practical tasks without yet becoming a primary source of comfort or reassurance."
+        },
+        "distinction": {
+          "heading": "A common assumption",
+          "text": "AI is still mainly a productivity tool.\n\nHCI observes that this is beginning to change. As use becomes more frequent, some people increasingly turn to AI for reflection, reassurance and emotional processing."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Across two independent HCI datasets, approximately 18% of participants identified emotional support as a primary use of AI. Emotional engagement also rises strongly with usage frequency, making it one of the clearest shifts HCI observes as AI becomes more integrated into daily life."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "A nine-study programme in Nature Human Behaviour found that people can experience AI responses as supportive while continuing to value human empathy more highly."
+        }
+      },
+      "quality": {
+        "body_word_count": 129,
+        "full_word_count": 156
+      }
+    },
+    {
+      "card_id": "SF03_TYPICAL",
+      "finding_id": "SF03",
+      "variant": "TYPICAL",
+      "variable": "thought_q1",
+      "assessment_question": "I use AI as a sounding board—thinking out loud and developing ideas through conversation.",
+      "selection_role": "fallback",
+      "eligibility_type": "fallback_only",
+      "tier": 1,
+      "family": "thinking_confidence_authorship",
+      "overlap_group": "thought_partnership",
+      "fallback_priority": 2,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI may be becoming part of how you think—not just where you look for answers",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "Like many regular users, you use AI as a sounding board to develop ideas through conversation. This places you within a broader shift from using AI mainly to retrieve information toward using it as part of the thinking process itself."
+        },
+        "distinction": {
+          "heading": "A common assumption",
+          "text": "AI is essentially a faster search engine.\n\nHCI observes a wider role emerging: frequent users increasingly use AI to explore ideas, organise thoughts and clarify their own reasoning."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Among participants who use AI very often, 75% use it as a sounding board, compared with 12% of rare users. It is the strongest usage-related shift of any individual behaviour in HCI’s assessment."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "In a field experiment involving 250 employees, MIT Sloan found that ChatGPT was associated with higher creativity ratings when workers actively planned, monitored and adapted how they used it."
+        }
+      },
+      "quality": {
+        "body_word_count": 130,
+        "full_word_count": 158
+      }
+    },
+    {
+      "card_id": "SF08_TYPICAL",
+      "finding_id": "SF08",
+      "variant": "TYPICAL",
+      "variable": "del_q1",
+      "assessment_question": "I regularly hand over decisions to AI systems that I previously made myself.",
+      "selection_role": "fallback",
+      "eligibility_type": "fallback_only",
+      "tier": 1,
+      "family": "reliance_control_decision",
+      "overlap_group": "decision_authority",
+      "fallback_priority": 3,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI may be supporting more decisions without replacing your role in making them",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "Like many participants, you involve AI in decisions while usually keeping the final choice your own. AI may provide options, analysis or reassurance without routinely taking over decisions you previously made yourself."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "Relying on AI is not the same as delegating to it. Reliance means using AI as input; delegation begins when the system becomes the final decision-maker."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Across HCI’s research, 91% of participants reported retaining personal responsibility for AI-influenced decisions, while 87–88% said they could override an AI recommendation. The dominant pattern is growing AI involvement without widespread transfer of decision ownership."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Deloitte surveyed more than 9,000 leaders across 89 countries. While 60% regularly used AI to support decisions, only 5% believed their organisations managed the relationship well."
+        }
+      },
+      "quality": {
+        "body_word_count": 121,
+        "full_word_count": 146
+      }
+    },
+    {
+      "card_id": "SF09_TYPICAL",
+      "finding_id": "SF09",
+      "variant": "TYPICAL",
+      "variable": "del_q3",
+      "assessment_question": "I sometimes follow AI recommendations even when they do not feel right to me.",
+      "selection_role": "fallback",
+      "eligibility_type": "fallback_only",
+      "tier": 1,
+      "family": "reliance_control_decision",
+      "overlap_group": "decision_authority",
+      "fallback_priority": 5,
+      "status": "Locked",
+      "copy": {
+        "headline": "AI may influence your choices without routinely overriding your own judgement",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "Like most participants, you do not usually follow AI guidance when it conflicts with your own sense that something is wrong. AI may shape the options you consider, but your internal hesitation generally remains capable of interrupting the decision."
+        },
+        "distinction": {
+          "heading": "A useful distinction",
+          "text": "Being influenced by AI is different from acting against your judgement. A recommendation can affect confidence or direction while the final choice remains actively evaluated."
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Only 10% of participants reported following AI advice despite feeling it was wrong. More broadly, 87–88% feel able to override AI recommendations, although 59% still report being steered toward particular choices. Formal control and subtler influence can therefore coexist."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Two studies involving 1,925 participants found that ChatGPT advice influenced decisions at levels comparable to expert advice, even without unusually high reported trust in AI."
+        }
+      },
+      "quality": {
+        "body_word_count": 130,
+        "full_word_count": 153
+      }
+    },
+    {
+      "card_id": "SF13_TYPICAL",
+      "finding_id": "SF13",
+      "variant": "TYPICAL",
+      "variable": "ver_q1",
+      "assessment_question": "I regularly double-check information provided by AI using other sources.",
+      "selection_role": "fallback",
+      "eligibility_type": "fallback_only",
+      "tier": 1,
+      "family": "verification",
+      "overlap_group": "independent_verification",
+      "fallback_priority": 1,
+      "status": "Locked",
+      "copy": {
+        "headline": "You are part of a widespread verification pattern—but experience alone may not strengthen it",
+        "pattern": {
+          "heading": "Your pattern",
+          "text": "Like many participants, you report checking AI information against outside sources. This does not necessarily indicate distrust; it suggests you treat at least some AI answers as provisional rather than automatically final."
+        },
+        "distinction": {
+          "heading": "",
+          "text": ""
+        },
+        "hci_observation": {
+          "heading": "What HCI observes",
+          "text": "Across eight HCI datasets, 84–99% of participants reported checking, questioning or verifying information. Yet this behaviour remains almost unchanged as AI use increases. HCI also finds signs of pressure: 54% increasingly verify only when something feels especially important, while 38% sometimes bypass checking when cognitively saturated."
+        },
+        "external_research": {
+          "heading": "What wider research adds",
+          "text": "Microsoft Research examined 319 knowledge workers across 936 real-world uses of generative AI. Greater confidence in AI was associated with less critical thinking, while checking information against external sources was one of the main ways workers evaluated and improved AI-assisted work."
+        }
+      },
+      "quality": {
+        "body_word_count": 120,
+        "full_word_count": 144
+      }
+    }
+  ]
+}

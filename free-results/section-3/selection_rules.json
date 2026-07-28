@@ -1,0 +1,144 @@
+{
+  "version": "draft-2",
+  "input": {
+    "required": [
+      "dimension_scores[*].percentile_overall"
+    ],
+    "optional": [
+      "section1_profile_id",
+      "section1_signal_ids",
+      "section2_card_ids",
+      "section2_families"
+    ]
+  },
+  "distinctiveness": "abs(percentile_overall - 50)",
+  "bands": [
+    {
+      "id": "very_low",
+      "min": 0,
+      "max": 14
+    },
+    {
+      "id": "low",
+      "min": 15,
+      "max": 34
+    },
+    {
+      "id": "central",
+      "min": 35,
+      "max": 65
+    },
+    {
+      "id": "high",
+      "min": 66,
+      "max": 85
+    },
+    {
+      "id": "very_high",
+      "min": 86,
+      "max": 100
+    }
+  ],
+  "roles": [
+    {
+      "order": 1,
+      "id": "anchor",
+      "purpose": "Most behaviourally significant dimension."
+    },
+    {
+      "order": 2,
+      "id": "counterbalance",
+      "purpose": "Dimension that reinforces, qualifies or creates tension with the anchor."
+    },
+    {
+      "order": 3,
+      "id": "breadth",
+      "purpose": "Meaningful dimension that expands the snapshot into another behavioural family."
+    }
+  ],
+  "families": {
+    "decision_delegation": "Control and behavioural authority",
+    "disclosure": "Personal and emotional relationship",
+    "reliance": "Control and behavioural authority",
+    "trust": "Thinking and epistemic relationship",
+    "verification": "Thinking and epistemic relationship",
+    "human_agency": "Control and behavioural authority",
+    "emotional_regulation": "Personal and emotional relationship",
+    "thought_partnership": "Thinking and epistemic relationship",
+    "social_transparency": "Social visibility"
+  },
+  "selection": {
+    "anchor": [
+      "Choose the highest distinctiveness dimension with valid data.",
+      "Use response consistency as a future tie-breaker when available."
+    ],
+    "counterbalance": [
+      "Prefer a dimension with a curated relationship to the anchor.",
+      "Prefer a different family unless a same-family relationship is materially more informative.",
+      "Do not replace a candidate more than 12 distinctiveness points stronger solely to gain diversity."
+    ],
+    "breadth": [
+      "Prefer a family not yet represented.",
+      "Require meaningful distinctiveness before using social_transparency solely for diversity.",
+      "Use the next strongest valid candidate when no cross-family candidate is meaningful."
+    ],
+    "cluster_exception": [
+      "When the top three dimensions are in one family and the strongest outside-family candidate trails the third by more than 12 distinctiveness points, retain the clustered top three.",
+      "Use the clustered relationship module to explain that concentration rather than forcing diversity."
+    ],
+    "diversity_tolerance": [
+      "An outside-family candidate may replace the third-ranked same-family candidate only when it is no more than 12 distinctiveness points weaker.",
+      "The replacement must add a materially different behavioural lens."
+    ]
+  },
+  "overlap": {
+    "section1": "Soft penalty for direct repetition of the winning recognition claim.",
+    "section2": "Soft penalty when the dimension interpretation would repeat the same specific behaviour as a selected card.",
+    "principle": "Never suppress a genuinely defining dimension merely to create artificial novelty."
+  },
+  "display": {
+    "count": 3,
+    "order": [
+      "anchor",
+      "counterbalance",
+      "breadth"
+    ],
+    "percentile": "Retain overall percentile and lower-centre-higher visual scale.",
+    "benchmark_copy": "Benchmark position may appear in the visual area. Interpretation and summary must remain behavioural.",
+    "summary": "Assemble from one anchor module, one relationship module and one direction-aware breadth module.",
+    "transition": "Render separately from the dynamic summary.",
+    "breadth_definition": "Breadth explains what the third selected dimension adds. High/low interaction between the first two dimensions belongs in the relationship module."
+  },
+  "relationship_types": {
+    "reinforcing": "Two dimensions strengthen the same behavioural story.",
+    "contrasting": "One behaviour is expressed more prominently than another.",
+    "counterbalancing": "One dimension qualifies the implication of another.",
+    "tension": "The dimensions pull toward competing forms of involvement or control.",
+    "context_dependent": "Central or mixed results suggest variation by task or situation.",
+    "clustered": "All three selected dimensions concentrate in one behavioural family.",
+    "broadly_integrated": "The three dimensions span several behavioural families."
+  },
+  "synthetic_tests": [
+    {
+      "id": "S3T_CLUSTER_01",
+      "scores": {
+        "trust": 92,
+        "verification": 89,
+        "thought_partnership": 88,
+        "emotional_regulation": 55,
+        "decision_delegation": 52,
+        "reliance": 54,
+        "human_agency": 52,
+        "disclosure": 50,
+        "social_transparency": 46
+      },
+      "expected_selection": [
+        "trust",
+        "verification",
+        "thought_partnership"
+      ],
+      "expected_relationship": "clustered",
+      "reason": "The strongest outside-family distinctiveness is 5, which trails the third thinking dimension by 33 points. Diversity must not override the defining cluster."
+    }
+  ]
+}

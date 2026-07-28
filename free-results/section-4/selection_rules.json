@@ -1,0 +1,101 @@
+{
+  "version": "1.0",
+  "section_id": "section_4_most_interesting_finding",
+  "purpose": "Select exactly one compact, evidence-supported standout insight that maximises curiosity without completing the participant's understanding.",
+  "exclusive_responsibility": {
+    "rule": "Section 4 is the only page section permitted to declare the single most interesting, distinctive or surprising overall finding.",
+    "section1": "Recognition highlight is corroborating evidence only."
+  },
+  "priority_order": [
+    "supported_rare_combination",
+    "cross_dimension_relationship",
+    "perception_gap",
+    "distinctive_response",
+    "dimension_deviation",
+    "balanced_profile_fallback"
+  ],
+  "clarification": [
+    "A rare-combination candidate qualifies only with approved joint-prevalence evidence.",
+    "A cross-dimensional relationship may outrank a rare combination when the rarity evidence is weak or the relationship is materially more explainable.",
+    "A standalone dimension deviation may be selected only when it exceeds the provisional minimum distinctiveness threshold.",
+    "If no candidate clears the required confidence and distinctiveness thresholds, select the balanced-profile fallback."
+  ],
+  "required_inputs": {
+    "assessment": [
+      "all dimension percentiles",
+      "question-level percentiles",
+      "perception gaps",
+      "approved rare-combination outputs",
+      "derived behavioural signals"
+    ],
+    "prior_sections": {
+      "section1": [
+        "winning_profile_id",
+        "selected_highlight_id",
+        "claim_id"
+      ],
+      "section2": [
+        "selected_card_ids",
+        "claim_ids",
+        "finding_families"
+      ],
+      "section3": [
+        "selected_dimension_ids",
+        "relationship_type",
+        "summary_claim_id"
+      ]
+    }
+  },
+  "candidate_schema": [
+    "finding_id",
+    "finding_type",
+    "priority_tier",
+    "reason_code",
+    "claim_id",
+    "evidence_ids",
+    "confidence",
+    "rarity_status",
+    "overlap_flags",
+    "copy_variant_id"
+  ],
+  "reason_code_requirement": "Every selected finding must include one explicit reason code and traceable supporting evidence.",
+  "overlap_rules": [
+    "Reject an exact claim already displayed in Sections 1–3.",
+    "Reject the Section 1 winning recognition claim and supporting highlight as Section 4 outputs.",
+    "Reject a Section 2 question-level claim unless Section 4 transforms it into a supported higher-order relationship not previously stated.",
+    "Reject a standalone Section 3 dimension unless no higher-tier non-duplicative candidate qualifies.",
+    "Shared dimensions are allowed; repeated conclusions are not."
+  ],
+  "behaviour_context_rule": "Explain why the finding depends on multiple behaviours or wider context. Do not mention purchasing, unlocking, pricing or the full report.",
+  "curiosity_peak": {
+    "section4": "Curiosity peak: one unresolved, memorable finding.",
+    "section6": "Understanding peak if retained: broader synthesis without repeating the Section 4 claim."
+  },
+  "copy_limits": {
+    "headline": 25,
+    "explanation": 80,
+    "why": 60,
+    "context": 50
+  },
+  "output_count": 1,
+  "ties": "Resolve by priority tier, evidence confidence, non-overlap score, behavioural meaningfulness, then stable finding ID order. If all candidates remain below thresholds, use the balanced-profile fallback.",
+  "balanced_profile_fallback": {
+    "purpose": "Preserve honesty when no single finding genuinely stands out.",
+    "selection_conditions": [
+      "No supported rare combination qualifies.",
+      "No cross-dimensional relationship meets the confidence threshold.",
+      "No material perception gap qualifies.",
+      "No unrepeated question-level response meets the distinctiveness threshold.",
+      "No standalone dimension exceeds the provisional minimum distinctiveness threshold."
+    ],
+    "output_finding_id": "S4_BALANCED_PROFILE_FALLBACK_01",
+    "interpretation": "Balance itself becomes the finding; the engine must not invent a standout."
+  },
+  "thresholds": {
+    "status": "provisional_pending_empirical_calibration",
+    "dimension_minimum_distinctiveness": 30,
+    "response_minimum_distinctiveness": 30,
+    "relationship_minimum_confidence": "moderate",
+    "perception_gap_minimum": "material"
+  }
+}

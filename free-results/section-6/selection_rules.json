@@ -1,0 +1,66 @@
+{
+  "version": "draft-2",
+  "section_id": "section_6_emerging_relationship",
+  "purpose": "Provide a concise, measurement-led preview of the broader pattern produced by the participant's responses without presenting a psychological identity or delivering the premium report's complete synthesis.",
+  "output_structure": [
+    "one opening synthesis module",
+    "one relationship qualifier module",
+    "one highlighted takeaway",
+    "one curiosity bridge"
+  ],
+  "maximum_words": {
+    "assembled_synthesis": 90,
+    "highlighted_takeaway": 30,
+    "curiosity_bridge": 45
+  },
+  "inputs": {
+    "section1": [
+      "winning_profile_id",
+      "claim_id"
+    ],
+    "section3": [
+      "relationship_type",
+      "selected_dimension_ids",
+      "summary_claim_id"
+    ],
+    "section4": [
+      "finding_type",
+      "claim_id",
+      "reason_code"
+    ]
+  },
+  "selection_logic": [
+    "Map the Section 1 winning profile to one measurement-led opening module.",
+    "Map the Section 3 relationship type to one measurement-led qualifier module.",
+    "Select a takeaway consistent with both the opening and qualifier.",
+    "Reject any module that materially repeats the Section 4 standout claim.",
+    "Select one bridge that names what remains unresolved without revealing hidden results."
+  ],
+  "overlap_rules": [
+    "Do not repeat the Section 1 headline verbatim or near-verbatim.",
+    "Do not restate the Section 3 card interpretations.",
+    "Do not repeat the Section 4 standout conclusion.",
+    "Shared behavioural themes are allowed when the synthesis answers a broader question.",
+    "No unrevealed dimension may be named."
+  ],
+  "curiosity_guardrails": [
+    "Do not explain the complete behavioural identity.",
+    "Do not identify which human capabilities are developing, protected or weakening.",
+    "Do not reveal rare combinations not already shown.",
+    "Do not provide advice, coaching or predictions.",
+    "Do not mention price or purchasing.",
+    "Do not present the participant as a fixed behavioural type.",
+    "Do not imply that self-report results reveal an underlying psychological condition.",
+    "Prefer evidence-led sentence subjects over repeated 'you appear' constructions."
+  ],
+  "fallbacks": {
+    "balanced_profile": "S6_OPEN_10 + S6_QUAL_09 + S6_TAKE_09",
+    "unknown_relationship_type": "Use S6_QUAL_05 when context dependence is supported; otherwise S6_QUAL_09."
+  },
+  "epistemic_standard": [
+    "State the evidence source explicitly through wording such as 'your responses', 'the measured pattern' or 'within this assessment'.",
+    "Describe reported behaviour and assessed patterns rather than stable identity or personality.",
+    "Interpretations must remain conditional, time-bound and limited to the assessment evidence.",
+    "Avoid repeated second-person identity claims such as 'you are' or 'your relationship is'."
+  ]
+}

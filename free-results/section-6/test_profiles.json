@@ -1,0 +1,222 @@
+{
+  "version": "draft-2",
+  "tests": [
+    {
+      "test_id": "S6T01",
+      "name": "Active thinking partner with retained agency",
+      "inputs": [
+        "Section 1 RP01",
+        "Section 3 counterbalancing",
+        "Section 4 perception gap"
+      ],
+      "expected_modules": [
+        "S6_OPEN_01",
+        "S6_QUAL_03",
+        "S6_TAKE_01"
+      ],
+      "must_avoid": [
+        "Repeating the Section 4 perception-gap finding",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T02",
+      "name": "Integrated and self-directed",
+      "inputs": [
+        "Section 1 RP02",
+        "Section 3 broadly_integrated",
+        "Section 4 rare combination"
+      ],
+      "expected_modules": [
+        "S6_OPEN_02",
+        "S6_QUAL_07",
+        "S6_TAKE_02"
+      ],
+      "must_avoid": [
+        "Naming unrevealed dimensions",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T03",
+      "name": "Clarity before authority",
+      "inputs": [
+        "Section 1 RP03",
+        "Section 3 reinforcing",
+        "Section 4 distinctive response"
+      ],
+      "expected_modules": [
+        "S6_OPEN_03",
+        "S6_QUAL_01",
+        "S6_TAKE_03"
+      ],
+      "must_avoid": [
+        "Repeating the distinctive question response",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T04",
+      "name": "Practical and bounded",
+      "inputs": [
+        "Section 1 RP04",
+        "Section 3 context_dependent",
+        "Section 4 balanced fallback"
+      ],
+      "expected_modules": [
+        "S6_OPEN_04",
+        "S6_QUAL_05",
+        "S6_TAKE_04"
+      ],
+      "must_avoid": [
+        "Turning the section into a full identity narrative",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T05",
+      "name": "Private reflective relationship",
+      "inputs": [
+        "Section 1 RP05",
+        "Section 3 clustered",
+        "Section 4 cross-dimensional relationship"
+      ],
+      "expected_modules": [
+        "S6_OPEN_05",
+        "S6_QUAL_06",
+        "S6_TAKE_05"
+      ],
+      "must_avoid": [
+        "Repeating private disclosure details already shown",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T06",
+      "name": "Personally open, socially reserved",
+      "inputs": [
+        "Section 1 RP06",
+        "Section 3 contrasting",
+        "Section 4 perception gap"
+      ],
+      "expected_modules": [
+        "S6_OPEN_06",
+        "S6_QUAL_02",
+        "S6_TAKE_05"
+      ],
+      "must_avoid": [
+        "Repeating Section 1's private/social contrast as the standout",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T07",
+      "name": "Confidence and authorship",
+      "inputs": [
+        "Section 1 RP07",
+        "Section 3 tension",
+        "Section 4 dimension fallback"
+      ],
+      "expected_modules": [
+        "S6_OPEN_07",
+        "S6_QUAL_04",
+        "S6_TAKE_06"
+      ],
+      "must_avoid": [
+        "Predictions about future confidence",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T08",
+      "name": "Authority shift",
+      "inputs": [
+        "Section 1 RP08",
+        "Section 3 tension",
+        "Section 4 supported rare combination"
+      ],
+      "expected_modules": [
+        "S6_OPEN_08",
+        "S6_QUAL_04",
+        "S6_TAKE_07"
+      ],
+      "must_avoid": [
+        "Judgemental or clinical language",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T09",
+      "name": "Reliance noticeable",
+      "inputs": [
+        "Section 1 RP09",
+        "Section 3 reinforcing",
+        "Section 4 perception gap"
+      ],
+      "expected_modules": [
+        "S6_OPEN_09",
+        "S6_QUAL_01",
+        "S6_TAKE_08"
+      ],
+      "must_avoid": [
+        "Repeating the Section 4 perception gap",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T10",
+      "name": "Balanced profile",
+      "inputs": [
+        "Section 1 BF01",
+        "Section 3 balanced",
+        "Section 4 balanced fallback"
+      ],
+      "expected_modules": [
+        "S6_OPEN_10",
+        "S6_QUAL_09",
+        "S6_TAKE_09"
+      ],
+      "must_avoid": [
+        "Inventing a dominant behavioural identity",
+        "Stable identity claims",
+        "Diagnostic framing",
+        "Unsupported certainty"
+      ]
+    },
+    {
+      "test_id": "S6T11",
+      "name": "Measurement-led language audit",
+      "inputs": [
+        "Any valid assembled Section 6 output"
+      ],
+      "expected_modules": [
+        "Opening + qualifier + takeaway + bridge"
+      ],
+      "must_avoid": [
+        "You are...",
+        "Your identity is...",
+        "This defines you...",
+        "Psychological diagnosis",
+        "Claims extending beyond the assessment responses"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "version": "1.0",
+  "tests": [
+    {
+      "test_id": "S4T01",
+      "name": "Cross-dimensional relationship beats dimension deviation",
+      "inputs": [
+        "thought partnership elevated",
+        "human agency elevated",
+        "thought partnership already shown in Section 3"
+      ],
+      "expected": "S4_TP_HA_RETAINED_01",
+      "reason": "The higher-order relationship remains eligible even though one component dimension appeared earlier; the standalone dimension claim is rejected."
+    },
+    {
+      "test_id": "S4T02",
+      "name": "Perception gap beats repeated recognition profile",
+      "inputs": [
+        "Section 1 RP02",
+        "material underestimation of integration",
+        "corroborated practical integration"
+      ],
+      "expected": "S4_PERCEPTION_USE_GAP_01",
+      "reason": "The perception gap is new and personally surprising; Section 1's integration claim cannot be repeated."
+    },
+    {
+      "test_id": "S4T03",
+      "name": "Rare wording requires prevalence support",
+      "inputs": [
+        "high disclosure",
+        "high emotional regulation",
+        "low social transparency",
+        "no approved joint prevalence"
+      ],
+      "expected": "Non-rare relationship candidate",
+      "reason": "The engine may describe a contrast but must not use uncommon or rare wording without approved joint-prevalence evidence."
+    },
+    {
+      "test_id": "S4T04",
+      "name": "Section 2 exact response is rejected",
+      "inputs": [
+        "low verification card displayed in Section 2",
+        "trust elevated",
+        "verification reduced"
+      ],
+      "expected": "S4_TRUST_LIGHT_VERIFY_01",
+      "reason": "The higher-order trust–verification relationship is allowed; repeating the low-verification card alone is not."
+    },
+    {
+      "test_id": "S4T05",
+      "name": "Standalone dimension used only as fallback",
+      "inputs": [
+        "one distinctive dimension",
+        "no eligible relationships",
+        "no perception gaps",
+        "no distinctive unrepeated response"
+      ],
+      "expected": "S4_DIMENSION_FALLBACK_01",
+      "reason": "Dimension deviation is selected only after all higher tiers fail."
+    },
+    {
+      "test_id": "S4T06",
+      "name": "Section 1 private-social profile blocks repetition",
+      "inputs": [
+        "Section 1 RP06",
+        "disclosure elevated",
+        "social transparency reduced",
+        "separate material perception gap"
+      ],
+      "expected": "Perception-gap candidate",
+      "reason": "The private/social contrast was already the recognition story and cannot become the Section 4 standout."
+    },
+    {
+      "test_id": "S4T07",
+      "name": "Behaviour Context cannot promote report",
+      "inputs": [
+        "any selected finding"
+      ],
+      "expected": "Context contains no report, purchase, unlock or pricing language",
+      "reason": "Section 4 creates an unresolved question through complexity, not a sales prompt."
+    },
+    {
+      "test_id": "S4T08",
+      "name": "Only one standout output",
+      "inputs": [
+        "two equally scored candidates"
+      ],
+      "expected": "One deterministic winner",
+      "reason": "Tie-break order produces exactly one finding and no secondary card."
+    },
+    {
+      "test_id": "S4T09",
+      "name": "Balanced profile fallback",
+      "inputs": [
+        "all dimension distinctiveness values below 10",
+        "no approved rare combinations",
+        "no material perception gaps",
+        "no distinctive unrepeated responses"
+      ],
+      "expected": "S4_BALANCED_PROFILE_FALLBACK_01",
+      "reason": "The engine must not manufacture a standout when the participant's pattern is genuinely even."
+    },
+    {
+      "test_id": "S4T10",
+      "name": "Dimension fallback clears threshold",
+      "inputs": [
+        "no higher-tier candidates",
+        "one unrepeated dimension at 34 distinctiveness",
+        "all other dimensions below 15 distinctiveness"
+      ],
+      "expected": "S4_DIMENSION_FALLBACK_01",
+      "reason": "A standalone dimension may win only when it clears the provisional minimum threshold."
+    },
+    {
+      "test_id": "S4T11",
+      "name": "Dimension fallback fails threshold",
+      "inputs": [
+        "no higher-tier candidates",
+        "top unrepeated dimension at 18 distinctiveness",
+        "remaining dimensions between 10 and 16 distinctiveness"
+      ],
+      "expected": "S4_BALANCED_PROFILE_FALLBACK_01",
+      "reason": "A weak relative leader is not enough to justify standout language."
+    }
+  ]
+}

@@ -1,0 +1,291 @@
+{
+  "version": "1.0",
+  "tests": [
+    {
+      "test_id": "T01",
+      "name": "Heavy cognitive user with retained authority",
+      "input_pattern": [
+        "very high thinking partnership",
+        "high agency",
+        "low delegation",
+        "frequent overriding",
+        "moderate emotional use"
+      ],
+      "expected_profile": "RP01_ACTIVE_THINKING_PARTNER",
+      "acceptable_highlights": [
+        "HL-TP01",
+        "HL-AG02",
+        "HL-AG03"
+      ],
+      "must_not_trigger": [
+        "RP08_AI_CARRYING_MORE_AUTHORITY"
+      ],
+      "rationale": "Thinking partnership is dominant and corroborated by retained authority."
+    },
+    {
+      "test_id": "T02",
+      "name": "Broad high use with strong control",
+      "input_pattern": [
+        "very frequent use",
+        "high reliance",
+        "high agency",
+        "moderate thinking partnership",
+        "low delegation",
+        "low absence-related unease"
+      ],
+      "expected_profile": "RP02_DEEPLY_INTEGRATED_SELF_DIRECTED",
+      "acceptable_highlights": [
+        "HL-AG01",
+        "HL-PR03"
+      ],
+      "must_not_trigger": [
+        "RP09_RELIANCE_NOTICEABLE"
+      ],
+      "rationale": "Broad integration is stronger than thought partnership; absence-related unease is low."
+    },
+    {
+      "test_id": "T03",
+      "name": "Uses AI mainly during uncertainty",
+      "input_pattern": [
+        "strong clarity benefit",
+        "frequent decision support",
+        "low delegation",
+        "high retained responsibility",
+        "moderate general use"
+      ],
+      "expected_profile": "RP03_CLARITY_BEFORE_AUTHORITY",
+      "acceptable_highlights": [
+        "HL-CL01",
+        "HL-CL03"
+      ],
+      "must_not_trigger": [
+        "RP08_AI_CARRYING_MORE_AUTHORITY"
+      ],
+      "rationale": "AI structures uncertainty without taking over decisions."
+    },
+    {
+      "test_id": "T04",
+      "name": "Frequent but purely practical use",
+      "input_pattern": [
+        "frequent task use",
+        "low disclosure",
+        "low emotional processing",
+        "low psychological safety",
+        "high independence outside work"
+      ],
+      "expected_profile": "RP04_PRACTICAL_AND_BOUNDED",
+      "acceptable_highlights": [
+        "HL-PR01",
+        "HL-PR02"
+      ],
+      "must_not_trigger": [
+        "RP05_PRIVATE_REFLECTIVE_RELATIONSHIP"
+      ],
+      "rationale": "Functional use with consistent private and emotional boundaries."
+    },
+    {
+      "test_id": "T05",
+      "name": "High private disclosure and emotional reflection",
+      "input_pattern": [
+        "high disclosure",
+        "high psychological safety",
+        "high emotional processing",
+        "moderate social openness"
+      ],
+      "expected_profile": "RP05_PRIVATE_REFLECTIVE_RELATIONSHIP",
+      "acceptable_highlights": [
+        "HL-PV01",
+        "HL-EM01"
+      ],
+      "must_not_trigger": [
+        "RP06_PERSONALLY_OPEN_SOCIALLY_RESERVED"
+      ],
+      "rationale": "Private reflection is strong; social reserve is not."
+    },
+    {
+      "test_id": "T06",
+      "name": "High private openness with concealment",
+      "input_pattern": [
+        "high disclosure",
+        "high psychological safety",
+        "high concealment",
+        "low comfort discussing AI use"
+      ],
+      "expected_profile": "RP06_PERSONALLY_OPEN_SOCIALLY_RESERVED",
+      "acceptable_highlights": [
+        "HL-SO01",
+        "HL-SO03"
+      ],
+      "must_not_trigger": [],
+      "rationale": "The private/social visibility gap is the strongest story."
+    },
+    {
+      "test_id": "T07",
+      "name": "High authorship uncertainty",
+      "input_pattern": [
+        "high authorship uncertainty",
+        "high thinking partnership",
+        "changed self-trust",
+        "moderate agency",
+        "low decision delegation"
+      ],
+      "expected_profile": "RP07_RESHAPING_CONFIDENCE",
+      "acceptable_highlights": [
+        "HL-CF02",
+        "HL-CF03"
+      ],
+      "must_not_trigger": [],
+      "rationale": "Confidence and authorship are more distinctive than general thought partnership."
+    },
+    {
+      "test_id": "T08",
+      "name": "AI directly shaping decisions",
+      "input_pattern": [
+        "high decision delegation",
+        "follows AI despite disagreement",
+        "low checking",
+        "moderate reliance",
+        "low override behaviour"
+      ],
+      "expected_profile": "RP08_AI_CARRYING_MORE_AUTHORITY",
+      "acceptable_highlights": [
+        "HL-DA01",
+        "HL-DA02"
+      ],
+      "must_not_trigger": [],
+      "rationale": "Direct authority-shift signals are strong and corroborated."
+    },
+    {
+      "test_id": "T09",
+      "name": "AI absence is felt",
+      "input_pattern": [
+        "very high absence-related unease",
+        "very frequent use",
+        "high reliance",
+        "moderate agency"
+      ],
+      "expected_profile": "RP09_RELIANCE_NOTICEABLE",
+      "acceptable_highlights": [
+        "HL-RL01",
+        "HL-RL02"
+      ],
+      "must_not_trigger": [],
+      "rationale": "Felt absence is direct and unusually strong."
+    },
+    {
+      "test_id": "T10",
+      "name": "One isolated strong thought-partnership result",
+      "input_pattern": [
+        "very high thinking partnership",
+        "mixed agency",
+        "moderate delegation",
+        "no supporting cognitive pattern"
+      ],
+      "expected_profile": "SP01_STRONG_THOUGHT_PARTNERSHIP",
+      "acceptable_highlights": [
+        "HL-TP01",
+        "HL-TP02",
+        "HL-TP03"
+      ],
+      "must_not_trigger": [
+        "RP01_ACTIVE_THINKING_PARTNER"
+      ],
+      "rationale": "Corroboration is insufficient for a broad profile."
+    },
+    {
+      "test_id": "T11",
+      "name": "One isolated private-disclosure result",
+      "input_pattern": [
+        "very high disclosure",
+        "low emotional processing",
+        "low psychological safety",
+        "high social openness"
+      ],
+      "expected_profile": "SP03_STRONG_PRIVATE_DISCLOSURE",
+      "acceptable_highlights": [
+        "HL-PV01",
+        "HL-PV02",
+        "HL-PV03"
+      ],
+      "must_not_trigger": [
+        "RP05_PRIVATE_REFLECTIVE_RELATIONSHIP",
+        "RP06_PERSONALLY_OPEN_SOCIALLY_RESERVED"
+      ],
+      "rationale": "Disclosure is distinctive but unsupported by a broader pattern."
+    },
+    {
+      "test_id": "T12",
+      "name": "Moderate across nearly everything",
+      "input_pattern": [
+        "no highly distinctive signals",
+        "mixed practical use",
+        "retained agency",
+        "moderate thinking partnership",
+        "low emotional use"
+      ],
+      "expected_profile": "BF01_BALANCED_CONTEXT_DEPENDENT",
+      "acceptable_highlights": [
+        "HL-BF01",
+        "HL-PR03",
+        "HL-AG03",
+        "HL-CL02"
+      ],
+      "must_not_trigger": [],
+      "rationale": "No strong primary or single-pattern profile qualifies."
+    },
+    {
+      "test_id": "T13",
+      "name": "Borderline authority shift",
+      "input_pattern": [
+        "moderately high delegation",
+        "high agency",
+        "frequent verification",
+        "low following-AI-despite-disagreement"
+      ],
+      "expected_profile": "CONTEXT_DEPENDENT",
+      "acceptable_highlights": [],
+      "must_not_trigger": [
+        "RP08_AI_CARRYING_MORE_AUTHORITY"
+      ],
+      "rationale": "Strong contradictory evidence should reject the sensitive authority profile."
+    },
+    {
+      "test_id": "T14",
+      "name": "High reliance but no felt absence",
+      "input_pattern": [
+        "high reliance",
+        "very frequent use",
+        "high agency",
+        "no unease when AI is unavailable"
+      ],
+      "expected_profile": "RP02_DEEPLY_INTEGRATED_SELF_DIRECTED",
+      "acceptable_highlights": [
+        "HL-AG01",
+        "HL-PR03"
+      ],
+      "must_not_trigger": [
+        "RP09_RELIANCE_NOTICEABLE"
+      ],
+      "rationale": "High use alone must not trigger reliance-felt."
+    },
+    {
+      "test_id": "T15",
+      "name": "Private emotional use but socially open",
+      "input_pattern": [
+        "high disclosure",
+        "high emotional processing",
+        "high comfort discussing AI use",
+        "no concealment"
+      ],
+      "expected_profile": "RP05_PRIVATE_REFLECTIVE_RELATIONSHIP",
+      "acceptable_highlights": [
+        "HL-PV01",
+        "HL-EM01"
+      ],
+      "must_not_trigger": [
+        "RP06_PERSONALLY_OPEN_SOCIALLY_RESERVED"
+      ],
+      "rationale": "Private reflection is strong but social reserve is absent."
+    }
+  ]
+}

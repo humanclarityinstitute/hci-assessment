@@ -1,0 +1,1077 @@
+{
+  "version": "draft-2",
+  "dimensions": [
+    {
+      "id": "decision_delegation",
+      "label": "Decision Delegation",
+      "family": "Control and behavioural authority",
+      "descriptor": "How far AI participates in moving from options toward a final decision."
+    },
+    {
+      "id": "disclosure",
+      "label": "Disclosure",
+      "family": "Personal and emotional relationship",
+      "descriptor": "How willing someone is to share personal thoughts, concerns or experiences with AI."
+    },
+    {
+      "id": "reliance",
+      "label": "Reliance",
+      "family": "Control and behavioural authority",
+      "descriptor": "How integrated AI has become in completing tasks, thinking or maintaining routine."
+    },
+    {
+      "id": "trust",
+      "label": "Trust",
+      "family": "Thinking and epistemic relationship",
+      "descriptor": "How readily AI outputs are treated as credible or usable."
+    },
+    {
+      "id": "verification",
+      "label": "Verification",
+      "family": "Thinking and epistemic relationship",
+      "descriptor": "How actively AI outputs are checked, tested or compared with other sources."
+    },
+    {
+      "id": "human_agency",
+      "label": "Human Agency",
+      "family": "Control and behavioural authority",
+      "descriptor": "How clearly personal direction, authorship and responsibility are retained when AI is involved."
+    },
+    {
+      "id": "emotional_regulation",
+      "label": "Emotional Regulation",
+      "family": "Personal and emotional relationship",
+      "descriptor": "How much AI participates in processing emotion, stress or internal uncertainty."
+    },
+    {
+      "id": "thought_partnership",
+      "label": "Thought Partnership",
+      "family": "Thinking and epistemic relationship",
+      "descriptor": "How actively AI is used to develop, challenge or refine ideas."
+    },
+    {
+      "id": "social_transparency",
+      "label": "Social Transparency",
+      "family": "Social visibility",
+      "descriptor": "How openly AI's contribution is acknowledged around other people."
+    }
+  ],
+  "interpretations": [
+    {
+      "id": "S3_DECISION_DELEGATION_VERY_LOW_01",
+      "dimension_id": "decision_delegation",
+      "dimension_label": "Decision Delegation",
+      "family": "Control and behavioural authority",
+      "band_id": "very_low",
+      "percentile_min": 0,
+      "percentile_max": 14,
+      "internal_band_label": "Markedly limited expression",
+      "copy": "AI appears to remain well outside your final decision process. You may use it to gather options or clarify information, but your responses suggest that choosing what happens next stays firmly with you.",
+      "word_count": 33,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_DECISION_DELEGATION_LOW_01",
+      "dimension_id": "decision_delegation",
+      "dimension_label": "Decision Delegation",
+      "family": "Control and behavioural authority",
+      "band_id": "low",
+      "percentile_min": 15,
+      "percentile_max": 34,
+      "internal_band_label": "Limited expression",
+      "copy": "AI appears to contribute information without regularly carrying decisions forward. Your responses suggest that it can inform your choices while the final direction is still determined independently.",
+      "word_count": 27,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_DECISION_DELEGATION_CENTRAL_01",
+      "dimension_id": "decision_delegation",
+      "dimension_label": "Decision Delegation",
+      "family": "Control and behavioural authority",
+      "band_id": "central",
+      "percentile_min": 35,
+      "percentile_max": 65,
+      "internal_band_label": "Context-dependent expression",
+      "copy": "AI’s role in your decisions appears to vary with the situation. It may help narrow options or organise uncertainty, while the point at which you take over depends on the decision and its importance.",
+      "word_count": 34,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_DECISION_DELEGATION_HIGH_01",
+      "dimension_id": "decision_delegation",
+      "dimension_label": "Decision Delegation",
+      "family": "Control and behavioural authority",
+      "band_id": "high",
+      "percentile_min": 66,
+      "percentile_max": 85,
+      "internal_band_label": "Regular expression",
+      "copy": "AI appears regularly involved in moving you from options toward a decision. This suggests its contribution extends beyond supplying information and can influence which direction becomes most workable or convincing.",
+      "word_count": 30,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_DECISION_DELEGATION_VERY_HIGH_01",
+      "dimension_id": "decision_delegation",
+      "dimension_label": "Decision Delegation",
+      "family": "Control and behavioural authority",
+      "band_id": "very_high",
+      "percentile_min": 86,
+      "percentile_max": 100,
+      "internal_band_label": "Prominent expression",
+      "copy": "AI appears to play a prominent role in moving decisions toward a conclusion. Your responses suggest that its recommendations can become closely involved in determining what you choose or do next.",
+      "word_count": 31,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_DISCLOSURE_VERY_LOW_01",
+      "dimension_id": "disclosure",
+      "dimension_label": "Disclosure",
+      "family": "Personal and emotional relationship",
+      "band_id": "very_low",
+      "percentile_min": 0,
+      "percentile_max": 14,
+      "internal_band_label": "Markedly limited expression",
+      "copy": "You appear to keep clear boundaries around what you share with AI. Its role is likely to remain practical or task-focused, with personal thoughts, concerns and experiences largely kept outside the interaction.",
+      "word_count": 32,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_DISCLOSURE_LOW_01",
+      "dimension_id": "disclosure",
+      "dimension_label": "Disclosure",
+      "family": "Personal and emotional relationship",
+      "band_id": "low",
+      "percentile_min": 15,
+      "percentile_max": 34,
+      "internal_band_label": "Limited expression",
+      "copy": "Personal disclosure appears selective and limited. You may share context when it helps complete a task, but your responses suggest that AI is not usually treated as a space for deeper personal openness.",
+      "word_count": 33,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_DISCLOSURE_CENTRAL_01",
+      "dimension_id": "disclosure",
+      "dimension_label": "Disclosure",
+      "family": "Personal and emotional relationship",
+      "band_id": "central",
+      "percentile_min": 35,
+      "percentile_max": 65,
+      "internal_band_label": "Context-dependent expression",
+      "copy": "Your openness with AI appears to depend on context. Some interactions may remain practical, while others allow more personal reflection when privacy, convenience or the nature of the issue makes that useful.",
+      "word_count": 32,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_DISCLOSURE_HIGH_01",
+      "dimension_id": "disclosure",
+      "dimension_label": "Disclosure",
+      "family": "Personal and emotional relationship",
+      "band_id": "high",
+      "percentile_min": 66,
+      "percentile_max": 85,
+      "internal_band_label": "Regular expression",
+      "copy": "You appear comfortable bringing personal thoughts or concerns into some AI conversations. This suggests AI can function as more than a task tool and may provide a private space for reflection or expression.",
+      "word_count": 33,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_DISCLOSURE_VERY_HIGH_01",
+      "dimension_id": "disclosure",
+      "dimension_label": "Disclosure",
+      "family": "Personal and emotional relationship",
+      "band_id": "very_high",
+      "percentile_min": 86,
+      "percentile_max": 100,
+      "internal_band_label": "Prominent expression",
+      "copy": "Personal openness appears to be a prominent part of your AI use. Your responses suggest that AI may be used as a private setting for thoughts, concerns or experiences that are not always expressed elsewhere.",
+      "word_count": 35,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_RELIANCE_VERY_LOW_01",
+      "dimension_id": "reliance",
+      "dimension_label": "Reliance",
+      "family": "Control and behavioural authority",
+      "band_id": "very_low",
+      "percentile_min": 0,
+      "percentile_max": 14,
+      "internal_band_label": "Markedly limited expression",
+      "copy": "AI appears to remain peripheral to your normal functioning. When it is unavailable, your work and thinking continue without significant disruption.",
+      "word_count": 21,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_RELIANCE_LOW_01",
+      "dimension_id": "reliance",
+      "dimension_label": "Reliance",
+      "family": "Control and behavioural authority",
+      "band_id": "low",
+      "percentile_min": 15,
+      "percentile_max": 34,
+      "internal_band_label": "Limited expression",
+      "copy": "AI appears useful without being deeply embedded. You may draw on it for selected tasks, but your responses suggest that most of your activity can continue without depending on its availability.",
+      "word_count": 31,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_RELIANCE_CENTRAL_01",
+      "dimension_id": "reliance",
+      "dimension_label": "Reliance",
+      "family": "Control and behavioural authority",
+      "band_id": "central",
+      "percentile_min": 35,
+      "percentile_max": 65,
+      "internal_band_label": "Context-dependent expression",
+      "copy": "Your reliance on AI appears to shift by task and circumstance. It may be important in some areas while remaining optional in others, producing a relationship that is integrated but not uniformly dependent.",
+      "word_count": 33,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_RELIANCE_HIGH_01",
+      "dimension_id": "reliance",
+      "dimension_label": "Reliance",
+      "family": "Control and behavioural authority",
+      "band_id": "high",
+      "percentile_min": 66,
+      "percentile_max": 85,
+      "internal_band_label": "Regular expression",
+      "copy": "AI appears regularly integrated into how you work or think. Its absence may change the effort, speed or structure of some activities, even when responsibility and direction remain personally held.",
+      "word_count": 30,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_RELIANCE_VERY_HIGH_01",
+      "dimension_id": "reliance",
+      "dimension_label": "Reliance",
+      "family": "Control and behavioural authority",
+      "band_id": "very_high",
+      "percentile_min": 86,
+      "percentile_max": 100,
+      "internal_band_label": "Prominent expression",
+      "copy": "AI appears deeply embedded across parts of your routine or thinking. Your responses suggest that its availability can materially affect how easily you begin, organise or complete certain activities.",
+      "word_count": 29,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_TRUST_VERY_LOW_01",
+      "dimension_id": "trust",
+      "dimension_label": "Trust",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "very_low",
+      "percentile_min": 0,
+      "percentile_max": 14,
+      "internal_band_label": "Markedly limited expression",
+      "copy": "You appear reluctant to treat AI outputs as credible without substantial independent support. Its answers may be considered, but acceptance is likely to remain separated from presentation quality or apparent confidence.",
+      "word_count": 31,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_TRUST_LOW_01",
+      "dimension_id": "trust",
+      "dimension_label": "Trust",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "low",
+      "percentile_min": 15,
+      "percentile_max": 34,
+      "internal_band_label": "Limited expression",
+      "copy": "Your responses suggest a cautious relationship with AI-generated information. You may find outputs useful while still holding back belief or action until the content has earned greater confidence.",
+      "word_count": 28,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_TRUST_CENTRAL_01",
+      "dimension_id": "trust",
+      "dimension_label": "Trust",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "central",
+      "percentile_min": 35,
+      "percentile_max": 65,
+      "internal_band_label": "Context-dependent expression",
+      "copy": "Your trust in AI appears conditional. Some outputs may be accepted readily, while unfamiliar, important or uncertain situations prompt more hesitation and a closer evaluation of what the system provides.",
+      "word_count": 30,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_TRUST_HIGH_01",
+      "dimension_id": "trust",
+      "dimension_label": "Trust",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "high",
+      "percentile_min": 66,
+      "percentile_max": 85,
+      "internal_band_label": "Regular expression",
+      "copy": "You appear regularly willing to treat AI outputs as credible or usable. This suggests that clear and plausible responses can carry meaningful weight in how you understand information or proceed with a task.",
+      "word_count": 33,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_TRUST_VERY_HIGH_01",
+      "dimension_id": "trust",
+      "dimension_label": "Trust",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "very_high",
+      "percentile_min": 86,
+      "percentile_max": 100,
+      "internal_band_label": "Prominent expression",
+      "copy": "Trust appears to be a prominent feature of your AI relationship. Your responses suggest that AI outputs can acquire credibility quickly and may become an influential reference point in your thinking.",
+      "word_count": 31,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_VERIFICATION_VERY_LOW_01",
+      "dimension_id": "verification",
+      "dimension_label": "Verification",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "very_low",
+      "percentile_min": 0,
+      "percentile_max": 14,
+      "internal_band_label": "Markedly limited expression",
+      "copy": "Independent checking appears to play a limited role in your AI use. Outputs may often be accepted, adapted or acted on without being compared closely with another source, method or line of reasoning.",
+      "word_count": 33,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_VERIFICATION_LOW_01",
+      "dimension_id": "verification",
+      "dimension_label": "Verification",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "low",
+      "percentile_min": 15,
+      "percentile_max": 34,
+      "internal_band_label": "Limited expression",
+      "copy": "Verification appears selective rather than routine. You may check AI when the stakes are visible, while more familiar or convincing outputs are allowed to pass with relatively little additional scrutiny.",
+      "word_count": 30,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_VERIFICATION_CENTRAL_01",
+      "dimension_id": "verification",
+      "dimension_label": "Verification",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "central",
+      "percentile_min": 35,
+      "percentile_max": 65,
+      "internal_band_label": "Context-dependent expression",
+      "copy": "Your checking behaviour appears to depend on context. Importance, uncertainty and familiarity may determine whether an AI response is tested carefully or used with lighter review.",
+      "word_count": 26,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_VERIFICATION_HIGH_01",
+      "dimension_id": "verification",
+      "dimension_label": "Verification",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "high",
+      "percentile_min": 66,
+      "percentile_max": 85,
+      "internal_band_label": "Regular expression",
+      "copy": "You appear regularly inclined to test or compare AI outputs before accepting them. This suggests that receiving an answer and deciding it is reliable remain separate stages in your use.",
+      "word_count": 30,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_VERIFICATION_VERY_HIGH_01",
+      "dimension_id": "verification",
+      "dimension_label": "Verification",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "very_high",
+      "percentile_min": 86,
+      "percentile_max": 100,
+      "internal_band_label": "Prominent expression",
+      "copy": "Active checking appears to be a prominent part of your AI relationship. Your responses suggest that AI is commonly treated as one input to evaluate rather than as a final authority.",
+      "word_count": 31,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_HUMAN_AGENCY_VERY_LOW_01",
+      "dimension_id": "human_agency",
+      "dimension_label": "Human Agency",
+      "family": "Control and behavioural authority",
+      "band_id": "very_low",
+      "percentile_min": 0,
+      "percentile_max": 14,
+      "internal_band_label": "Markedly limited expression",
+      "copy": "Your sense of personal direction appears more easily blurred when AI is involved. The system’s framing, wording or recommendations may become closely intertwined with how you understand authorship and responsibility.",
+      "word_count": 30,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_HUMAN_AGENCY_LOW_01",
+      "dimension_id": "human_agency",
+      "dimension_label": "Human Agency",
+      "family": "Control and behavioural authority",
+      "band_id": "low",
+      "percentile_min": 15,
+      "percentile_max": 34,
+      "internal_band_label": "Limited expression",
+      "copy": "AI appears capable of shaping your direction in ways that are not always clearly separated from your own judgement. Your responses suggest some uncertainty around where the system’s contribution ends and yours begins.",
+      "word_count": 33,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_HUMAN_AGENCY_CENTRAL_01",
+      "dimension_id": "human_agency",
+      "dimension_label": "Human Agency",
+      "family": "Control and behavioural authority",
+      "band_id": "central",
+      "percentile_min": 35,
+      "percentile_max": 65,
+      "internal_band_label": "Context-dependent expression",
+      "copy": "Your sense of agency appears to vary with the interaction. In some situations you retain clear direction, while in others AI’s framing or momentum becomes more involved in shaping the outcome.",
+      "word_count": 31,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_HUMAN_AGENCY_HIGH_01",
+      "dimension_id": "human_agency",
+      "dimension_label": "Human Agency",
+      "family": "Control and behavioural authority",
+      "band_id": "high",
+      "percentile_min": 66,
+      "percentile_max": 85,
+      "internal_band_label": "Regular expression",
+      "copy": "You appear to retain a clear sense of direction and responsibility while using AI. Its contribution can influence the process without routinely replacing your authorship of the final judgement or action.",
+      "word_count": 31,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_HUMAN_AGENCY_VERY_HIGH_01",
+      "dimension_id": "human_agency",
+      "dimension_label": "Human Agency",
+      "family": "Control and behavioural authority",
+      "band_id": "very_high",
+      "percentile_min": 86,
+      "percentile_max": 100,
+      "internal_band_label": "Prominent expression",
+      "copy": "Personal direction appears especially prominent in your AI use. Your responses suggest that AI can contribute extensively while the purpose, judgement and responsibility for what happens next remain clearly yours.",
+      "word_count": 30,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_EMOTIONAL_REGULATION_VERY_LOW_01",
+      "dimension_id": "emotional_regulation",
+      "dimension_label": "Emotional Regulation",
+      "family": "Personal and emotional relationship",
+      "band_id": "very_low",
+      "percentile_min": 0,
+      "percentile_max": 14,
+      "internal_band_label": "Markedly limited expression",
+      "copy": "AI appears to have little involvement in how you process emotion, stress or internal uncertainty. Your relationship with it is more likely to remain practical, informational or cognitively focused.",
+      "word_count": 29,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_EMOTIONAL_REGULATION_LOW_01",
+      "dimension_id": "emotional_regulation",
+      "dimension_label": "Emotional Regulation",
+      "family": "Personal and emotional relationship",
+      "band_id": "low",
+      "percentile_min": 15,
+      "percentile_max": 34,
+      "internal_band_label": "Limited expression",
+      "copy": "Emotional use appears occasional and bounded. You may sometimes use AI to organise a difficult thought, but it does not appear to be a regular part of how you manage inner experience.",
+      "word_count": 32,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_EMOTIONAL_REGULATION_CENTRAL_01",
+      "dimension_id": "emotional_regulation",
+      "dimension_label": "Emotional Regulation",
+      "family": "Personal and emotional relationship",
+      "band_id": "central",
+      "percentile_min": 35,
+      "percentile_max": 65,
+      "internal_band_label": "Context-dependent expression",
+      "copy": "AI’s emotional role appears to depend on the situation. It may help create distance, language or structure around some experiences while remaining absent from others.",
+      "word_count": 25,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_EMOTIONAL_REGULATION_HIGH_01",
+      "dimension_id": "emotional_regulation",
+      "dimension_label": "Emotional Regulation",
+      "family": "Personal and emotional relationship",
+      "band_id": "high",
+      "percentile_min": 66,
+      "percentile_max": 85,
+      "internal_band_label": "Regular expression",
+      "copy": "AI appears regularly involved in helping you process stress, emotion or internal uncertainty. This suggests the interaction can provide a private structure for reflection as well as practical assistance.",
+      "word_count": 29,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_EMOTIONAL_REGULATION_VERY_HIGH_01",
+      "dimension_id": "emotional_regulation",
+      "dimension_label": "Emotional Regulation",
+      "family": "Personal and emotional relationship",
+      "band_id": "very_high",
+      "percentile_min": 86,
+      "percentile_max": 100,
+      "internal_band_label": "Prominent expression",
+      "copy": "Emotional processing appears to be a prominent part of your AI relationship. Your responses suggest that AI may serve as a recurring private support layer when thoughts or feelings need to be organised.",
+      "word_count": 33,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_THOUGHT_PARTNERSHIP_VERY_LOW_01",
+      "dimension_id": "thought_partnership",
+      "dimension_label": "Thought Partnership",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "very_low",
+      "percentile_min": 0,
+      "percentile_max": 14,
+      "internal_band_label": "Markedly limited expression",
+      "copy": "AI appears to play little part in developing or testing your ideas. Your use is more likely to remain task-specific, with reasoning and creative direction occurring mainly before or outside the interaction.",
+      "word_count": 32,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_THOUGHT_PARTNERSHIP_LOW_01",
+      "dimension_id": "thought_partnership",
+      "dimension_label": "Thought Partnership",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "low",
+      "percentile_min": 15,
+      "percentile_max": 34,
+      "internal_band_label": "Limited expression",
+      "copy": "You appear to use AI more for outputs than for extended thinking. It may help complete or clarify tasks without becoming a regular partner in how ideas are formed or challenged.",
+      "word_count": 31,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_THOUGHT_PARTNERSHIP_CENTRAL_01",
+      "dimension_id": "thought_partnership",
+      "dimension_label": "Thought Partnership",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "central",
+      "percentile_min": 35,
+      "percentile_max": 65,
+      "internal_band_label": "Context-dependent expression",
+      "copy": "AI’s role in your thinking appears to vary by task. It may help expand or refine ideas in some situations while other reasoning remains primarily internal or independently directed.",
+      "word_count": 29,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_THOUGHT_PARTNERSHIP_HIGH_01",
+      "dimension_id": "thought_partnership",
+      "dimension_label": "Thought Partnership",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "high",
+      "percentile_min": 66,
+      "percentile_max": 85,
+      "internal_band_label": "Regular expression",
+      "copy": "You appear regularly to use AI to develop, examine or refine ideas. The interaction functions as part of the thinking process rather than only as a way to retrieve information or produce an output.",
+      "word_count": 34,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_THOUGHT_PARTNERSHIP_VERY_HIGH_01",
+      "dimension_id": "thought_partnership",
+      "dimension_label": "Thought Partnership",
+      "family": "Thinking and epistemic relationship",
+      "band_id": "very_high",
+      "percentile_min": 86,
+      "percentile_max": 100,
+      "internal_band_label": "Prominent expression",
+      "copy": "Thought partnership appears to be a prominent feature of your AI use. Your responses suggest that dialogue with AI is closely integrated into how ideas begin, evolve and are tested.",
+      "word_count": 30,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_SOCIAL_TRANSPARENCY_VERY_LOW_01",
+      "dimension_id": "social_transparency",
+      "dimension_label": "Social Transparency",
+      "family": "Social visibility",
+      "band_id": "very_low",
+      "percentile_min": 0,
+      "percentile_max": 14,
+      "internal_band_label": "Markedly limited expression",
+      "copy": "You appear to keep AI’s contribution largely private or understated around other people. The role it plays in your work or thinking may be more visible to you than it is to those who see the outcome.",
+      "word_count": 37,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_SOCIAL_TRANSPARENCY_LOW_01",
+      "dimension_id": "social_transparency",
+      "dimension_label": "Social Transparency",
+      "family": "Social visibility",
+      "band_id": "low",
+      "percentile_min": 15,
+      "percentile_max": 34,
+      "internal_band_label": "Limited expression",
+      "copy": "You appear selective about acknowledging AI’s contribution. Its involvement may be disclosed when necessary, while many everyday uses remain private, implicit or presented without much explanation.",
+      "word_count": 26,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_SOCIAL_TRANSPARENCY_CENTRAL_01",
+      "dimension_id": "social_transparency",
+      "dimension_label": "Social Transparency",
+      "family": "Social visibility",
+      "band_id": "central",
+      "percentile_min": 35,
+      "percentile_max": 65,
+      "internal_band_label": "Context-dependent expression",
+      "copy": "Your openness about AI use appears to depend on context. Audience, expectations and the type of contribution may determine when its role is stated clearly and when it remains in the background.",
+      "word_count": 32,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_SOCIAL_TRANSPARENCY_HIGH_01",
+      "dimension_id": "social_transparency",
+      "dimension_label": "Social Transparency",
+      "family": "Social visibility",
+      "band_id": "high",
+      "percentile_min": 66,
+      "percentile_max": 85,
+      "internal_band_label": "Regular expression",
+      "copy": "You appear generally comfortable acknowledging how AI contributes to your work or thinking. Its involvement is less likely to be concealed when it materially shapes the process or outcome.",
+      "word_count": 29,
+      "status": "Draft 2"
+    },
+    {
+      "id": "S3_SOCIAL_TRANSPARENCY_VERY_HIGH_01",
+      "dimension_id": "social_transparency",
+      "dimension_label": "Social Transparency",
+      "family": "Social visibility",
+      "band_id": "very_high",
+      "percentile_min": 86,
+      "percentile_max": 100,
+      "internal_band_label": "Prominent expression",
+      "copy": "Social openness appears to be a prominent part of your AI relationship. Your responses suggest that you are especially willing to make AI’s role visible and discuss how it contributed.",
+      "word_count": 30,
+      "status": "Draft 2"
+    }
+  ],
+  "summary_modules": {
+    "anchor": [
+      {
+        "id": "ANCHOR_DECISION_DELEGATION_01",
+        "dimension_id": "decision_delegation",
+        "copy": "The central feature of this snapshot is how closely AI participates in moving choices toward a conclusion.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "ANCHOR_DISCLOSURE_01",
+        "dimension_id": "disclosure",
+        "copy": "The central feature of this snapshot is the degree of personal openness present in your AI conversations.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "ANCHOR_RELIANCE_01",
+        "dimension_id": "reliance",
+        "copy": "The central feature of this snapshot is how integrated AI has become in your normal work, thinking or routine.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "ANCHOR_TRUST_01",
+        "dimension_id": "trust",
+        "copy": "The central feature of this snapshot is the amount of credibility AI-generated information tends to acquire.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "ANCHOR_VERIFICATION_01",
+        "dimension_id": "verification",
+        "copy": "The central feature of this snapshot is how actively AI outputs are tested before they are accepted.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "ANCHOR_HUMAN_AGENCY_01",
+        "dimension_id": "human_agency",
+        "copy": "The central feature of this snapshot is how clearly personal direction and responsibility remain visible when AI is involved.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "ANCHOR_EMOTIONAL_REGULATION_01",
+        "dimension_id": "emotional_regulation",
+        "copy": "The central feature of this snapshot is the role AI plays in processing emotion, stress or internal uncertainty.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "ANCHOR_THOUGHT_PARTNERSHIP_01",
+        "dimension_id": "thought_partnership",
+        "copy": "The central feature of this snapshot is how closely AI participates in the development and examination of ideas.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "ANCHOR_SOCIAL_TRANSPARENCY_01",
+        "dimension_id": "social_transparency",
+        "copy": "The central feature of this snapshot is how openly AI’s contribution is acknowledged around other people.",
+        "status": "Draft 2"
+      }
+    ],
+    "relationship": [
+      {
+        "id": "REL_REINFORCING_01",
+        "applies_to": "Generic",
+        "relationship_type": "reinforcing",
+        "direction_pattern": "same_direction",
+        "copy": "The first two dimensions point in a similar direction, making the underlying behaviour a more consistent feature of your relationship with AI.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_CONTRASTING_01",
+        "applies_to": "Generic",
+        "relationship_type": "contrasting",
+        "direction_pattern": "opposite_direction",
+        "copy": "The first two dimensions pull in different directions, showing that AI involvement is more pronounced in one part of your behaviour than another.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_COUNTERBALANCE_01",
+        "applies_to": "Generic",
+        "relationship_type": "counterbalancing",
+        "direction_pattern": "qualifying",
+        "copy": "The second dimension qualifies the first, showing that greater AI involvement in one area does not automatically remove scrutiny, authorship or personal control.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_TENSION_01",
+        "applies_to": "Generic",
+        "relationship_type": "tension",
+        "direction_pattern": "mixed_signals",
+        "copy": "These dimensions create a meaningful tension: one draws AI further into the process while the other preserves distance, scrutiny or independent direction.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_CONTEXT_01",
+        "applies_to": "Generic",
+        "relationship_type": "context_dependent",
+        "direction_pattern": "central_or_mixed",
+        "copy": "The combination suggests that your behaviour changes with the task or situation rather than following one fixed approach to AI.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_CLUSTERED_01",
+        "applies_to": "Generic",
+        "relationship_type": "clustered",
+        "direction_pattern": "same_family_three",
+        "copy": "All three revealed dimensions sit within the same behavioural family. This concentration is itself meaningful, showing that one part of your AI relationship dominates the current snapshot.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_BROAD_01",
+        "applies_to": "Generic",
+        "relationship_type": "broadly_integrated",
+        "direction_pattern": "cross_family",
+        "copy": "AI appears across several parts of your behavioural life, although its role is expressed differently in each area.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_TP_HA_01",
+        "applies_to": "thought_partnership + human_agency",
+        "relationship_type": "counterbalancing",
+        "direction_pattern": "both_elevated",
+        "copy": "AI appears involved in developing your thinking while the final direction and responsibility remain more clearly personal.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_REL_HA_01",
+        "applies_to": "reliance + human_agency",
+        "relationship_type": "counterbalancing",
+        "direction_pattern": "both_elevated",
+        "copy": "AI may be integrated into your routine without automatically replacing your sense of authorship or responsibility.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_REL_VER_01",
+        "applies_to": "reliance + verification",
+        "relationship_type": "counterbalancing",
+        "direction_pattern": "both_elevated",
+        "copy": "Regular AI use sits alongside an active process of deciding which outputs deserve acceptance.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_TR_VER_01",
+        "applies_to": "trust + verification",
+        "relationship_type": "counterbalancing",
+        "direction_pattern": "both_elevated",
+        "copy": "Willingness to use AI-generated information coexists with a separate habit of testing whether it should be believed.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_DD_HA_01",
+        "applies_to": "decision_delegation + human_agency",
+        "relationship_type": "tension",
+        "direction_pattern": "both_elevated",
+        "copy": "AI can help carry decisions forward while responsibility for the final outcome remains personally recognised.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_DISC_ST_01",
+        "applies_to": "disclosure + social_transparency",
+        "relationship_type": "contrasting",
+        "direction_pattern": "disclosure_higher",
+        "copy": "Private openness with AI does not necessarily translate into equal openness about that relationship around other people.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_DISC_ER_01",
+        "applies_to": "disclosure + emotional_regulation",
+        "relationship_type": "reinforcing",
+        "direction_pattern": "both_elevated",
+        "copy": "Personal openness and emotional use reinforce one another, making private reflection a more visible part of the relationship.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_TP_TR_01",
+        "applies_to": "thought_partnership + trust",
+        "relationship_type": "reinforcing",
+        "direction_pattern": "both_elevated",
+        "copy": "AI’s role in developing ideas is strengthened by a readiness to treat its contributions as credible or useful.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_DD_REL_01",
+        "applies_to": "decision_delegation + reliance",
+        "relationship_type": "reinforcing",
+        "direction_pattern": "both_elevated",
+        "copy": "AI’s integration into routine extends into how choices are narrowed and carried toward action.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_ER_ST_01",
+        "applies_to": "emotional_regulation + social_transparency",
+        "relationship_type": "context_dependent",
+        "direction_pattern": "emotional_higher",
+        "copy": "AI may play a meaningful private role even when that part of the relationship is expressed differently in social settings.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_TR_LOWVER_01",
+        "applies_to": "trust + verification",
+        "relationship_type": "tension",
+        "direction_pattern": "trust_higher_verification_lower",
+        "copy": "AI-generated information can acquire credibility more readily than it is independently tested, bringing acceptance and checking into an uneven relationship.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_LOWTR_HIGHVER_01",
+        "applies_to": "trust + verification",
+        "relationship_type": "counterbalancing",
+        "direction_pattern": "trust_lower_verification_higher",
+        "copy": "Caution toward AI-generated information is reinforced by an active habit of checking, keeping credibility dependent on further evidence.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_HIGHTP_LOWHA_01",
+        "applies_to": "thought_partnership + human_agency",
+        "relationship_type": "tension",
+        "direction_pattern": "thought_higher_agency_lower",
+        "copy": "AI is closely involved in developing ideas, while the boundary between its direction and your own authorship appears less clearly defined.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "REL_HIGHREL_LOWHA_01",
+        "applies_to": "reliance + human_agency",
+        "relationship_type": "tension",
+        "direction_pattern": "reliance_higher_agency_lower",
+        "copy": "AI is deeply integrated into activity while personal direction appears less clearly separated from the system’s contribution.",
+        "status": "Draft 2"
+      }
+    ],
+    "breadth": [
+      {
+        "id": "BREADTH_DECISION_DELEGATION_LOWER_01",
+        "dimension_id": "decision_delegation",
+        "direction_band": "lower",
+        "copy": "The third dimension adds breadth by showing that final decisions remain more personally contained than the rest of the profile might initially suggest.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_DECISION_DELEGATION_CENTRAL_01",
+        "dimension_id": "decision_delegation",
+        "direction_band": "central",
+        "copy": "The third dimension adds breadth by showing that AI’s role in final decisions changes with context rather than following the same pattern everywhere.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_DECISION_DELEGATION_HIGHER_01",
+        "dimension_id": "decision_delegation",
+        "direction_band": "higher",
+        "copy": "The third dimension adds breadth by showing that AI’s involvement extends from support into how choices are carried toward action.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_DISCLOSURE_LOWER_01",
+        "dimension_id": "disclosure",
+        "direction_band": "lower",
+        "copy": "The third dimension adds breadth by showing that personal openness remains more bounded than the other visible forms of AI involvement.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_DISCLOSURE_CENTRAL_01",
+        "dimension_id": "disclosure",
+        "direction_band": "central",
+        "copy": "The third dimension adds breadth by showing that personal openness depends on the setting and purpose of the interaction.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_DISCLOSURE_HIGHER_01",
+        "dimension_id": "disclosure",
+        "direction_band": "higher",
+        "copy": "The third dimension adds breadth by showing that AI’s role extends into more personal forms of reflection and expression.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_RELIANCE_LOWER_01",
+        "dimension_id": "reliance",
+        "direction_band": "lower",
+        "copy": "The third dimension adds breadth by showing that AI remains optional in more of your routine than the other results alone might imply.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_RELIANCE_CENTRAL_01",
+        "dimension_id": "reliance",
+        "direction_band": "central",
+        "copy": "The third dimension adds breadth by showing that AI’s importance changes across tasks rather than remaining uniformly embedded.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_RELIANCE_HIGHER_01",
+        "dimension_id": "reliance",
+        "direction_band": "higher",
+        "copy": "The third dimension adds breadth by showing that AI has become integrated into the practical structure of your work or thinking.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_TRUST_LOWER_01",
+        "dimension_id": "trust",
+        "direction_band": "lower",
+        "copy": "The third dimension adds breadth by showing that AI’s involvement does not automatically translate into ready acceptance of its outputs.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_TRUST_CENTRAL_01",
+        "dimension_id": "trust",
+        "direction_band": "central",
+        "copy": "The third dimension adds breadth by showing that credibility is granted selectively according to context and perceived stakes.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_TRUST_HIGHER_01",
+        "dimension_id": "trust",
+        "direction_band": "higher",
+        "copy": "The third dimension adds breadth by showing that AI-generated information can acquire meaningful credibility within the wider pattern.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_VERIFICATION_LOWER_01",
+        "dimension_id": "verification",
+        "direction_band": "lower",
+        "copy": "The third dimension adds breadth by showing that active checking is less prominent than the other visible parts of the relationship.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_VERIFICATION_CENTRAL_01",
+        "dimension_id": "verification",
+        "direction_band": "central",
+        "copy": "The third dimension adds breadth by showing that checking behaviour changes according to importance, uncertainty and familiarity.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_VERIFICATION_HIGHER_01",
+        "dimension_id": "verification",
+        "direction_band": "higher",
+        "copy": "The third dimension adds breadth by showing that AI involvement remains accompanied by a separate process of testing what deserves acceptance.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_HUMAN_AGENCY_LOWER_01",
+        "dimension_id": "human_agency",
+        "direction_band": "lower",
+        "copy": "The third dimension adds breadth by showing that personal direction becomes less clearly separated when AI participates in the process.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_HUMAN_AGENCY_CENTRAL_01",
+        "dimension_id": "human_agency",
+        "direction_band": "central",
+        "copy": "The third dimension adds breadth by showing that authorship and responsibility remain clearer in some situations than in others.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_HUMAN_AGENCY_HIGHER_01",
+        "dimension_id": "human_agency",
+        "direction_band": "higher",
+        "copy": "The third dimension adds breadth by showing that extensive AI involvement can coexist with a clearly retained sense of direction and responsibility.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_EMOTIONAL_REGULATION_LOWER_01",
+        "dimension_id": "emotional_regulation",
+        "direction_band": "lower",
+        "copy": "The third dimension adds breadth by showing that the visible AI relationship remains more practical or cognitive than emotionally involved.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_EMOTIONAL_REGULATION_CENTRAL_01",
+        "dimension_id": "emotional_regulation",
+        "direction_band": "central",
+        "copy": "The third dimension adds breadth by showing that AI’s emotional role emerges selectively rather than across all interactions.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_EMOTIONAL_REGULATION_HIGHER_01",
+        "dimension_id": "emotional_regulation",
+        "direction_band": "higher",
+        "copy": "The third dimension adds breadth by showing that AI also functions as a private structure for processing emotion or internal uncertainty.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_THOUGHT_PARTNERSHIP_LOWER_01",
+        "dimension_id": "thought_partnership",
+        "direction_band": "lower",
+        "copy": "The third dimension adds breadth by showing that AI is less involved in developing ideas than in the other visible parts of the profile.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_THOUGHT_PARTNERSHIP_CENTRAL_01",
+        "dimension_id": "thought_partnership",
+        "direction_band": "central",
+        "copy": "The third dimension adds breadth by showing that AI becomes a thinking partner for some tasks while remaining more functional in others.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_THOUGHT_PARTNERSHIP_HIGHER_01",
+        "dimension_id": "thought_partnership",
+        "direction_band": "higher",
+        "copy": "The third dimension adds breadth by showing that dialogue with AI is integrated into how ideas are developed, examined or refined.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_SOCIAL_TRANSPARENCY_LOWER_01",
+        "dimension_id": "social_transparency",
+        "direction_band": "lower",
+        "copy": "The third dimension adds breadth by showing that AI’s private role is more visible than the way that contribution is acknowledged around others.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_SOCIAL_TRANSPARENCY_CENTRAL_01",
+        "dimension_id": "social_transparency",
+        "direction_band": "central",
+        "copy": "The third dimension adds breadth by showing that openness about AI use changes with audience, expectations and the type of contribution.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "BREADTH_SOCIAL_TRANSPARENCY_HIGHER_01",
+        "dimension_id": "social_transparency",
+        "direction_band": "higher",
+        "copy": "The third dimension adds breadth by showing that AI’s contribution is generally made visible when it materially shapes the process or outcome.",
+        "status": "Draft 2"
+      }
+    ],
+    "transition": [
+      {
+        "id": "TRANSITION_01",
+        "copy": "These three dimensions show the broad shape of your profile. The next result reveals where your individual pattern becomes more distinctive.",
+        "status": "Draft 2"
+      },
+      {
+        "id": "TRANSITION_02",
+        "copy": "This snapshot shows how several parts of your AI behaviour interact. One further finding brings the individuality of that pattern into clearer view.",
+        "status": "Draft 2"
+      }
+    ]
+  }
+}

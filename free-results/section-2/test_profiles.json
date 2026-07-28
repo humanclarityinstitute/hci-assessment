@@ -1,0 +1,237 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Deterministic tests for Section 2 card selection after eligibility and distinctiveness scoring.",
+  "assumptions": {
+    "required_card_count": 3,
+    "strong_overlap_penalty": 15,
+    "moderate_overlap_penalty": 8
+  },
+  "profiles": [
+    {
+      "test_id": "T01_three_distinct_families",
+      "description": "Three strong candidates from different families should all be selected.",
+      "candidates": [
+        {
+          "card_id": "SF02_HIGH",
+          "score": 91
+        },
+        {
+          "card_id": "SF08_HIGH",
+          "score": 88
+        },
+        {
+          "card_id": "SF10_HIGH",
+          "score": 85
+        }
+      ],
+      "expected_selected": [
+        "SF02_HIGH",
+        "SF08_HIGH",
+        "SF10_HIGH"
+      ]
+    },
+    {
+      "test_id": "T02_emotional_family_limit",
+      "description": "Three emotional/personal candidates should not occupy all three positions when a strong alternative exists.",
+      "candidates": [
+        {
+          "card_id": "SF02_HIGH",
+          "score": 94
+        },
+        {
+          "card_id": "SF06_COMPARISON_HIGH",
+          "score": 91
+        },
+        {
+          "card_id": "SF07_HIGH",
+          "score": 88
+        },
+        {
+          "card_id": "SF09_HIGH",
+          "score": 82
+        }
+      ],
+      "expected_selected": [
+        "SF02_HIGH",
+        "SF09_HIGH",
+        "SF07_HIGH"
+      ],
+      "acceptable_alternative": [
+        "SF06_COMPARISON_HIGH",
+        "SF09_HIGH",
+        "SF07_HIGH"
+      ],
+      "assertions": [
+        "No more than two emotional_personal cards.",
+        "Do not select both SF02 and SF06 after strong-overlap penalty unless no comparable alternative exists."
+      ]
+    },
+    {
+      "test_id": "T03_decision_overlap",
+      "description": "SF08 and SF09 strongly overlap; the higher-scoring one should win when other strong families are available.",
+      "candidates": [
+        {
+          "card_id": "SF08_HIGH",
+          "score": 90
+        },
+        {
+          "card_id": "SF09_HIGH",
+          "score": 87
+        },
+        {
+          "card_id": "SF03_COMPARISON_HIGH",
+          "score": 84
+        },
+        {
+          "card_id": "ST02_HIGH",
+          "score": 80
+        }
+      ],
+      "expected_selected": [
+        "SF08_HIGH",
+        "SF03_COMPARISON_HIGH",
+        "ST02_HIGH"
+      ]
+    },
+    {
+      "test_id": "T04_tier_two_can_outrank_tier_one",
+      "description": "An exceptionally distinctive Tier 2 card should outrank a mildly distinctive Tier 1 card.",
+      "candidates": [
+        {
+          "card_id": "SF04_HIGH",
+          "score": 92
+        },
+        {
+          "card_id": "SF08_HIGH",
+          "score": 69
+        },
+        {
+          "card_id": "SF13_LOW",
+          "score": 81
+        },
+        {
+          "card_id": "ST02_HIGH",
+          "score": 78
+        }
+      ],
+      "expected_selected": [
+        "SF04_HIGH",
+        "SF13_LOW",
+        "ST02_HIGH"
+      ]
+    },
+    {
+      "test_id": "T05_two_distinctive_one_fallback",
+      "description": "Two distinctive cards should be retained and one typical card should fill the remaining position.",
+      "candidates": [
+        {
+          "card_id": "SF10_HIGH",
+          "score": 87
+        },
+        {
+          "card_id": "ST01_LOW",
+          "score": 76
+        }
+      ],
+      "expected_selected": [
+        "SF10_HIGH",
+        "ST01_LOW",
+        "SF13_TYPICAL"
+      ]
+    },
+    {
+      "test_id": "T06_no_distinctive_fallbacks",
+      "description": "No distinctive candidates should produce the first three eligible fallbacks.",
+      "candidates": [],
+      "expected_selected": [
+        "SF13_TYPICAL",
+        "SF03_TYPICAL",
+        "SF08_TYPICAL"
+      ]
+    },
+    {
+      "test_id": "T07_avoid_duplicate_finding_fallback",
+      "description": "Do not use a typical card from a finding already selected distinctively.",
+      "candidates": [
+        {
+          "card_id": "SF13_LOW",
+          "score": 90
+        }
+      ],
+      "expected_selected": [
+        "SF13_LOW",
+        "SF03_TYPICAL",
+        "SF08_TYPICAL"
+      ]
+    },
+    {
+      "test_id": "T08_comparison_variants_mutually_exclusive",
+      "description": "Only one directional variant of the same comparison-dependent finding can be eligible.",
+      "candidates": [
+        {
+          "card_id": "SF11_COMPARISON_HIGH",
+          "score": 84
+        },
+        {
+          "card_id": "SF11_COMPARISON_LOW",
+          "score": 82
+        }
+      ],
+      "expected_error": "Mutually exclusive variants of SF11 were simultaneously marked eligible."
+    },
+    {
+      "test_id": "T09_same_family_exception",
+      "description": "Two exceptionally strong same-family cards may both be selected, but a third may not.",
+      "candidates": [
+        {
+          "card_id": "SF10_HIGH",
+          "score": 95
+        },
+        {
+          "card_id": "SF03_COMPARISON_HIGH",
+          "score": 91
+        },
+        {
+          "card_id": "SF11_COMPARISON_HIGH",
+          "score": 89
+        },
+        {
+          "card_id": "SF13_LOW",
+          "score": 83
+        }
+      ],
+      "expected_selected": [
+        "SF10_HIGH",
+        "SF03_COMPARISON_HIGH",
+        "SF13_LOW"
+      ]
+    },
+    {
+      "test_id": "T10_deterministic_tie",
+      "description": "Equal scores resolve deterministically after significance and evidence, then card ID.",
+      "candidates": [
+        {
+          "card_id": "SF02_HIGH",
+          "score": 85
+        },
+        {
+          "card_id": "SF08_HIGH",
+          "score": 85
+        },
+        {
+          "card_id": "SF10_HIGH",
+          "score": 85
+        },
+        {
+          "card_id": "ST02_HIGH",
+          "score": 85
+        }
+      ],
+      "expected_selected": [
+        "SF02_HIGH",
+        "SF08_HIGH",
+        "SF10_HIGH"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "version": "1.0",
+  "status": "production_specification_pending_empirical_threshold_calibration",
+  "selection_sequence": [
+    "Evaluate primary profiles.",
+    "Reject profiles that fail required evidence, corroboration, contradiction, or stability checks.",
+    "Select the highest-priority qualifying primary profile; use distinctiveness only as a tie-breaker.",
+    "If no primary profile qualifies, evaluate narrow single-pattern fallbacks.",
+    "If no narrow fallback qualifies, use BF01_BALANCED_CONTEXT_DEPENDENT."
+  ],
+  "qualification_standard": {
+    "primary_profile": {
+      "strong_primary_evidence": true,
+      "corroboration_required": true,
+      "material_contradiction_rejects": true,
+      "stability_test": "Interpretation should remain reasonable if one borderline answer moves by one response category."
+    },
+    "ordinary_profile_guidance": "Approximate top or bottom 15–20%, supported by another related signal.",
+    "sensitive_profile_guidance": "Approximate top or bottom 10%, with direct corroboration and no material contradiction.",
+    "threshold_status": "Exact numerical cut-offs must be calibrated against the final assessment distribution before production deployment."
+  },
+  "sensitive_profiles": [
+    "RP07_RESHAPING_CONFIDENCE",
+    "RP08_AI_CARRYING_MORE_AUTHORITY",
+    "RP09_RELIANCE_NOTICEABLE",
+    "SP04_STRONG_DECISION_DELEGATION"
+  ],
+  "precedence_rules": [
+    {
+      "profiles": [
+        "RP01_ACTIVE_THINKING_PARTNER",
+        "RP02_DEEPLY_INTEGRATED_SELF_DIRECTED"
+      ],
+      "rule": "Choose RP01 when Thought Partnership is dominant; choose RP02 when breadth of integration or Reliance is more distinctive."
+    },
+    {
+      "profiles": [
+        "RP01_ACTIVE_THINKING_PARTNER",
+        "RP03_CLARITY_BEFORE_AUTHORITY"
+      ],
+      "rule": "Choose RP01 when idea development and testing dominate; choose RP03 when uncertainty reduction and decision clarity dominate."
+    },
+    {
+      "profiles": [
+        "RP02_DEEPLY_INTEGRATED_SELF_DIRECTED",
+        "RP04_PRACTICAL_AND_BOUNDED"
+      ],
+      "rule": "Choose RP02 when integration is high and self-direction is defining; choose RP04 when use is functional, bounded and emotionally limited."
+    },
+    {
+      "profiles": [
+        "RP05_PRIVATE_REFLECTIVE_RELATIONSHIP",
+        "RP06_PERSONALLY_OPEN_SOCIALLY_RESERVED"
+      ],
+      "rule": "Choose RP05 when private reflection or emotional processing is central; choose RP06 when the private/social visibility gap is strongest."
+    },
+    {
+      "profiles": [
+        "RP07_RESHAPING_CONFIDENCE",
+        "RP08_AI_CARRYING_MORE_AUTHORITY"
+      ],
+      "rule": "Choose RP07 for confidence, self-trust or authorship; choose RP08 for final decisions or actions."
+    },
+    {
+      "profiles": [
+        "RP02_DEEPLY_INTEGRATED_SELF_DIRECTED",
+        "RP09_RELIANCE_NOTICEABLE"
+      ],
+      "rule": "Choose RP09 only when absence-related unease is unusually strong; otherwise use RP02 for high self-directed integration."
+    }
+  ],
+  "highlight_selection": [
+    "Choose only from the winning profile's compatible highlights.",
+    "Reject highlights that duplicate the headline or interpretation.",
+    "Require grounding in the participant's actual responses.",
+    "Do not introduce an unrelated behavioural theme.",
+    "Avoid near-identical duplication with Section 2 where another similarly strong highlight exists."
+  ],
+  "copy_guardrails": {
+    "headline_max_words": 22,
+    "interpretation_max_words": 140,
+    "highlight_max_words": 45,
+    "prohibited": [
+      "scores",
+      "percentiles",
+      "dimension names",
+      "benchmark comparisons",
+      "research citations",
+      "advice",
+      "predictions",
+      "clinical language",
+      "purchase prompts"
+    ],
+    "preferred_language": [
+      "appears",
+      "suggests",
+      "indicates",
+      "reflects",
+      "seems",
+      "currently",
+      "tends to"
+    ],
+    "avoid_language": [
+      "is",
+      "always",
+      "never",
+      "definitely",
+      "proves",
+      "will",
+      "abnormal",
+      "unhealthy",
+      "concerning",
+      "problematic",
+      "excessive",
+      "dependent",
+      "addicted"
+    ]
+  },
+  "display_order": [
+    "section_label",
+    "section_heading",
+    "headline",
+    "interpretation_paragraph_1",
+    "interpretation_paragraph_2",
+    "highlight_label",
+    "highlight",
+    "transition"
+  ]
+}

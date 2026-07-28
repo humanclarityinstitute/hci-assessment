@@ -1,0 +1,243 @@
+{
+  "version": "1.0",
+  "section_id": "section_4_most_interesting_finding",
+  "fixed_copy": {
+    "section_label": "04 · Your Most Interesting Finding",
+    "section_heading": "What Stood Out Most",
+    "why_label": "Why this stood out",
+    "context_label": "What this may connect to",
+    "transition": "This finding raises a broader question: why are patterns like this becoming increasingly important to understand?"
+  },
+  "findings": [
+    {
+      "id": "S4_TP_HA_RETAINED_01",
+      "type": "cross_dimension_relationship",
+      "headline": "AI is closely involved in your thinking without routinely taking ownership of where that thinking ends.",
+      "explanation": "Your responses suggest that AI enters while ideas are still developing, yet final judgement remains recognisably personal. The interesting feature is not simply frequent collaboration, but the separation between using AI deeply and allowing it to determine the conclusion.",
+      "reason_code": "RC_CROSS_DIMENSION_TENSION",
+      "why": "This stood out because active thought partnership and retained agency appeared together across separate parts of your assessment. Either behaviour is common enough alone; their combination provides the more revealing signal.",
+      "context": "This kind of pattern usually cannot be understood from one score. It depends on how involvement, authorship and decision ownership appear together.",
+      "requires": [
+        "thought_partnership:elevated",
+        "human_agency:elevated"
+      ],
+      "prohibits": [
+        "section1_claim:active_thinking_partner_exact",
+        "section3_summary:tp_ha_exact"
+      ]
+    },
+    {
+      "id": "S4_TRUST_LIGHT_VERIFY_01",
+      "type": "cross_dimension_relationship",
+      "headline": "AI-generated answers may acquire credibility more quickly than they receive independent checking.",
+      "explanation": "Your responses suggest that convincing AI outputs can enter your thinking with relatively little separation between receiving an answer and testing whether it deserves acceptance. The finding concerns the relationship between trust and checking, not either behaviour on its own.",
+      "reason_code": "RC_CROSS_DIMENSION_TENSION",
+      "why": "This stood out because two closely related behaviours moved in different directions: acceptance appeared more prominent than verification. That contrast is more informative than a single elevated or reduced score.",
+      "context": "The meaning depends on when confidence, familiarity and task importance change how much scrutiny an answer receives.",
+      "requires": [
+        "trust:elevated",
+        "verification:reduced"
+      ],
+      "prohibits": [
+        "section2_claim:low_verification_exact"
+      ]
+    },
+    {
+      "id": "S4_DISCLOSURE_SOCIAL_GAP_01",
+      "type": "cross_dimension_relationship",
+      "headline": "AI may play a more personal role privately than the people around you are likely to realise.",
+      "explanation": "Your responses suggest meaningful openness within AI conversations alongside greater reserve about making that relationship visible socially. The distinctive feature is the gap between the private importance of the interaction and how openly that importance is acknowledged.",
+      "reason_code": "RC_DIRECTIONAL_CONTRAST",
+      "why": "This stood out because private disclosure and social transparency pointed in different directions. The contrast appeared across related behaviours rather than depending on one isolated response.",
+      "context": "This pattern can contain several different forms of AI use. The assessment identifies the contrast, while its deeper meaning depends on the wider profile.",
+      "requires": [
+        "disclosure:elevated",
+        "social_transparency:reduced"
+      ],
+      "prohibits": [
+        "section1_profile:RP06_PERSONALLY_OPEN_SOCIALLY_RESERVED"
+      ]
+    },
+    {
+      "id": "S4_RELIANCE_AGENCY_01",
+      "type": "cross_dimension_relationship",
+      "headline": "AI appears integrated into your routine without fully replacing your sense of personal direction.",
+      "explanation": "Your responses suggest that AI has become a regular part of how work or thinking proceeds, while responsibility for the outcome remains personally recognised. The notable feature is that integration and self-direction coexist rather than moving as opposites.",
+      "reason_code": "RC_REINFORCED_PATTERN",
+      "why": "This stood out because reliance was supported by routine-level signals, while agency remained visible across separate questions. Together they form a clearer pattern than either result alone.",
+      "context": "The relationship between frequent use and retained control is shaped by several behaviours that are not all visible in this free snapshot.",
+      "requires": [
+        "reliance:elevated",
+        "human_agency:elevated"
+      ],
+      "prohibits": [
+        "section1_profile:RP02_DEEPLY_INTEGRATED_SELF_DIRECTED",
+        "section3_summary:reliance_agency_exact"
+      ]
+    },
+    {
+      "id": "S4_DD_AUTHORSHIP_01",
+      "type": "cross_dimension_relationship",
+      "headline": "AI may help carry some decisions forward while making authorship feel less clearly separated.",
+      "explanation": "Your responses suggest that AI can move beyond organising options and become involved in settling what happens next. At the same time, the boundary between the system’s contribution and your own judgement appears less distinct in some situations.",
+      "reason_code": "RC_CROSS_DIMENSION_TENSION",
+      "why": "This stood out because decision movement and authorship uncertainty were supported by separate signals. Their interaction is more behaviourally informative than a standalone delegation result.",
+      "context": "The finding points to a relationship between influence and ownership. Its full explanation depends on where that pattern appears and what other behaviours surround it.",
+      "requires": [
+        "decision_delegation:elevated",
+        "authorship_uncertainty:elevated"
+      ],
+      "prohibits": [
+        "section1_profile:RP07_RESHAPING_CONFIDENCE",
+        "section1_profile:RP08_AI_CARRYING_MORE_AUTHORITY"
+      ]
+    },
+    {
+      "id": "S4_PERCEPTION_USE_GAP_01",
+      "type": "perception_gap",
+      "headline": "Your AI relationship appears more integrated in practice than your own estimate initially suggested.",
+      "explanation": "Your self-estimate placed AI in a more limited role, while your reported behaviour showed it appearing across several parts of your work or thinking. The interesting result is the difference between how the relationship feels from the inside and what the combined responses indicate.",
+      "reason_code": "RC_PERCEPTION_GAP",
+      "why": "This stood out because the measured pattern and your direct self-estimate were materially separated. The finding is supported by multiple responses rather than inferred from usage frequency alone.",
+      "context": "People often notice individual AI habits before seeing the broader pattern they form together. The remaining profile helps explain where that integration is concentrated.",
+      "requires": [
+        "perception_gap:material",
+        "integration_signals:corroborated"
+      ],
+      "prohibits": []
+    },
+    {
+      "id": "S4_PERCEPTION_RELIANCE_GAP_01",
+      "type": "perception_gap",
+      "headline": "You may experience your AI use as less reliant than its effect on your routine suggests.",
+      "explanation": "Your self-estimate indicated relatively limited reliance, while your responses showed that AI’s absence can change momentum, confidence or the ease of beginning some tasks. The standout finding is the gap between perceived reliance and its practical effect.",
+      "reason_code": "RC_PERCEPTION_GAP",
+      "why": "This stood out because the direct self-rating and absence-related behaviour did not align closely. The difference was supported by more than one reliance signal.",
+      "context": "Reliance is not measured by frequency alone. It can also appear in what changes when the tool is unavailable.",
+      "requires": [
+        "perceived_reliance:lower",
+        "absence_effect:elevated"
+      ],
+      "prohibits": [
+        "section1_profile:RP09_RELIANCE_NOTICEABLE"
+      ]
+    },
+    {
+      "id": "S4_RARE_PRIVATE_REFLECTIVE_01",
+      "type": "supported_rare_combination",
+      "headline": "Personal openness, emotional reflection and social reserve form an uncommon pattern in your responses.",
+      "explanation": "Your assessment suggests that AI can serve as a private setting for expressing and organising personal experience, while that role remains less visible socially. The finding is notable because these behaviours occurred together, not because any one response was extreme.",
+      "reason_code": "RC_RARE_COMBINATION",
+      "why": "This stood out because the joint pattern meets the approved prevalence threshold for uncommon wording and is corroborated across separate personal, emotional and social signals.",
+      "context": "The result identifies a measured combination. It does not determine why the pattern exists or what it means in every situation.",
+      "requires": [
+        "joint_prevalence:approved_uncommon",
+        "disclosure:elevated",
+        "emotional_regulation:elevated",
+        "social_transparency:reduced"
+      ],
+      "prohibits": [
+        "section1_profile:RP05_PRIVATE_REFLECTIVE_RELATIONSHIP",
+        "section1_profile:RP06_PERSONALLY_OPEN_SOCIALLY_RESERVED"
+      ]
+    },
+    {
+      "id": "S4_DISTINCTIVE_RESPONSE_FALLBACK_01",
+      "type": "distinctive_response",
+      "headline": "One of your answers revealed a sharper behavioural boundary than the rest of your profile.",
+      "explanation": "Most of your results formed a relatively balanced pattern, but one response showed a much clearer position. That answer provides the strongest available insight because no cross-dimensional relationship or perception gap met the higher selection threshold.",
+      "reason_code": "RC_DISTINCTIVE_RESPONSE",
+      "why": "This stood out because its benchmark deviation was materially greater than your other eligible responses and the behaviour was supported by the wording of the item itself.",
+      "context": "A single answer can reveal something meaningful, but it offers a narrower view than a pattern supported across several behaviours.",
+      "requires": [
+        "response_distinctiveness:highest",
+        "higher_tier_candidates:none"
+      ],
+      "prohibits": [
+        "section2_card:same_claim"
+      ]
+    },
+    {
+      "id": "S4_DIMENSION_FALLBACK_01",
+      "type": "dimension_deviation",
+      "headline": "One behavioural dimension provides the clearest remaining signal in an otherwise even profile.",
+      "explanation": "No supported rare combination, cross-dimensional relationship, perception gap or question-level finding qualified more strongly. This dimension is shown only because it still clears the minimum distinctiveness threshold and offers a defensible signal beyond the rest of the profile.",
+      "reason_code": "RC_DIMENSION_DEVIATION",
+      "why": "This stood out because it was the largest remaining validated deviation and exceeded the minimum threshold after all higher-priority, non-duplicative findings were evaluated.",
+      "context": "A dimension summarises several related responses, but its meaning still depends on how it interacts with the wider profile.",
+      "requires": [
+        "higher_tier_candidates:none",
+        "dimension_deviation:validated",
+        "dimension_deviation:above_minimum_threshold"
+      ],
+      "prohibits": [
+        "section3_dimension:same_unless_no_alternative"
+      ]
+    },
+    {
+      "id": "S4_BALANCED_PROFILE_FALLBACK_01",
+      "type": "balanced_profile_fallback",
+      "headline": "No single behaviour dominates your relationship with AI.",
+      "explanation": "Your responses form a relatively even pattern across the behaviours measured. Rather than one result clearly defining your profile, the more interesting feature is how your approach appears to change with context.",
+      "reason_code": "RC_BALANCED_PROFILE",
+      "why": "This was selected because no rare combination, marked relationship, perception gap or individual response was sufficiently distinctive to outweigh the rest of your profile.",
+      "context": "A balanced profile does not mean AI has little influence. It suggests that its role is distributed across situations rather than concentrated in one defining behaviour.",
+      "requires": [
+        "higher_tier_candidates:none",
+        "dimension_deviation:below_minimum_threshold",
+        "response_distinctiveness:below_minimum_threshold"
+      ],
+      "prohibits": []
+    }
+  ],
+  "reason_codes": [
+    {
+      "code": "RC_RARE_COMBINATION",
+      "name": "Supported rare combination",
+      "meaning": "A measured combination occurs infrequently enough in the benchmark to support uncommon/rare wording.",
+      "evidence_guardrail": "Requires approved joint-prevalence evidence; never infer rarity from two extreme scores alone."
+    },
+    {
+      "code": "RC_DIRECTIONAL_CONTRAST",
+      "name": "Directional contrast",
+      "meaning": "Two related behaviours move in meaningfully different directions.",
+      "evidence_guardrail": "Requires a defined pair relationship and a minimum contrast threshold."
+    },
+    {
+      "code": "RC_REINFORCED_PATTERN",
+      "name": "Reinforced pattern",
+      "meaning": "Two or more signals independently support the same behavioural interpretation.",
+      "evidence_guardrail": "Requires corroboration across separate questions or dimensions."
+    },
+    {
+      "code": "RC_PERCEPTION_GAP",
+      "name": "Perception–behaviour gap",
+      "meaning": "The participant’s self-estimate differs materially from the pattern measured in their responses.",
+      "evidence_guardrail": "Requires mapped perception item and comparable measured output."
+    },
+    {
+      "code": "RC_CROSS_DIMENSION_TENSION",
+      "name": "Cross-dimensional tension",
+      "meaning": "Two dimensions create a behaviourally meaningful tension that cannot be understood from either score alone.",
+      "evidence_guardrail": "Requires curated pair logic."
+    },
+    {
+      "code": "RC_DISTINCTIVE_RESPONSE",
+      "name": "Distinctive participant response",
+      "meaning": "One response is especially differentiated and behaviourally meaningful.",
+      "evidence_guardrail": "Fallback after combination, relationship and perception-gap candidates."
+    },
+    {
+      "code": "RC_DIMENSION_DEVIATION",
+      "name": "Standalone dimension deviation",
+      "meaning": "One dimension is the strongest remaining distinctive signal.",
+      "evidence_guardrail": "Final fallback only; reject if already shown in Section 3 unless no non-duplicative candidate qualifies."
+    },
+    {
+      "code": "RC_BALANCED_PROFILE",
+      "name": "Balanced profile fallback",
+      "meaning": "No eligible candidate is sufficiently distinctive or well-supported to justify a single standout claim.",
+      "evidence_guardrail": "Use only after all higher-priority candidates fail and all remaining deviations fall below provisional minimum thresholds."
+    }
+  ]
+}

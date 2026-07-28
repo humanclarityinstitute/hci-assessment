@@ -1,0 +1,193 @@
+{
+  "version": "draft-2",
+  "section_id": "section_6_emerging_relationship",
+  "fixed_copy": {
+    "section_label": "06 · Your Emerging Relationship with AI",
+    "section_heading": "What Your Responses Show So Far",
+    "transition": "This is a measured preview rather than a complete interpretation. The wider profile depends on behaviours, relationships and human capabilities that have not yet been shown."
+  },
+  "opening_modules": [
+    {
+      "id": "S6_OPEN_01",
+      "profile_family": "active_thinking_partner",
+      "text": "Across your responses, AI was involved most clearly while ideas were still being developed and organised, rather than only after your thinking was complete."
+    },
+    {
+      "id": "S6_OPEN_02",
+      "profile_family": "integrated_self_directed",
+      "text": "Across several assessed behaviours, you reported substantial AI involvement in work or thinking while continuing to retain direction over what was accepted and carried forward."
+    },
+    {
+      "id": "S6_OPEN_03",
+      "profile_family": "clarity_before_authority",
+      "text": "Your responses most clearly show AI being used to organise difficult questions and reduce uncertainty, while responsibility for the eventual conclusion remained more personally directed."
+    },
+    {
+      "id": "S6_OPEN_04",
+      "profile_family": "practical_bounded",
+      "text": "The measured pattern shows stronger AI involvement in practical tasks and problem-solving than in personal or emotionally focused interaction."
+    },
+    {
+      "id": "S6_OPEN_05",
+      "profile_family": "private_reflective",
+      "text": "Across the assessed behaviours, you reported using AI as a relatively private setting for expressing or organising thoughts, experiences or feelings."
+    },
+    {
+      "id": "S6_OPEN_06",
+      "profile_family": "personally_open_socially_reserved",
+      "text": "Your responses show a measurable difference between private engagement with AI and how openly that engagement is made visible to other people."
+    },
+    {
+      "id": "S6_OPEN_07",
+      "profile_family": "confidence_authorship",
+      "text": "The assessed pattern indicates that AI may be affecting not only the answers you reach, but also how you evaluate your own judgement and identify the origins of ideas."
+    },
+    {
+      "id": "S6_OPEN_08",
+      "profile_family": "authority_shift",
+      "text": "In some assessed situations, your responses indicate that AI moved beyond offering input and became more involved in which conclusion or action was carried forward."
+    },
+    {
+      "id": "S6_OPEN_09",
+      "profile_family": "reliance_noticeable",
+      "text": "Your responses indicate that AI is established enough in some routines for its availability to affect momentum, confidence or the ease of beginning certain tasks."
+    },
+    {
+      "id": "S6_OPEN_10",
+      "profile_family": "balanced_contextual",
+      "text": "No single measured behaviour dominated your results. Instead, the role of AI varied more by situation than by one consistent pattern."
+    }
+  ],
+  "qualifier_modules": [
+    {
+      "id": "S6_QUAL_01",
+      "relationship_type": "reinforcing",
+      "text": "Several separate responses supported the same direction, making this a recurring measured pattern rather than the result of one isolated answer."
+    },
+    {
+      "id": "S6_QUAL_02",
+      "relationship_type": "contrasting",
+      "text": "A related part of the assessed profile moved differently, indicating that the pattern is conditional and cannot be summarised accurately by one behaviour alone."
+    },
+    {
+      "id": "S6_QUAL_03",
+      "relationship_type": "counterbalancing",
+      "text": "One measured behaviour counterbalanced another, allowing substantial AI involvement to coexist with a retained human boundary."
+    },
+    {
+      "id": "S6_QUAL_04",
+      "relationship_type": "tension",
+      "text": "The assessed pattern contains a tension between greater AI influence and the parts of the process that remained more personally owned."
+    },
+    {
+      "id": "S6_QUAL_05",
+      "relationship_type": "context_dependent",
+      "text": "The pattern changed across contexts, with AI appearing more influential in some situations and more limited or easier to set aside in others."
+    },
+    {
+      "id": "S6_QUAL_06",
+      "relationship_type": "clustered",
+      "text": "The strongest measured signals were concentrated within one area of behaviour, while the remainder of the profile was more even."
+    },
+    {
+      "id": "S6_QUAL_07",
+      "relationship_type": "broadly_integrated",
+      "text": "The measured signals were distributed across several areas, indicating broad AI involvement rather than one narrow or isolated use."
+    },
+    {
+      "id": "S6_QUAL_08",
+      "relationship_type": "perception_gap",
+      "text": "Your direct self-estimate did not fully align with the pattern formed by the other assessed responses, creating a measurable perception gap."
+    },
+    {
+      "id": "S6_QUAL_09",
+      "relationship_type": "balanced",
+      "text": "No single result was sufficiently distinctive to define the overall pattern, so balance and variation provide the most defensible summary."
+    }
+  ],
+  "takeaway_modules": [
+    {
+      "id": "S6_TAKE_01",
+      "theme": "thought_partnership_with_agency",
+      "text": "The measured pattern shows greater AI involvement in developing thoughts than in determining final judgements."
+    },
+    {
+      "id": "S6_TAKE_02",
+      "theme": "integration_with_direction",
+      "text": "The assessed behaviours show substantial AI integration alongside retained personal direction."
+    },
+    {
+      "id": "S6_TAKE_03",
+      "theme": "clarity_support",
+      "text": "AI involvement was most evident when difficult thinking needed structure or clarification."
+    },
+    {
+      "id": "S6_TAKE_04",
+      "theme": "practical_boundaries",
+      "text": "AI use was more prominent in practical activity than across every area of personal life."
+    },
+    {
+      "id": "S6_TAKE_05",
+      "theme": "private_reflection",
+      "text": "The assessed pattern shows a private reflective role for AI that may not be equally visible socially."
+    },
+    {
+      "id": "S6_TAKE_06",
+      "theme": "confidence_authorship",
+      "text": "AI involvement extended into how judgement and idea ownership were evaluated."
+    },
+    {
+      "id": "S6_TAKE_07",
+      "theme": "authority_shift",
+      "text": "In selected responses, AI influenced not only the available options but the action ultimately taken."
+    },
+    {
+      "id": "S6_TAKE_08",
+      "theme": "reliance",
+      "text": "The measured pattern indicates that AI’s absence can alter how some tasks or decisions are experienced."
+    },
+    {
+      "id": "S6_TAKE_09",
+      "theme": "balanced_context",
+      "text": "Context, rather than one dominant behaviour, provides the clearest summary of the measured pattern."
+    }
+  ],
+  "curiosity_bridges": [
+    {
+      "id": "S6_BRIDGE_01",
+      "text": "This summary is limited to the behaviours already revealed. Six dimensions and their interactions remain outside the free snapshot."
+    },
+    {
+      "id": "S6_BRIDGE_02",
+      "text": "The assessment has not yet shown where AI may be extending capability, where human skills remain actively exercised or how the remaining behaviours alter this pattern."
+    },
+    {
+      "id": "S6_BRIDGE_03",
+      "text": "What remains unresolved is how the unrevealed parts of the profile qualify, reinforce or change the meaning of these measured results."
+    },
+    {
+      "id": "S6_BRIDGE_04",
+      "text": "The available results establish a broad direction, but they do not provide the complete interpretation of how the measured behaviours work together."
+    }
+  ],
+  "measurement_standard": {
+    "principle": "Describe what the participant reported and what the assessment measured, not what the participant fundamentally is.",
+    "preferred_subjects": [
+      "your responses",
+      "the measured pattern",
+      "across the assessed behaviours",
+      "you reported",
+      "within this assessment",
+      "the available evidence"
+    ],
+    "restricted_phrasing": [
+      "you are",
+      "your identity is",
+      "this defines you",
+      "your relationship is",
+      "the kind of person you are",
+      "diagnosis",
+      "personality type"
+    ]
+  }
+}
