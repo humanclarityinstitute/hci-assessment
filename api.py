@@ -435,12 +435,22 @@ def generate_percentiles(responses, demographics, scoring_results):
 
             variable_entry = variables_data.get(q_key, {}) or {}
             overall_entry = variable_entry.get('overall') or {}
-            age_entry = _find_segment(variable_entry.get('by_age') or {}, age_group) or {}
-            frequency_entry = _find_segment(variable_entry.get('by_frequency') or {}, frequency) or {}
+            age_entry = benchmark._get_segment_data(
+                variable_entry,
+                ('age_group', age_group),
+            ) if age_group else None
+            frequency_entry = benchmark._get_segment_data(
+                variable_entry,
+                ('frequency', frequency),
+            ) if frequency else None
 
             distribution_overall = _distribution_from_values(overall_entry.get('values'))
-            distribution_age = _distribution_from_values(age_entry.get('values'))
-            distribution_frequency = _distribution_from_values(frequency_entry.get('values'))
+            distribution_age = _distribution_from_values(
+                age_entry.get('values') if age_entry else []
+            )
+            distribution_frequency = _distribution_from_values(
+                frequency_entry.get('values') if frequency_entry else []
+            )
 
             # Keep legacy keys for the current frontend, and add explicit keys for the
             # upgraded three-way toggle.
@@ -457,8 +467,8 @@ def generate_percentiles(responses, demographics, scoring_results):
                 'is_rare': pct_overall is not None and (pct_overall >= 86 or pct_overall <= 14),
                 'distribution': distribution_overall,
                 'distribution_overall': distribution_overall,
-                'distribution_age': distribution_age or distribution_overall,
-                'distribution_frequency': distribution_frequency or distribution_overall,
+                'distribution_age': distribution_age,
+                'distribution_frequency': distribution_frequency,
             }
 
         return percentiles
