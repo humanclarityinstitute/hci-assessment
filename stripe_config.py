@@ -49,6 +49,16 @@ class StripeConfig:
             'CHECKOUT_CANCEL_URL',
             'https://humanclarityinstitute.com/ai-assessment/results'
         )
+
+        # Public legal-policy URLs used in the required Stripe Checkout consent.
+        self.terms_url = os.environ.get(
+            'TERMS_URL',
+            'https://humanclarityinstitute.com/terms-and-conditions/'
+        )
+        self.privacy_url = os.environ.get(
+            'PRIVACY_URL',
+            'https://humanclarityinstitute.com/privacy-policy/'
+        )
     
     def create_checkout_session(self, session_id: str, email: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -87,6 +97,18 @@ class StripeConfig:
                 'billing_address_collection': 'auto',
                 'client_reference_id': session_id,  # Link payment back to assessment session
                 'allow_promotion_codes': 'true',  # Enable coupon/promo code field on checkout
+
+                # Require an active checkbox before payment.
+                'consent_collection[terms_of_service]': 'required',
+
+                # Stripe supports Markdown links in this checkbox text.
+                'custom_text[terms_of_service_acceptance][message]': (
+                    f'I agree to the [Terms of Service]({self.terms_url}) and have read '
+                    f'the [Privacy Policy]({self.privacy_url}). I understand that my '
+                    'assessment answers will be processed by Anthropic, HCI\'s AI report '
+                    'provider, on servers that may be outside my country, to create my '
+                    'personalised report. My report is private and is not published or sold.'
+                ),
             }
             
             # Optional: collect customer email for delivery
@@ -204,6 +226,9 @@ class StripeConfig:
                 'customer_email': customer_email,
                 'amount_paid': session.get('amount_total'),  # in cents
                 'currency': session.get('currency'),
+                'terms_accepted': (
+                    session.get('consent', {}).get('terms_of_service') == 'accepted'
+                ),
             }
         except Exception as e:
             print(f'Failed to extract checkout data: {e}')
