@@ -26,6 +26,109 @@ CLAUDE_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
 
+REPORT_CLAIM_GUARDRAILS = """
+Evidence boundary for every participant-facing narrative block:
+
+- This is a structured self-report assessment. Treat answers, dimension positions,
+  combinations and cohort comparisons as evidence of reported patterns, not as
+  direct observation of the participant's real-world behaviour.
+- Meaningful interpretation is expected. Write naturally and confidently, but keep
+  conclusions proportionate to the evidence. Use phrasing such as "appears",
+  "suggests", "may reflect", "is consistent with", or "one possible interpretation"
+  where interpretation extends beyond the response itself.
+- Do not repeat legal qualifiers mechanically in every sentence. Establish the
+  evidence boundary through accurate wording while preserving a clear, human,
+  premium-report voice.
+- Do not state or imply that HCI has clinically assessed, diagnosed, independently
+  observed, objectively measured, or verified a psychological state, capability,
+  trait, dependency, deterioration, or real-world outcome.
+- Do not turn an association, benchmark difference or combination into a cause,
+  mechanism, predictor, inevitable progression, or proven outcome.
+- Do not infer individual change over time from one assessment. A current result may
+  establish a reference point for later comparison, but it does not show that a
+  participant is already changing, improving, declining, developing or deteriorating.
+- Do not claim that a human capability has been developed, strengthened, weakened,
+  eroded, preserved or lost because of AI. Human-capability sections may reflect on
+  capabilities that the participant's responses suggest are currently relevant or
+  being exercised.
+- Refer to the HCI participant benchmark, HCI benchmark participants, or a specifically
+  named HCI research sample. Do not describe the benchmark as the general population,
+  a population norm, or representative of everyone unless the supplied context
+  explicitly establishes that.
+- Do not use participant-specific certainty language such as "proves", "confirms",
+  "causes", "predicts", "inevitably", "the natural result", "erosion", "degradation",
+  "underlying dependence", "stable trait", or "better outcomes".
+- Directly reported reliance, unease when AI is unavailable, or dependence-related
+  answers may be described as reported experiences. Do not diagnose dependency,
+  addiction, impairment or loss of capability.
+- Do not give clinical, medical, psychological, legal, financial or behavioural
+  advice. A neutral invitation to compare the result with a later measurement is
+  permitted where the section specifically requires it.
+"""
+
+# Conservative QA flags. These are logged for review; they do not silently rewrite
+# the model's prose or force every sentence into legal language.
+CLAIM_REVIEW_PATTERNS = {
+    "proof_or_confirmation": re.compile(
+        r"\\b(?:this|the (?:result|pattern|assessment|benchmark))\\s+(?:proves?|confirms?|demonstrates?)\\b",
+        re.IGNORECASE,
+    ),
+    "causal_claim": re.compile(
+        r"\\b(?:is|was|are|were)\\s+caused by\\b|\\bcauses?\\s+(?:a|an|the|your)\\b",
+        re.IGNORECASE,
+    ),
+    "prediction_or_inevitability": re.compile(
+        r"\\b(?:will inevitably|is inevitable|will naturally|is certain to|predicts? that)\\b",
+        re.IGNORECASE,
+    ),
+    "objective_observation": re.compile(
+        r"\\b(?:objectively measured|directly observed|observable behaviour)\\b",
+        re.IGNORECASE,
+    ),
+    "deterioration_or_dependency": re.compile(
+        r"\\b(?:skill erosion|process erosion|capability erosion|cognitive degradation|underlying dependence)\\b",
+        re.IGNORECASE,
+    ),
+    "general_population": re.compile(
+        r"\\b(?:population norm|general population|the wider population|overall population)\\b",
+        re.IGNORECASE,
+    ),
+}
+
+
+def find_narrative_claim_flags(value: Any, path: str = "") -> List[Dict[str, str]]:
+    """Return narrowly targeted QA flags without altering generated prose."""
+    flags: List[Dict[str, str]] = []
+
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            flags.extend(find_narrative_claim_flags(child, child_path))
+        return flags
+
+    if isinstance(value, list):
+        for index, child in enumerate(value):
+            child_path = f"{path}[{index}]"
+            flags.extend(find_narrative_claim_flags(child, child_path))
+        return flags
+
+    if not isinstance(value, str):
+        return flags
+
+    for label, pattern in CLAIM_REVIEW_PATTERNS.items():
+        match = pattern.search(value)
+        if match:
+            start = max(0, match.start() - 70)
+            end = min(len(value), match.end() + 100)
+            flags.append({
+                "path": path or "root",
+                "rule": label,
+                "excerpt": value[start:end].replace("\\n", " ").strip(),
+            })
+
+    return flags
+
+
 def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = None) -> Dict[str, Any]:
     """
     Fill report_data["narrative_blocks"] with HCI-grounded Claude output.
@@ -151,6 +254,8 @@ def generate_profile_narrative(report_data: Dict[str, Any], api_key: str) -> Dic
     prompt = f"""
 Write selected narrative blocks for a Human Clarity Institute premium report.
 
+{REPORT_CLAIM_GUARDRAILS}
+
 The report structure is locked. Do not create sections, score anything, or give advice.
 
 Fill exactly these blocks:
@@ -192,7 +297,7 @@ End on meaning.
 Assume later sections will provide detailed evidence.
 This opening should introduce the participant to the overall story of their relationship with AI, not attempt to fully explain it.
 
-Also write profile_shape_summary as one separate 50-80 word paragraph for the later section titled "The Shape of Your Profile". This paragraph should answer: "What does this profile look like?" Keep it visual, concise, and descriptive rather than analytical. Summarise the overall shape created by all nine dimensions without explaining why the shape exists. Do not repeat the opening findings. Do not discuss every dimension individually. Describe whether the profile is concentrated around a few defining signals or broadly aligned with the benchmark population. Avoid percentages and percentile language. Do not drift into Behaviour Story; later sections will explain why these dimensions appear together.
+Also write profile_shape_summary as one separate 50-80 word paragraph for the later section titled "The Shape of Your Profile". This paragraph should answer: "What does this profile look like?" Keep it visual, concise, and descriptive rather than analytical. Summarise the overall shape created by all nine dimensions without explaining why the shape exists. Do not repeat the opening findings. Do not discuss every dimension individually. Describe whether the profile is concentrated around a few defining signals or broadly aligned with the HCI participant benchmark. Avoid percentages and percentile language. Do not drift into Behaviour Story; later sections will explain why these dimensions appear together.
 
 For rare_combinations_narrative, write the narrative for the section titled "What Makes You Different".
 Keep the existing deterministic combination selection as the source of truth.
@@ -227,9 +332,9 @@ Open with one concise paragraph describing the participant's overall relationshi
 Treat dimensions as evidence for the story, not the story itself.
 Assume earlier sections have already introduced the dimensions. Briefly reference Thought Partnership, Human Agency, Reliance, Emotional Regulation, Trust, Verification, Disclosure, or Social Transparency only when needed to explain how the pattern works.
 Do not re-teach individual dimensions. Do not try to cover every dimension. Do not list all nine dimensions. Do not restate the dashboard.
-Explain the 2-3 behavioural mechanisms that best account for the profile. Focus on behavioural boundaries, interaction style, trust dynamics, reliance patterns, cognitive structure, and how these elements appear to sustain the overall relationship with AI.
-Where supported by the context, surface hidden patterns that may sit beneath the benchmark scores, such as quiet normalisation, perception gaps, subtle tensions, invisible behavioural shifts, or the difference between visible use and underlying dependence.
-Use HCI research as supporting evidence, not as the main subject of the section. Suitable phrasing includes "Across HCI's benchmark studies...", "HCI's research consistently shows...", or "Looking across the measured behaviours..." but only where it adds clarity.
+Explain the 2-3 behavioural dynamics or relationships that best help the profile make sense. Focus on behavioural boundaries, interaction style, trust dynamics, reliance patterns and how these elements appear to relate within the participant's current AI use.
+Where supported by the context, surface less visible relationships within the response pattern, such as quiet normalisation, perception gaps, subtle tensions, or differences between visible use and directly reported reliance or unease. Do not infer hidden dependency or change over time.
+Use HCI research as supporting evidence, not as the main subject of the section. Suitable phrasing includes "Across the HCI research supplied for this section...", "Within the HCI participant benchmark...", or "Looking across your responses..." but only where the supplied context directly supports the statement.
 Avoid repeating comparisons already shown earlier in the report, such as age-group comparisons, everyday-user comparisons, or bare percentile rankings.
 Do not use means, averages, statistical shorthand, or technical language.
 Do not give advice, make recommendations, predict future behaviour, discuss what to protect, translate the profile into human capability or human capital language, add reflection questions, or introduce future trajectory.
@@ -280,7 +385,7 @@ Use only this context:
         },
         "behaviour_story": {
             "type": "string",
-            "description": "Approximately 450 word behavioural story in 4-5 flowing paragraphs. Begin with the participant's overall relationship with AI, treat dimensions as evidence rather than the story, explain the 2-3 mechanisms that make the profile coherent, surface hidden patterns where supported, use HCI research lightly as support, avoid dashboard repetition, no predictions, no advice, no capability translation, no future trajectory."
+            "description": "Approximately 450 word behavioural story in 4-5 flowing paragraphs. Begin with the participant's overall relationship with AI, treat dimensions as evidence rather than the story, explain the 2-3 behavioural dynamics that make the response pattern coherent, surface less visible relationships only where supported, use HCI research lightly as support, avoid dashboard repetition, no causal claims, predictions, advice, capability translation, or future trajectory."
         },
     }
 
@@ -369,6 +474,8 @@ def generate_distinctive_and_perception_narrative(report_data: Dict[str, Any], a
 
     prompt = f"""
 Write two HCI report narrative blocks:
+
+{REPORT_CLAIM_GUARDRAILS}
 1. Section 7: Your Most Distinctive Responses
 2. Section 8: Perception Gap Analysis
 
@@ -395,7 +502,7 @@ For Section 7:
 
 For Section 8:
 - This section is now titled "How You See Yourself". Write the narrative for the heading "What this comparison suggests".
-- This section exists to compare the participant's self-perception with their measured benchmark profile. Its purpose is reflection rather than interpretation.
+- This section exists to compare the participant's self-perception with the benchmark profile indicated by their assessment responses. Its purpose is reflection rather than correction.
 - Write exactly four concise paragraphs, 190-240 words total.
 - Focus on helping the participant understand where their intuition aligns with the benchmark and where the benchmark provides additional perspective.
 - Treat the benchmark as complementary to the participant's own understanding rather than replacing it.
@@ -408,7 +515,7 @@ For Section 8:
 - Never say "you were wrong".
 - If alignment is strong, explain why accurate self-perception matters.
 - Avoid long behavioural explanations, research summaries, mechanism explanations, or heavy-user generalisations. Those belong in other sections.
-- Avoid repeating the same dimension label sentence after sentence. Vary language naturally with phrases such as AI relationship, AI engagement, behavioural profile, benchmark positioning, self-view, measured pattern, and interaction with AI.
+- Avoid repeating the same dimension label sentence after sentence. Vary language naturally with phrases such as AI relationship, AI engagement, behavioural profile, benchmark positioning, self-view, response pattern, and interaction with AI.
 - Separate data from reflection: assume the renderer has already shown the card data and comparison table, so do not restate every card.
 - Do not introduce Behaviour Story, future discussion, Human Capital, worth protecting, advice, recommendations, or coaching.
 
@@ -456,6 +563,8 @@ def generate_trajectory_narrative(report_data: Dict[str, Any], api_key: str) -> 
     prompt = f"""
 Write HCI report Section 11 narrative blocks for the redesigned section: "Looking Ahead".
 
+{REPORT_CLAIM_GUARDRAILS}
+
 This section replaces the old "Trajectory / If Nothing Changes" section.
 Its job is not to interpret the participant again, predict their future, or repeat Human Capital.
 Its job is to turn the report into a measurement roadmap.
@@ -468,11 +577,13 @@ Write only these blocks:
 - behavioural_tipping_points
 - measurement_questions
 
-The renderer will deterministically display these fixed subsections:
+The renderer currently displays these fixed subsections:
 1. Signals Likely to Hold
 2. Signals Most Sensitive to Change
 3. Behavioural Tipping Points
 4. Questions for Your Next Measurement
+
+Treat those labels as measurement-oriented headings, not predictions. The narrative must make clear that a single assessment cannot establish which signals will remain stable or change.
 
 Do not create extra sections.
 Do not mention "Why Return" because later report sections already handle the longitudinal meaning and closing reflection.
@@ -482,7 +593,7 @@ Do not write "Commonly observed", "Strengths That May Continue Developing", "Are
 For looking_ahead_intro:
 - Write 80-120 words in 1-2 paragraphs.
 - Explain that the profile is a snapshot, not a verdict or fixed identity.
-- Explain that the value of measuring again is not chasing better scores; it is noticing whether the behavioural architecture remains stable or begins to shift.
+- Explain that the value of measuring again is not chasing better scores; it is comparing whether the reported pattern looks similar or different at a later measurement.
 - Use plain, direct language.
 - Do not summarise the full profile again.
 - Do not give advice.
@@ -491,7 +602,7 @@ For behavioural_tipping_points:
 - Write exactly three tipping points.
 - Format each as: Short heading: one concise explanation.
 - Separate each tipping point with a blank line.
-- Each explanation should describe a real-world behavioural shift that may precede measurable score change.
+- Each explanation should describe a possible real-world change that could be compared at a later measurement.
 - Use these three concepts unless the context strongly requires a different wording:
   1. Earlier AI initiation — AI becomes the first place thinking begins rather than a place to refine an existing view.
   2. Reduced verification friction — checking starts to feel less necessary because AI feels fluent, familiar, or usually right.
@@ -523,7 +634,7 @@ Rules:
 - Do not repeat the Human Capital section.
 - Do not re-explain the profile.
 - Do not include percentages or statistics unless absolutely necessary.
-- Prefer measurement language: observe, compare, notice, re-measure, next measurement, behavioural architecture, signals.
+- Prefer measurement language: compare, notice, re-measure, next measurement, response pattern, reference point.
 - Tone: premium, concise, scientifically disciplined, practical, HCI-specific.
 
 The participant should finish this section thinking:
@@ -536,11 +647,11 @@ Use only this context:
     schema = {
         "looking_ahead_intro": {
             "type": "string",
-            "description": "80-120 words. Introduce Looking Ahead as a measurement roadmap: profile as snapshot, next measurement as a way to notice whether behavioural architecture holds or shifts. No advice, no prediction, no full profile summary."
+            "description": "80-120 words. Introduce Looking Ahead as a measurement roadmap: profile as a current reference point and next measurement as a way to compare whether the reported pattern looks similar or different. No advice, prediction, or full profile summary."
         },
         "behavioural_tipping_points": {
             "type": "string",
-            "description": "Exactly three tipping points, each formatted 'Short heading: one concise explanation', separated by blank lines. Observational real-world behavioural shifts only. No prediction or alarmism."
+            "description": "Exactly three possible changes to compare later, each formatted 'Short heading: one concise explanation', separated by blank lines. No prediction, causal claim, or alarmism."
         },
         "measurement_questions": {
             "type": "string",
@@ -569,17 +680,19 @@ def generate_human_capital_narrative(report_data: Dict[str, Any], api_key: str) 
     prompt = f"""
 Write HCI report Section 9: "Your Human Capital".
 
+{REPORT_CLAIM_GUARDRAILS}
+
 This is a translation section, not an interpretation section, not a benchmark section, and not advice.
-Its job is to translate the participant's behavioural benchmark profile into the human capabilities their current relationship with AI appears to support, maintain, or gradually influence.
+Its job is to reflect on human capabilities that may be relevant to, or currently exercised within, the participant's reported pattern of AI use.
 
 Core question:
-"What does my current relationship with AI appear to be building, preserving, or gradually changing within me?"
+"Which human capabilities appear relevant to the way I currently report using AI, and what evidence in my responses makes them worth reflecting on?"
 
 Use the complete participant context, including dimension scores, question-level evidence, rare combinations, Behaviour Story, distinctive responses, Profile Shape, Perception Gap, usage frequency, demographics where relevant, and HCI signals.
 
 The section must feel human, concise, and evidence-led.
 It should not primarily talk about AI, scores, dimensions, percentiles, or benchmark mechanics.
-It should translate measured behavioural evidence into human capabilities.
+It should translate response-based behavioural evidence into a cautious reflection on human capabilities.
 
 Return exactly these fields:
 - capabilities_developing
@@ -596,7 +709,7 @@ Output requirements:
      - body
    - Title: a plain human capability, 2-6 words.
    - Body: 40-60 words.
-   - Explain why this capability appears to be actively exercised or developing, what behavioural evidence supports it, and why it matters.
+   - Explain why this capability appears relevant or actively exercised within the participant's current response pattern, what behavioural evidence supports that reflection, and why it matters. Do not state that the assessment proves development.
    - Do not call these "strengths".
 
 2. worth_protecting
@@ -606,7 +719,7 @@ Output requirements:
      - body
    - Title: a plain human capability, 2-6 words.
    - Body: 40-60 words.
-   - Identify capabilities that appear central to how this participant currently works with AI and seem valuable to preserve as the relationship evolves.
+   - Identify capabilities that appear central to how this participant currently reports working with AI and may be valuable to keep visible in later comparisons. Do not imply that they are objectively preserved or at risk.
    - These are not necessarily the highest scores.
 
 3. worth_watching
@@ -616,7 +729,7 @@ Output requirements:
      - body
    - Title: a plain human capability, 2-6 words.
    - Body: 40-60 words.
-   - Identify capabilities that naturally deserve observation over time.
+   - Identify capabilities that may be useful to compare again over time.
    - These are not weaknesses, risks, warnings, or problems to solve.
    - Explain why they are worth watching without creating anxiety.
 
@@ -627,17 +740,17 @@ Output requirements:
      - body
    - Title: short, concrete, human, 2-5 words.
    - Body: approximately 30 words.
-   - These are the three capabilities that best capture this participant's Human Capital today.
+   - These are the three capability themes that best summarise the reflection supported by this participant's responses today.
    - They should be memorable and suitable for a visually prominent summary block.
 
 5. human_capital_closing
    - 80-120 words.
    - Use this intent:
-     Human capabilities rarely change all at once. More often they evolve gradually through repeated habits and everyday interactions. This benchmark provides a starting point for understanding that journey, not a final judgement about where it leads. The value comes from returning over time and observing how these capabilities continue to develop.
+     A single assessment cannot establish that a capability is developing or declining. It can provide a starting point for reflecting on which capabilities appear relevant to the participant's current response pattern. A later measurement may show whether that pattern looks similar or different, without treating either result as a judgement of competence or worth.
    - Tailor lightly to the participant's profile without giving advice.
 
 Writing rules:
-- Translate behaviour into capability.
+- Translate reported behaviour into a cautious capability reflection.
 - Use plain human language.
 - Stay directly traceable to evidence elsewhere in the report.
 - Use cautious language: "appears", "suggests", "currently", "may", "seems".
@@ -655,7 +768,7 @@ Writing rules:
 - Do not introduce Looking Forward content, observation cards, reflection questions, strengths/shadows, or recommendations.
 
 The participant should finish this section thinking:
-"I now understand what my benchmark profile means for me as a person — not just how I compare with other people."
+"I now have a thoughtful, evidence-based reflection on the human capabilities connected with my reported AI-use pattern."
 
 Use only this context:
 {compact_context(context, max_chars=30000)}
@@ -680,21 +793,21 @@ Use only this context:
     schema = {
         "capabilities_developing": {
             "type": "array",
-            "description": "Exactly 3 capabilities currently developing. No dimensions, scores, percentiles, advice, or benchmark jargon.",
+            "description": "Exactly 3 capability themes currently relevant or exercised within the response pattern. The field name is retained for renderer compatibility, but the prose must not claim proven development. No dimensions, scores, percentiles, advice, or benchmark jargon.",
             "minItems": 3,
             "maxItems": 3,
             "items": capability_item_schema,
         },
         "worth_protecting": {
             "type": "array",
-            "description": "Exactly 3 capabilities worth protecting. No dimensions, scores, percentiles, advice, or benchmark jargon.",
+            "description": "Exactly 3 capability themes that appear important within the current response pattern and may be useful to keep visible in later comparison. Do not claim preservation or risk. No dimensions, scores, percentiles, advice, or benchmark jargon.",
             "minItems": 3,
             "maxItems": 3,
             "items": capability_item_schema,
         },
         "worth_watching": {
             "type": "array",
-            "description": "Exactly 3 capabilities worth watching over time. Not risks, warnings, weaknesses, or advice.",
+            "description": "Exactly 3 capability themes that may be useful to compare at a later measurement. Not risks, warnings, weaknesses, predictions, or advice.",
             "minItems": 3,
             "maxItems": 3,
             "items": capability_item_schema,
@@ -735,6 +848,8 @@ def generate_deep_dive_narrative(report_data: Dict[str, Any], api_key: str) -> D
     prompt = f"""
 Write the HCI report section titled "Dimension Deep Dives".
 
+{REPORT_CLAIM_GUARDRAILS}
+
 This section exists to help the participant understand each behavioural dimension in greater depth.
 Its purpose is exploration, not overall interpretation.
 Assume the participant has already read the earlier sections of the report.
@@ -760,10 +875,10 @@ Structure:
 - Do not make every entry dramatic or memorable. Make it reliable, precise, useful, and easy to understand.
 
 Content rules:
-- Use the participant's benchmark position as context.
+- Use the participant's response-based benchmark position as context.
 - Use HCI research and signals only where they help explain the dimension more deeply.
 - Include behavioural examples where useful.
-- Explain what higher, lower, or benchmark-range positioning typically looks like for that dimension.
+- Explain what higher, lower, or benchmark-range positioning may look like within the HCI participant benchmark, without implying direct observation of the participant's behaviour.
 - Increase understanding of the construct rather than repeating basic definitions from earlier sections.
 - Stay focused on one dimension at a time.
 - Briefly mention the wider profile only if absolutely necessary for context.
@@ -923,6 +1038,8 @@ def generate_closing_reflection_narrative(report_data: Dict[str, Any], api_key: 
     prompt = f"""
 Write HCI report Section 12: "Closing Reflection".
 
+{REPORT_CLAIM_GUARDRAILS}
+
 Primary job:
 Reflection and inspiration. This section concludes the participant's journey. It should not introduce new evidence, recommendations, coaching, predictions, or action steps. It should help the participant step back from the benchmark and consider the broader meaning of their relationship with AI.
 
@@ -965,18 +1082,18 @@ Output requirements:
 4. closing_reflection
 - 180-250 words.
 - Finish the report with perspective, not findings or recommendations.
-- Begin with a brief looking-back moment. Use this idea naturally: "You've now seen where your relationship with AI sits today, what makes it distinctive, which human capabilities appear most important, and what is worth paying attention to as that relationship continues evolving."
+- Begin with a brief looking-back moment. Use this idea naturally: "You've now seen where your responses place you today, what makes the pattern distinctive, which human capabilities may be relevant to it, and what could be interesting to compare at a later measurement."
 - Then transition naturally to: one question remains.
 - Widen the lens beyond today's benchmark.
 - Reinforce human agency, curiosity, intentional AI use, and human flourishing.
 - Explain that AI will continue evolving, human relationships with AI will continue evolving, and there is no single correct way to use AI.
 - The value lies in remaining aware of how that relationship changes.
-- Mention Human Clarity Institute only if it feels natural and non-promotional. If mentioned, use this meaning: HCI exists to help people measure, understand, and protect the human capabilities that continue shaping their relationship with AI over time.
+- Mention Human Clarity Institute only if it feels natural and non-promotional. If mentioned, use this meaning: HCI exists to help people measure and understand reported patterns in how they relate to AI, and to reflect on the human capabilities connected with those patterns over time.
 - End with the participant, not the organisation. Do not include the report's final standalone sentence here; the renderer adds it after this paragraph.
 
 Profile-dependent reassurance rule:
-- If the participant demonstrates evidence of strong retained agency, authorship, or identity stability, the closing may acknowledge that as one reassuring feature of the profile.
-- If the evidence does not support that, do not mention identity stability or retained agency as a reassurance.
+- If the participant's responses support strong retained agency or clear authorship, the closing may acknowledge that as one reassuring feature of the current response pattern. Do not infer identity stability.
+- If the evidence does not support that, do not mention retained agency as reassurance. Never claim that the assessment establishes identity stability.
 
 Writing rules:
 - Be personal, calm, evidence-led, hopeful, and reflective.
@@ -1098,6 +1215,17 @@ def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict
                     cleaned[k] = clean_narrative_text(value.strip())
                 else:
                     cleaned[k] = value
+            claim_flags = find_narrative_claim_flags(cleaned)
+            if claim_flags:
+                print(
+                    f"[CLAUDE-CLAIM-REVIEW] {len(claim_flags)} potential claim issue(s) "
+                    f"found in properties={list(properties.keys())}"
+                )
+                for flag in claim_flags:
+                    print(
+                        f"[CLAUDE-CLAIM-REVIEW] {flag['path']} | "
+                        f"{flag['rule']} | {flag['excerpt']}"
+                    )
             return cleaned
 
     raise RuntimeError(f"No tool_use block returned by Claude. Raw keys: {list(raw.keys())}")
