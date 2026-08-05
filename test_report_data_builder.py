@@ -1,20 +1,19 @@
 """
-test_report_data_builder_v2.py
+Data-flow, contract and deterministic-selection tests for the HCI premium report.
 
-Data-flow, contract and deterministic-selection tests for the HCI premium
-report V2.
+Run from the repository root:
 
-Run from repository root:
+    python -m unittest test_report_data_builder.py
 
-    python -m unittest test_report_data_builder_v2.py
-
-These tests use scoring-engine-shaped fixtures and do not call external
+The fixtures match the scoring-engine field shapes and do not call external
 services.
 """
 
 from __future__ import annotations
 
 import copy
+import inspect
+import re
 import unittest
 from unittest.mock import patch
 
@@ -22,7 +21,7 @@ import report_data_builder as rdb
 
 
 class FakeBenchmark:
-    """Minimal benchmark matching the live BenchmarkBuilder interface."""
+    """Minimal benchmark matching the BenchmarkBuilder interface."""
 
     min_sample_size = 30
     version = "test-benchmark-2026-08-05"
@@ -40,7 +39,10 @@ class FakeBenchmark:
             "variables": {},
         }
 
-        overall_values = [round(1 + (i * 6 / 99), 4) for i in range(100)]
+        overall_values = [
+            round(1 + (index * 6 / 99), 4)
+            for index in range(100)
+        ]
         age_values = overall_values[:]
         frequency_values = overall_values[:]
 
@@ -67,7 +69,7 @@ class FakeBenchmark:
 
         for variables in rdb.DIMENSION_VARIABLES.values():
             for key in variables:
-                values = [((i % 7) + 1) for i in range(140)]
+                values = [((index % 7) + 1) for index in range(140)]
                 variable_data = {
                     "overall": {
                         "n": len(values),
@@ -88,25 +90,30 @@ class FakeBenchmark:
                     }
                 self.data["variables"][key] = variable_data
 
-    def calculate_percentile(self, dimension_name, score, demographics=None):
+    def calculate_percentile(
+        self,
+        dimension_name,
+        score,
+        demographics=None,
+    ):
         demographics = demographics or {}
-        dim_data = self.data["dimensions"][dimension_name]
+        dimension_data = self.data["dimensions"][dimension_name]
 
         result = {
             "overall_percentile": rdb.calculate_percentile_from_values(
                 score,
-                dim_data["overall"]["values"],
+                dimension_data["overall"]["values"],
             ),
             "age_group_percentile": None,
             "frequency_percentile": None,
-            "n_overall": dim_data["overall"]["n"],
+            "n_overall": dimension_data["overall"]["n"],
             "n_age_group": None,
             "n_frequency": None,
         }
 
         age = demographics.get("age_group")
-        if age in dim_data["by_age_group"]:
-            source = dim_data["by_age_group"][age]
+        if age in dimension_data["by_age_group"]:
+            source = dimension_data["by_age_group"][age]
             if source["n"] >= self.min_sample_size:
                 result["age_group_percentile"] = (
                     rdb.calculate_percentile_from_values(
@@ -117,8 +124,8 @@ class FakeBenchmark:
                 result["n_age_group"] = source["n"]
 
         frequency = demographics.get("ai_tool_use_frequency")
-        if frequency in dim_data["by_frequency"]:
-            source = dim_data["by_frequency"][frequency]
+        if frequency in dimension_data["by_frequency"]:
+            source = dimension_data["by_frequency"][frequency]
             if source["n"] >= self.min_sample_size:
                 result["frequency_percentile"] = (
                     rdb.calculate_percentile_from_values(
@@ -132,7 +139,7 @@ class FakeBenchmark:
 
 
 def make_responses() -> dict:
-    """Return all 39 scored responses plus live perception answer values."""
+    """Return all 39 scored responses and the three perception answers."""
     responses = {}
     answer = 1
     for dimension in rdb.DIMENSION_ORDER:
@@ -154,9 +161,7 @@ def make_scoring_results(
     rarity_source=None,
     include_perception_gap=True,
 ) -> dict:
-    """
-    Return the exact field shapes produced by the live scoring engine.
-    """
+    """Return the field shapes produced by the scoring engine."""
     percentiles = {
         "reliance": 88,
         "trust": 72,
@@ -247,7 +252,11 @@ def build_fixture_report(
         "country": "NZ",
     }
 
-    with patch.object(rdb, "get_benchmark_instance", return_value=benchmark):
+    with patch.object(
+        rdb,
+        "get_benchmark_instance",
+        return_value=benchmark,
+    ):
         return rdb.build_report_data(
             scoring_results=scoring_results,
             responses=responses,
@@ -257,60 +266,80 @@ def build_fixture_report(
         )
 
 
-class ReportDataV2Tests(unittest.TestCase):
+class ReportDataTests(unittest.TestCase):
 
-    def test_original_data_flow_keys_are_preserved(self):
+    def test_builds_single_report_contract(self):
         report = build_fixture_report()
 
-        legacy_keys = {
-            "dimensions",
-            "dashboard",
-            "typicality",
-            "rare_combinations",
-            "questions",
-            "distinctive_responses",
-            "perception_gap",
-            "what_to_protect",
-            "if_nothing_changes",
-            "synthesis_inputs",
-            "narrative_blocks",
-            "human_capital",
-        }
-        self.assertTrue(legacy_keys.issubset(report.keys()))
+        self.assertEqual(report["schema"], "hci_report_data")
         self.assertEqual(len(report["dimensions"]), 9)
-        self.assertEqual(len(report["dashboard"]), 9)
-        self.assertEqual(len(report["questions"]), 39)
-        self.assertEqual(len(report["distinctive_responses"]), 7)
-        self.assertEqual(len(report["what_to_protect"]), 4)
-        self.assertTrue(report["if_nothing_changes"])
-        self.assertTrue(report["human_capital"])
-
-    def test_legacy_distinctive_response_selection_is_unchanged(self):
-        report = build_fixture_report()
-        expected = rdb.build_distinctive_responses(
-            report["questions"],
-            7,
-        )
-        self.assertEqual(report["distinctive_responses"], expected)
-
-    def test_builds_locked_v2_additions(self):
-        report = build_fixture_report()
-
-        self.assertEqual(report["schema_version"], "hci_report_data_v2")
-        self.assertEqual(
-            report["legacy_schema_version"],
-            "hci_report_data_v1",
-        )
         self.assertEqual(len(report["position"]), 9)
         self.assertEqual(len(report["dimension_reference"]), 9)
+        self.assertEqual(len(report["questions"]), 39)
         self.assertEqual(len(report["appendix_questions"]), 39)
         self.assertEqual(len(report["defining_signals"]), 3)
         self.assertGreaterEqual(len(report["evidence"]), 5)
         self.assertLessEqual(len(report["evidence"]), 7)
         self.assertEqual(report["data_quality"]["errors"], [])
 
-    def test_appendix_is_derived_from_original_question_objects(self):
+    def test_obsolete_report_structures_are_absent(self):
         report = build_fixture_report()
+
+        obsolete = {
+            "dashboard",
+            "typicality",
+            "distinctive_responses",
+            "perception_gap",
+            "what_to_protect",
+            "if_nothing_changes",
+            "synthesis_inputs",
+            "human_capital",
+        }
+        self.assertTrue(obsolete.isdisjoint(report.keys()))
+
+    def test_responses_and_demographics_flow_into_report(self):
+        report = build_fixture_report()
+        responses = make_responses()
+
+        self.assertEqual(report["responses"], responses)
+        self.assertEqual(
+            report["demographics"]["_age_group_original"],
+            "35-44",
+        )
+        self.assertEqual(
+            report["demographics"]["_age_group_benchmark"],
+            "35-44",
+        )
+        self.assertEqual(
+            report["demographics"]["_frequency_original"],
+            "Everyday",
+        )
+        self.assertEqual(
+            report["demographics"]["_frequency_benchmark"],
+            "Everyday",
+        )
+
+    def test_position_is_derived_from_canonical_dimensions(self):
+        report = build_fixture_report()
+
+        for position in report["position"]:
+            dimension = report["dimensions"][position["key"]]
+            self.assertEqual(
+                position["overall_percentile"],
+                dimension["percentile"],
+            )
+            self.assertEqual(
+                position["frequency_percentile"],
+                dimension["percentile_frequency"],
+            )
+            self.assertEqual(
+                position["age_percentile"],
+                dimension["percentile_age_group"],
+            )
+
+    def test_appendix_is_a_copy_of_canonical_questions(self):
+        report = build_fixture_report()
+
         self.assertEqual(
             report["appendix_questions"],
             report["questions"],
@@ -320,16 +349,20 @@ class ReportDataV2Tests(unittest.TestCase):
             report["questions"],
         )
 
-    def test_main_evidence_is_a_subset_of_original_questions(self):
+    def test_main_evidence_is_a_unique_question_subset(self):
         report = build_fixture_report()
 
-        question_keys = {item["key"] for item in report["questions"]}
-        evidence_keys = {item["key"] for item in report["evidence"]}
+        question_keys = {
+            item["key"] for item in report["questions"]
+        }
+        evidence_keys = [
+            item["key"] for item in report["evidence"]
+        ]
 
-        self.assertTrue(evidence_keys.issubset(question_keys))
-        self.assertEqual(len(evidence_keys), len(report["evidence"]))
+        self.assertTrue(set(evidence_keys).issubset(question_keys))
+        self.assertEqual(len(evidence_keys), len(set(evidence_keys)))
 
-    def test_defining_signals_use_extremity_not_weighted_override(self):
+    def test_defining_signals_use_extremity_as_primary_rule(self):
         report = build_fixture_report()
 
         selected = [
@@ -363,6 +396,7 @@ class ReportDataV2Tests(unittest.TestCase):
             },
         ]
         shifts = rdb.build_comparison_shifts(position)
+
         self.assertEqual(len(shifts), 1)
         self.assertEqual(shifts[0]["dimension"], "verification")
         self.assertEqual(shifts[0]["absolute_shift"], 17)
@@ -403,7 +437,7 @@ class ReportDataV2Tests(unittest.TestCase):
             "perceived_usage",
         )
 
-    def test_baseline_uses_real_scoring_timestamp(self):
+    def test_baseline_uses_assessment_timestamp(self):
         report = build_fixture_report()
 
         self.assertEqual(
@@ -419,22 +453,35 @@ class ReportDataV2Tests(unittest.TestCase):
             "2026-08-05T03:15:00",
         )
 
-    def test_live_scoring_rarity_without_provenance_is_blocked(self):
+    def test_rarity_without_provenance_is_blocked(self):
         report = build_fixture_report(
             scoring_results=make_scoring_results(
                 rarity_percent=5.0,
                 rarity_source=None,
             )
         )
-        combo = report["rare_combinations"][0]
+        combination = report["rare_combinations"][0]
 
-        self.assertEqual(combo["rarity_percent"], 5.0)
-        self.assertEqual(combo["rarity_source"], "fallback")
-        self.assertFalse(combo["rarity_shareable"])
-        self.assertIsNone(combo["public_rarity_percent"])
+        self.assertEqual(combination["rarity_percent"], 5.0)
+        self.assertEqual(combination["rarity_source"], "fallback")
+        self.assertFalse(combination["rarity_shareable"])
+        self.assertIsNone(combination["public_rarity_percent"])
         self.assertFalse(
             report["signature"]["shareable"]["rarity_badge_allowed"]
         )
+
+    def test_missing_rarity_is_not_replaced_with_a_number(self):
+        report = build_fixture_report(
+            scoring_results=make_scoring_results(
+                rarity_percent=None,
+                rarity_source=None,
+            )
+        )
+        combination = report["rare_combinations"][0]
+
+        self.assertIsNone(combination["rarity_percent"])
+        self.assertFalse(combination["rarity_shareable"])
+        self.assertIsNone(combination["public_rarity_percent"])
 
     def test_explicit_calculated_rarity_is_shareable(self):
         report = build_fixture_report(
@@ -443,10 +490,13 @@ class ReportDataV2Tests(unittest.TestCase):
                 rarity_source="calculated",
             )
         )
-        combo = report["rare_combinations"][0]
+        combination = report["rare_combinations"][0]
 
-        self.assertTrue(combo["rarity_shareable"])
-        self.assertEqual(combo["public_rarity_percent"], 4.0)
+        self.assertTrue(combination["rarity_shareable"])
+        self.assertEqual(
+            combination["public_rarity_percent"],
+            4.0,
+        )
         self.assertTrue(
             report["signature"]["shareable"]["rarity_badge_allowed"]
         )
@@ -480,10 +530,9 @@ class ReportDataV2Tests(unittest.TestCase):
                 "is_reverse_scored": True,
             }
         ]
-        defining = [{"key": "trust"}]
         evidence = rdb.build_main_evidence(
             questions,
-            defining,
+            [{"key": "trust"}],
             limit=7,
         )
 
@@ -500,11 +549,20 @@ class ReportDataV2Tests(unittest.TestCase):
             evidence[0]["scoring_note"],
         )
 
-    def test_original_qa_checks_are_retained(self):
+    def test_question_objects_do_not_contain_research_payloads(self):
+        report = build_fixture_report()
+
+        for dimension in report["dimensions"].values():
+            self.assertNotIn("research_insight", dimension)
+            self.assertNotIn("hrl_context", dimension)
+        for combination in report["rare_combinations"]:
+            self.assertNotIn("research_signal", combination)
+
+    def test_data_quality_retains_distribution_checks(self):
         report = build_fixture_report()
         damaged = copy.deepcopy(report)
         damaged["questions"][0]["distribution_everyone"] = None
-        quality = rdb.build_v2_data_quality(damaged)
+        quality = rdb.build_data_quality(damaged)
 
         self.assertTrue(
             any(
@@ -512,10 +570,6 @@ class ReportDataV2Tests(unittest.TestCase):
                 for warning in quality["warnings"]
             )
         )
-
-    def test_safe_signal_layer_is_imported(self):
-        from hci_signals_library import REPORT_SAFE_SIGNALS
-        self.assertIs(rdb.SIGNALS, REPORT_SAFE_SIGNALS)
 
     def test_contract_rejects_wrong_question_count(self):
         report = build_fixture_report()
@@ -542,6 +596,19 @@ class ReportDataV2Tests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "approved source"):
             rdb.assert_report_data_contract(malformed)
+
+    def test_source_contains_no_old_report_labels(self):
+        source = inspect.getsource(rdb)
+        forbidden = [
+            "v" + "1",
+            "v" + "2",
+            "leg" + "acy",
+            "schema_" + "version",
+            "report_" + "version",
+        ]
+        lowered = source.lower()
+        for token in forbidden:
+            self.assertNotIn(token, lowered)
 
 
 if __name__ == "__main__":
