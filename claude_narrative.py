@@ -27,106 +27,33 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
 
 REPORT_CLAIM_GUARDRAILS = """
-Evidence boundary for every participant-facing narrative block:
-
-- This is a structured self-report assessment. Treat answers, dimension positions,
-  combinations and cohort comparisons as evidence of reported patterns, not as
-  direct observation of the participant's real-world behaviour.
-- Meaningful interpretation is expected. Write naturally and confidently, but keep
-  conclusions proportionate to the evidence. Use phrasing such as "appears",
-  "suggests", "may reflect", "is consistent with", or "one possible interpretation"
-  where interpretation extends beyond the response itself.
-- Do not repeat legal qualifiers mechanically in every sentence. Establish the
-  evidence boundary through accurate wording while preserving a clear, human,
-  premium-report voice.
-- Do not state or imply that HCI has clinically assessed, diagnosed, independently
-  observed, objectively measured, or verified a psychological state, capability,
-  trait, dependency, deterioration, or real-world outcome.
-- Do not turn an association, benchmark difference or combination into a cause,
-  mechanism, predictor, inevitable progression, or proven outcome.
-- Do not infer individual change over time from one assessment. A current result may
-  establish a reference point for later comparison, but it does not show that a
-  participant is already changing, improving, declining, developing or deteriorating.
-- Do not claim that a human capability has been developed, strengthened, weakened,
-  eroded, preserved or lost because of AI. Human-capability sections may reflect on
-  capabilities that the participant's responses suggest are currently relevant or
-  being exercised.
-- Refer to the HCI participant benchmark, HCI benchmark participants, or a specifically
-  named HCI research sample. Do not describe the benchmark as the general population,
-  a population norm, or representative of everyone unless the supplied context
-  explicitly establishes that.
+Evidence boundary:
+- This is a structured self-report assessment. Treat answers, scores, benchmark
+  positions and combinations as evidence of reported patterns, not direct
+  observation of the participant's real-world behaviour.
+- Meaningful interpretation is expected. Write naturally and confidently, while
+  keeping conclusions proportionate to the evidence. Use language such as
+  "appears", "suggests", "may reflect", "is consistent with", or "one possible
+  interpretation" where interpretation goes beyond the response itself.
+- Do not repeat legal qualifiers mechanically in every sentence. Preserve a clear,
+  human, premium-report voice.
+- Do not present an association or benchmark difference as a proven cause,
+  mechanism, predictor, inevitable progression, or verified outcome.
+- Do not infer individual change over time from one assessment. The result is a
+  current reference point for possible later comparison.
+- Do not claim that AI has developed, strengthened, weakened, eroded, preserved or
+  removed a human capability. Human-capability sections may reflect on capabilities
+  that the responses suggest are currently relevant or being exercised.
+- Do not imply clinical assessment, diagnosis, addiction, impairment, psychological
+  measurement, objective observation, or independently verified behaviour.
+- Refer to the HCI participant benchmark or a specifically named HCI research
+  sample. Do not describe it as the general population or a population norm.
+- Directly reported reliance, unease or dependence-related experiences may be
+  described as reported experiences, but not diagnosed as dependency.
 - Do not use participant-specific certainty language such as "proves", "confirms",
-  "causes", "predicts", "inevitably", "the natural result", "erosion", "degradation",
-  "underlying dependence", "stable trait", or "better outcomes".
-- Directly reported reliance, unease when AI is unavailable, or dependence-related
-  answers may be described as reported experiences. Do not diagnose dependency,
-  addiction, impairment or loss of capability.
-- Do not give clinical, medical, psychological, legal, financial or behavioural
-  advice. A neutral invitation to compare the result with a later measurement is
-  permitted where the section specifically requires it.
+  "causes", "predicts", "inevitably", "underlying dependence", "erosion",
+  "degradation", "stable trait", or "better outcomes".
 """
-
-# Conservative QA flags. These are logged for review; they do not silently rewrite
-# the model's prose or force every sentence into legal language.
-CLAIM_REVIEW_PATTERNS = {
-    "proof_or_confirmation": re.compile(
-        r"\\b(?:this|the (?:result|pattern|assessment|benchmark))\\s+(?:proves?|confirms?|demonstrates?)\\b",
-        re.IGNORECASE,
-    ),
-    "causal_claim": re.compile(
-        r"\\b(?:is|was|are|were)\\s+caused by\\b|\\bcauses?\\s+(?:a|an|the|your)\\b",
-        re.IGNORECASE,
-    ),
-    "prediction_or_inevitability": re.compile(
-        r"\\b(?:will inevitably|is inevitable|will naturally|is certain to|predicts? that)\\b",
-        re.IGNORECASE,
-    ),
-    "objective_observation": re.compile(
-        r"\\b(?:objectively measured|directly observed|observable behaviour)\\b",
-        re.IGNORECASE,
-    ),
-    "deterioration_or_dependency": re.compile(
-        r"\\b(?:skill erosion|process erosion|capability erosion|cognitive degradation|underlying dependence)\\b",
-        re.IGNORECASE,
-    ),
-    "general_population": re.compile(
-        r"\\b(?:population norm|general population|the wider population|overall population)\\b",
-        re.IGNORECASE,
-    ),
-}
-
-
-def find_narrative_claim_flags(value: Any, path: str = "") -> List[Dict[str, str]]:
-    """Return narrowly targeted QA flags without altering generated prose."""
-    flags: List[Dict[str, str]] = []
-
-    if isinstance(value, dict):
-        for key, child in value.items():
-            child_path = f"{path}.{key}" if path else str(key)
-            flags.extend(find_narrative_claim_flags(child, child_path))
-        return flags
-
-    if isinstance(value, list):
-        for index, child in enumerate(value):
-            child_path = f"{path}[{index}]"
-            flags.extend(find_narrative_claim_flags(child, child_path))
-        return flags
-
-    if not isinstance(value, str):
-        return flags
-
-    for label, pattern in CLAIM_REVIEW_PATTERNS.items():
-        match = pattern.search(value)
-        if match:
-            start = max(0, match.start() - 70)
-            end = min(len(value), match.end() + 100)
-            flags.append({
-                "path": path or "root",
-                "rule": label,
-                "excerpt": value[start:end].replace("\\n", " ").strip(),
-            })
-
-    return flags
 
 
 def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = None) -> Dict[str, Any]:
@@ -323,7 +250,7 @@ Do not use Markdown, bold markers, headings with #, or shorthand such as %ile.
 Prefer careful signalling language such as "This appears to signal...", "This pattern often reflects...", and "This combination suggests...".
 Avoid certainty language such as "This proves..." or "This demonstrates...".
 Do not give advice, predict future behaviour, introduce strengths or shadows, discuss worth protecting, human capability, future monitoring, or observation guidance.
-The participant should finish this section understanding what makes their relationship with AI genuinely different from most people and why that distinction matters, without being told what to do.
+The participant should finish this section understanding what makes their relationship with AI genuinely different from most HCI benchmark participants and why that distinction matters, without being told what to do.
 
 For behaviour_story, write the narrative centre of the report: an observational behavioural story, not a dramatic narrative.
 This section should answer: "What kind of relationship with AI is emerging, and why do these patterns exist together?"
@@ -332,9 +259,9 @@ Open with one concise paragraph describing the participant's overall relationshi
 Treat dimensions as evidence for the story, not the story itself.
 Assume earlier sections have already introduced the dimensions. Briefly reference Thought Partnership, Human Agency, Reliance, Emotional Regulation, Trust, Verification, Disclosure, or Social Transparency only when needed to explain how the pattern works.
 Do not re-teach individual dimensions. Do not try to cover every dimension. Do not list all nine dimensions. Do not restate the dashboard.
-Explain the 2-3 behavioural dynamics or relationships that best help the profile make sense. Focus on behavioural boundaries, interaction style, trust dynamics, reliance patterns and how these elements appear to relate within the participant's current AI use.
+Explain the 2-3 behavioural dynamics or relationships that best help the profile make sense. Focus on behavioural boundaries, interaction style, trust dynamics, reliance patterns and how these elements appear to relate within the participant's current pattern of AI use.
 Where supported by the context, surface less visible relationships within the response pattern, such as quiet normalisation, perception gaps, subtle tensions, or differences between visible use and directly reported reliance or unease. Do not infer hidden dependency or change over time.
-Use HCI research as supporting evidence, not as the main subject of the section. Suitable phrasing includes "Across the HCI research supplied for this section...", "Within the HCI participant benchmark...", or "Looking across your responses..." but only where the supplied context directly supports the statement.
+Use HCI research as supporting evidence, not as the main subject of the section. Suitable phrasing includes "Across the HCI research supplied for this section...", "Within the HCI participant benchmark...", or "Looking across your responses..." but only where the supplied context directly supports it.
 Avoid repeating comparisons already shown earlier in the report, such as age-group comparisons, everyday-user comparisons, or bare percentile rankings.
 Do not use means, averages, statistical shorthand, or technical language.
 Do not give advice, make recommendations, predict future behaviour, discuss what to protect, translate the profile into human capability or human capital language, add reflection questions, or introduce future trajectory.
@@ -577,13 +504,13 @@ Write only these blocks:
 - behavioural_tipping_points
 - measurement_questions
 
-The renderer currently displays these fixed subsections:
+The renderer will deterministically display these fixed subsections:
 1. Signals Likely to Hold
 2. Signals Most Sensitive to Change
 3. Behavioural Tipping Points
 4. Questions for Your Next Measurement
 
-Treat those labels as measurement-oriented headings, not predictions. The narrative must make clear that a single assessment cannot establish which signals will remain stable or change.
+Treat these as measurement-oriented headings, not predictions. A single assessment cannot establish which signals will remain stable or change.
 
 Do not create extra sections.
 Do not mention "Why Return" because later report sections already handle the longitudinal meaning and closing reflection.
@@ -647,7 +574,7 @@ Use only this context:
     schema = {
         "looking_ahead_intro": {
             "type": "string",
-            "description": "80-120 words. Introduce Looking Ahead as a measurement roadmap: profile as a current reference point and next measurement as a way to compare whether the reported pattern looks similar or different. No advice, prediction, or full profile summary."
+            "description": "80-120 words. Introduce Looking Ahead as a measurement roadmap: the profile is a current reference point and a later measurement can show whether the reported pattern looks similar or different. No advice, prediction, or full profile summary."
         },
         "behavioural_tipping_points": {
             "type": "string",
@@ -709,7 +636,7 @@ Output requirements:
      - body
    - Title: a plain human capability, 2-6 words.
    - Body: 40-60 words.
-   - Explain why this capability appears relevant or actively exercised within the participant's current response pattern, what behavioural evidence supports that reflection, and why it matters. Do not state that the assessment proves development.
+   - Explain why this capability appears relevant or actively exercised within the current response pattern, what behavioural evidence supports that reflection, and why it matters. Do not claim proven development.
    - Do not call these "strengths".
 
 2. worth_protecting
@@ -719,7 +646,7 @@ Output requirements:
      - body
    - Title: a plain human capability, 2-6 words.
    - Body: 40-60 words.
-   - Identify capabilities that appear central to how this participant currently reports working with AI and may be valuable to keep visible in later comparisons. Do not imply that they are objectively preserved or at risk.
+   - Identify capabilities that appear central to how this participant currently reports working with AI and may be useful to keep visible in later comparisons. Do not imply objective preservation or risk of loss.
    - These are not necessarily the highest scores.
 
 3. worth_watching
@@ -1215,17 +1142,6 @@ def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict
                     cleaned[k] = clean_narrative_text(value.strip())
                 else:
                     cleaned[k] = value
-            claim_flags = find_narrative_claim_flags(cleaned)
-            if claim_flags:
-                print(
-                    f"[CLAUDE-CLAIM-REVIEW] {len(claim_flags)} potential claim issue(s) "
-                    f"found in properties={list(properties.keys())}"
-                )
-                for flag in claim_flags:
-                    print(
-                        f"[CLAUDE-CLAIM-REVIEW] {flag['path']} | "
-                        f"{flag['rule']} | {flag['excerpt']}"
-                    )
             return cleaned
 
     raise RuntimeError(f"No tool_use block returned by Claude. Raw keys: {list(raw.keys())}")
