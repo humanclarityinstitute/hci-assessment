@@ -104,15 +104,15 @@ DIMENSION_LABELS = {
 }
 
 DIMENSION_DEFINITIONS = {
-    "reliance": "How much you depend on AI for thinking and functioning",
-    "trust": "How much you believe AI outputs are accurate",
-    "verification": "How often you check AI outputs before using them",
-    "decision_delegation": "How much you hand over decisions to AI",
-    "human_agency": "How much control you maintain over your decisions",
-    "emotional_regulation": "Whether you turn to AI for emotional support",
-    "disclosure": "How much personal information you share with AI",
-    "thought_partnership": "How much you use AI as a thinking partner",
-    "social_transparency": "How openly you discuss your AI use with others",
+    "reliance": "How central AI is in your reported thinking and task completion",
+    "trust": "How much confidence you report in AI outputs",
+    "verification": "How often you report checking AI outputs before using them",
+    "decision_delegation": "How much involvement you report giving AI in decisions",
+    "human_agency": "How much control and authorship you report retaining in decisions",
+    "emotional_regulation": "How often you report turning to AI for emotional support",
+    "disclosure": "How much personal information you report sharing with AI",
+    "thought_partnership": "How much you report using AI to develop or test ideas",
+    "social_transparency": "How openly you report discussing your AI use with others",
 }
 
 SELF_PERCEPTION_MAP = {
@@ -132,7 +132,7 @@ SELF_PERCEPTION_MAP = {
     },
     "perceived_dependence": {
         "question": "Compared to most people, how dependent on AI are you?",
-        "comparison_area": "AI Dependence",
+        "comparison_area": "Dependence-related responses",
         "comparison_source": "dependence_derived",
         "primary_dimension": None,
         "secondary_dimension": None,
@@ -203,6 +203,7 @@ def ordinal(n: Any) -> str:
     return f"{n}{suffix}"
 
 
+
 def position_phrase(percentile: Any) -> str:
     p = clean_int(percentile, 50) or 50
     if p >= 96:
@@ -210,11 +211,11 @@ def position_phrase(percentile: Any) -> str:
     if p >= 86:
         return "notably high"
     if p >= 71:
-        return "above population centre"
+        return "above the HCI benchmark centre"
     if p >= 41:
-        return "near population centre"
+        return "near the HCI benchmark centre"
     if p >= 26:
-        return "below population centre"
+        return "below the HCI benchmark centre"
     if p >= 11:
         return "notably low"
     return "exceptionally low"
@@ -757,6 +758,7 @@ def normalize_dimensions(scoring_results: Dict[str, Any], demographics: Dict[str
     return dimensions
 
 
+
 def build_dashboard(dimensions: Dict[str, Dict[str, Any]], demographics: Dict[str, Any]) -> List[Dict[str, Any]]:
     freq_label = demographics.get("_frequency_benchmark") or demographics.get("ai_tool_use_frequency") or "AI users"
     age_label = demographics.get("_age_group_benchmark") or demographics.get("age_group") or "your age group"
@@ -770,7 +772,10 @@ def build_dashboard(dimensions: Dict[str, Dict[str, Any]], demographics: Dict[st
             "definition": d["definition"],
             "percentile": d["percentile"],
             "percentile_label": ordinal(d["percentile"]),
-            "plain_score": f"Higher than {d['percentile']} of 100 people",
+            "plain_score": (
+                f"{ordinal(d['percentile'])} percentile within the "
+                "HCI participant benchmark"
+            ),
             "comparisons": [
                 {
                     "type": "frequency",
@@ -866,20 +871,41 @@ def build_questions(responses: Dict[str, Any], demographics: Dict[str, Any], ben
     return questions
 
 
-def build_question_comparison_statement(answer: Any, pct: Optional[int], pct_frequency: Optional[int]) -> str:
+
+def build_question_comparison_statement(
+    answer: Any,
+    pct: Optional[int],
+    pct_frequency: Optional[int],
+) -> str:
     if answer is None:
         return "No answer was recorded for this item."
 
     if pct is None and pct_frequency is None:
-        return f"You answered {answer}/7. Benchmark comparison is unavailable for this item."
+        return (
+            f"You answered {answer}/7. A benchmark comparison is unavailable "
+            "for this item."
+        )
 
     if pct is not None and pct_frequency is not None:
-        return f"You answered {answer}/7 — at or above {pct} of 100 people overall, and at or above {pct_frequency} of 100 people who use AI about as frequently as you."
+        return (
+            f"You answered {answer}/7. Within the HCI participant benchmark, "
+            f"this response was at the {ordinal(pct)} percentile overall and "
+            f"the {ordinal(pct_frequency)} percentile among participants who "
+            "use AI about as frequently as you."
+        )
 
     if pct is not None:
-        return f"You answered {answer}/7 — at or above {pct} of 100 people overall. AI-use frequency comparison is unavailable."
+        return (
+            f"You answered {answer}/7. Within the HCI participant benchmark, "
+            f"this response was at the {ordinal(pct)} percentile overall. "
+            "A comparable AI-use-frequency result was unavailable."
+        )
 
-    return f"You answered {answer}/7. Overall comparison is unavailable, but your AI-use frequency percentile is {pct_frequency}."
+    return (
+        f"You answered {answer}/7. An overall comparison was unavailable, but "
+        f"this response was at the {ordinal(pct_frequency)} percentile among "
+        "participants who use AI about as frequently as you."
+    )
 
 
 def build_distinctive_responses(questions: List[Dict[str, Any]], limit: int = 7, max_per_dimension: int = 2) -> List[Dict[str, Any]]:
@@ -930,17 +956,25 @@ def build_distinctive_responses(questions: List[Dict[str, Any]], limit: int = 7,
 
 
 
-def usage_frequency_percentile(demographics: Dict[str, Any], benchmark: Any) -> Optional[int]:
-    """
-    Estimate where the participant's reported AI-use frequency sits in the
-    benchmark population.
 
-    This uses benchmark frequency cohort sample sizes rather than any single
-    behavioural dimension, so the perceived-usage card compares self-view with
-    actual reported usage frequency.
+def usage_frequency_percentile(
+    demographics: Dict[str, Any],
+    benchmark: Any,
+) -> Optional[int]:
+    """
+    Estimate where the participant's reported AI-use frequency sits within the
+    HCI participant benchmark.
+
+    This uses benchmark frequency-cohort sample sizes rather than any single
+    assessment dimension. If those benchmark counts are unavailable, the
+    comparison is left unavailable rather than replaced with an invented
+    percentile.
     """
     bench_demo = demographics.get("_benchmark_demographics") or demographics
-    frequency = bench_demo.get("ai_tool_use_frequency") or demographics.get("ai_tool_use_frequency")
+    frequency = (
+        bench_demo.get("ai_tool_use_frequency")
+        or demographics.get("ai_tool_use_frequency")
+    )
     if not frequency:
         return None
 
@@ -963,21 +997,7 @@ def usage_frequency_percentile(demographics: Dict[str, Any], benchmark: Any) -> 
             break
 
     if not frequency_counts:
-        # Last-resort deterministic placement when benchmark frequencies are
-        # unavailable. These are broad ordinal positions, not dimension scores.
-        fallback = {
-            "never": 5,
-            "rarely": 20,
-            "sometimes": 45,
-            "occasionally": 45,
-            "often": 70,
-            "very often": 82,
-            "veryoften": 82,
-            "everyday": 90,
-            "daily": 90,
-            "every day": 90,
-        }
-        return fallback.get(str(frequency).strip().lower())
+        return None
 
     actual_key = canonical_lookup(frequency, list(frequency_counts.keys()))
     if actual_key is None:
@@ -999,20 +1019,23 @@ def usage_frequency_percentile(demographics: Dict[str, Any], benchmark: Any) -> 
             break
         below += frequency_counts.get(key, 0)
 
-    # Place the user at the midpoint of their frequency cohort so categories
-    # with large samples do not all collapse to the lower bound of that bucket.
+    # Place the participant at the midpoint of the reported frequency cohort.
     pct_value = ((below + (current_n / 2)) / total) * 100
     return max(1, min(99, int(round(pct_value))))
 
 
-def derived_dependence_percentile(responses: Dict[str, Any], benchmark: Any) -> Optional[int]:
-    """
-    Derive an AI-dependence percentile from the reliance items that most directly
-    describe dependence rather than general reliance.
 
-    rel_q1: unease/restlessness without AI
-    rel_q2: struggle to function without AI/digital systems
-    rel_q5: perceived ability weakening because AI performs tasks
+def derived_dependence_percentile(
+    responses: Dict[str, Any],
+    benchmark: Any,
+) -> Optional[int]:
+    """
+    Derive a dependence-related response percentile from three Reliance items
+    that most directly ask about difficulty, unease or perceived weakening
+    when AI is unavailable or performs the task.
+
+    This is an assessment-derived comparison, not a clinical or diagnostic
+    measure of dependence.
     """
     percentiles = []
     for key in DEPENDENCE_VARIABLES:
@@ -1029,6 +1052,7 @@ def derived_dependence_percentile(responses: Dict[str, Any], benchmark: Any) -> 
     return max(1, min(99, int(round(sum(percentiles) / len(percentiles)))))
 
 
+
 def perception_comparison_value(
     key: str,
     meta: Dict[str, Any],
@@ -1038,7 +1062,11 @@ def perception_comparison_value(
     benchmark: Any,
 ) -> Dict[str, Any]:
     """
-    Resolve the measured comparison value for each self-perception question.
+    Resolve the assessment-based comparison value for each self-perception item.
+
+    The returned ``measured_basis`` key is retained for compatibility, but its
+    content describes the self-reported assessment basis rather than an
+    independent or objective measurement.
     """
     source = meta.get("comparison_source")
 
@@ -1048,34 +1076,56 @@ def perception_comparison_value(
             "comparison_area": "AI Use",
             "comparison_source": "usage_frequency",
             "primary_dimension": None,
-            "primary_dimension_label": "Usage Frequency",
-            "actual_percentile": clean_int(percentile, 50),
-            "actual_position": position_phrase(percentile),
-            "measured_basis": "Reported AI-use frequency compared with the benchmark frequency distribution.",
+            "primary_dimension_label": "Reported Usage Frequency",
+            "actual_percentile": clean_int(percentile),
+            "actual_position": (
+                position_phrase(percentile)
+                if percentile is not None
+                else "comparison unavailable"
+            ),
+            "measured_basis": (
+                "Reported AI-use frequency compared with the frequency "
+                "distribution within the HCI participant benchmark."
+            ),
         }
 
     if source == "dependence_derived":
         percentile = derived_dependence_percentile(responses, benchmark)
         return {
-            "comparison_area": "AI Dependence",
+            "comparison_area": "Dependence-related responses",
             "comparison_source": "dependence_derived",
             "primary_dimension": None,
-            "primary_dimension_label": "Derived Dependence",
-            "actual_percentile": clean_int(percentile, 50),
-            "actual_position": position_phrase(percentile),
-            "measured_basis": "Derived from dependence-related reliance items: unease without AI, difficulty functioning without AI, and perceived ability weakening.",
+            "primary_dimension_label": "Dependence-related responses",
+            "actual_percentile": clean_int(percentile),
+            "actual_position": (
+                position_phrase(percentile)
+                if percentile is not None
+                else "comparison unavailable"
+            ),
+            "measured_basis": (
+                "Derived from three self-reported Reliance items related to "
+                "unease without AI, difficulty functioning without AI and "
+                "perceived ability weakening."
+            ),
         }
 
     primary = meta.get("primary_dimension") or "reliance"
     percentile = dimensions.get(primary, {}).get("percentile")
+    label = DIMENSION_LABELS.get(primary, primary)
     return {
-        "comparison_area": meta.get("comparison_area") or DIMENSION_LABELS.get(primary, primary),
+        "comparison_area": meta.get("comparison_area") or label,
         "comparison_source": source or primary,
         "primary_dimension": primary,
-        "primary_dimension_label": DIMENSION_LABELS.get(primary, primary),
-        "actual_percentile": clean_int(percentile, 50),
-        "actual_position": position_phrase(percentile),
-        "measured_basis": f"Based on the {DIMENSION_LABELS.get(primary, primary)} dimension score.",
+        "primary_dimension_label": label,
+        "actual_percentile": clean_int(percentile),
+        "actual_position": (
+            position_phrase(percentile)
+            if percentile is not None
+            else "comparison unavailable"
+        ),
+        "measured_basis": (
+            f"Based on your self-reported responses within the {label} dimension."
+        ),
     }
 
 
@@ -1234,7 +1284,7 @@ def build_if_nothing_changes(dimensions: Dict[str, Dict[str, Any]], demographics
     # Prefer clearly elevated dimensions, but never leave the section empty.
     # If no dimension reaches the high-strength threshold, use the strongest
     # two current dimensions so Section 10 still reflects the participant's
-    # most developed patterns rather than displaying a missing-data message.
+    # most prominent current patterns rather than displaying a missing-data message.
     threshold_strengths = [d for d in ranked if d["percentile"] >= 71]
     strengths = threshold_strengths[:3]
     using_fallback_strengths = len(strengths) == 0
