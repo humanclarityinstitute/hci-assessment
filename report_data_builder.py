@@ -1,20 +1,24 @@
 """
 report_data_builder.py
 
-Canonical data builder for the HCI AI Identity & Behaviour Report V2.
+Canonical HCI report-data builder for the premium report.
 
-This file owns report measurement and deterministic selection. It does not
-write premium narrative prose and it does not render HTML.
+This V2 implementation deliberately preserves the original production data
+flow and legacy report keys while adding the new V2 structures required by the
+locked report layout.
 
-V2 guarantees:
-- Preserves the existing scoring and benchmark plumbing.
-- Builds all 9 dimension positions and all 39 question-level results.
-- Separates main-report evidence from the complete appendix.
-- Selects defining signals, comparable-user shifts and baseline priorities
-  deterministically.
-- Never invents missing cohort percentiles or public rarity claims.
-- Stores benchmark and data-quality metadata for longitudinal comparison.
-- Retains a small set of legacy aliases while downstream V2 files are rebuilt.
+Preserved production guarantees:
+- Builds 9 dimension cards.
+- Builds 39 question cards.
+- Uses full question text from question_metadata.py.
+- Recalculates missing dimension age/frequency percentiles from benchmark data.
+- Normalises demographic values to benchmark cohort keys.
+- Does NOT silently duplicate overall distributions as age-group distributions.
+- Stores data_quality warnings so missing cohort data is visible during testing.
+
+V2 additions are derived from the same canonical dimensions, questions,
+perception gaps and combinations. They do not recalculate or replace the
+original scoring flow.
 """
 
 from __future__ import annotations
@@ -64,10 +68,17 @@ except Exception:
     get_benchmark = None
 
 try:
-    from hci_signals_library import SIGNALS
+    # Participant-facing reports must use the legally and scientifically
+    # restrained signals layer. If it is unavailable, fail closed to empty
+    # context rather than falling back to the stronger internal synthesis.
+    from hci_signals_library import REPORT_SAFE_SIGNALS as SIGNALS
 except Exception:
     SIGNALS = {"dimensions": {}, "trends": {}, "combinations": {}, "human_reference": {}}
 
+try:
+    import human_reference_layer as HRL
+except Exception:
+    HRL = None
 
 
 # ---------------------------------------------------------------------
@@ -376,9 +387,75 @@ def normalise_demographics_for_benchmark(demographics: Dict[str, Any], benchmark
 # Signal / HRL helpers
 # ---------------------------------------------------------------------
 
+def safe_dimension_source(dim: str) -> Dict[str, Any]:
+    """Return the participant-facing signal dictionary for one dimension."""
+    dims = SIGNALS.get("dimensions", {}) if isinstance(SIGNALS, dict) else {}
+    signal = dims.get(dim) or dims.get(DIMENSION_LABELS.get(dim, dim)) or {}
+    return signal if isinstance(signal, dict) else {}
+
+
 def definition_for_dimension(dim: str) -> str:
-    """Return the locked participant-facing definition for one dimension."""
-    return str(DIMENSION_DEFINITIONS.get(dim, ""))
+    """Prefer the report-safe definition, with the locked definition as fallback."""
+    signal = safe_dimension_source(dim)
+    return str(signal.get("definition") or DIMENSION_DEFINITIONS.get(dim, ""))
+
+
+def signal_for_dimension(dim: str, percentile: Any) -> str:
+    signal = safe_dimension_source(dim)
+    if not signal:
+        return ""
+
+    p = clean_int(percentile, 50) or 50
+    if p >= 71:
+        text = signal.get("high")
+    elif p <= 40:
+        text = signal.get("low")
+    else:
+        text = signal.get("typical")
+
+    text = text or signal.get("series") or signal.get("definition")
+    return str(text or "")
+
+
+def hrl_context(dim: str, percentile: Any = None) -> Dict[str, Any]:
+    """
+    Return only explicitly approved participant-facing HRL fields.
+
+    Do not pass complete HRL dictionaries through by generic dimension lookup.
+    Several HRL libraries use concept, pattern or cohort keys rather than
+    dimension keys, and broad passthrough can supply irrelevant interpretation.
+    """
+    if HRL is None:
+        return {}
+
+    framework = getattr(HRL, "HBE_FRAMEWORK", None)
+    if not isinstance(framework, dict):
+        return {}
+
+    item = framework.get(dim) or framework.get(DIMENSION_LABELS.get(dim, dim))
+    if not isinstance(item, dict):
+        return {}
+
+    out: Dict[str, Any] = {
+        "hbe_framework": {
+            key: item.get(key)
+            for key in ("hbe_baseline", "ai_pressure", "reframe")
+            if item.get(key) is not None
+        }
+    }
+
+    get_reframe = getattr(HRL, "get_values_reframe", None)
+    if callable(get_reframe):
+        p = clean_int(percentile, 50) or 50
+        position = "high" if p >= 71 else "low" if p <= 40 else "moderate"
+        try:
+            reframe = get_reframe(dim, position)
+            if reframe and "not available in library" not in str(reframe):
+                out["values_reframe"] = reframe
+        except Exception:
+            pass
+
+    return out
 
 
 # ---------------------------------------------------------------------
@@ -680,6 +757,8 @@ def normalize_dimensions(scoring_results: Dict[str, Any], demographics: Dict[str
             "n_frequency": n_freq,
             "position": position_phrase(p),
             "protect_position": protect_position_phrase(p),
+            "research_insight": signal_for_dimension(dim, p),
+            "hrl_context": hrl_context(dim, p),
         }
 
     return dimensions
@@ -719,7 +798,7 @@ def build_dashboard(dimensions: Dict[str, Dict[str, Any]], demographics: Dict[st
                     "n": d.get("n_age_group"),
                 },
             ],
-            "research_insight": "",
+            "research_insight": d["research_insight"],
         })
 
     return cards
@@ -738,7 +817,7 @@ def build_typicality(dimensions: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
             "position": position_phrase(p),
             "bucket": bucket,
             "distance_from_centre": abs(p - 50),
-            "interpretation": "",
+            "interpretation": d.get("research_insight", ""),
         })
 
     return {
@@ -1159,7 +1238,13 @@ def combo_signal(d1: str, d2: str, item: Optional[Dict[str, Any]] = None) -> str
 
 
 def infer_rarity_source(item: Dict[str, Any]) -> str:
-    """Classify the provenance of a combination rarity value."""
+    """
+    Return explicit rarity provenance only.
+
+    The current scoring engine can insert fallback numeric values when aligned
+    benchmark co-occurrence is unavailable. A number alone is therefore not
+    proof that rarity was calculated.
+    """
     explicit = str(
         item.get("rarity_source")
         or item.get("source")
@@ -1176,12 +1261,6 @@ def infer_rarity_source(item: Dict[str, Any]) -> str:
         "approved",
     }:
         return "approved_research_estimate"
-
-    # A value returned directly by the scoring pipeline is treated as calculated
-    # only where the source object actually contains the rarity field.
-    if item.get("rarity_percent") is not None or item.get("frequency_pct") is not None:
-        return "calculated"
-
     return "fallback"
 
 
@@ -1190,33 +1269,30 @@ def build_rare_combinations(
     dimensions: Dict[str, Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """
-    Normalize detected combinations without inventing a rarity value.
-
-    A combination may still be useful when prevalence is unavailable, but it
-    cannot receive a public rarity badge unless ``rarity_shareable`` is true.
+    Preserve the original combination order and fields, while adding provenance
+    controls for V2 public rarity claims.
     """
-    out: List[Dict[str, Any]] = []
+    out = []
     raw_combos = (
         scoring_results.get("rare_combinations")
-        or (scoring_results.get("patterns") or {}).get("rare_combinations")
+        or scoring_results.get("patterns", {}).get("rare_combinations", [])
         or []
     )
 
-    for item in raw_combos:
-        if not isinstance(item, dict):
-            continue
-
+    # Preserve the original two-combination limit and scorer ordering.
+    for item in raw_combos[:2]:
         combo = item.get("combo") or [None, None]
         d1 = item.get("dimension_1") or (combo[0] if len(combo) > 0 else None)
         d2 = item.get("dimension_2") or (combo[1] if len(combo) > 1 else None)
+
         if not d1 or not d2:
             continue
 
         percentiles = item.get("percentiles") or [None, None]
         rarity_percent = clean_float(
             item.get("rarity_percent")
-            if item.get("rarity_percent") is not None
-            else item.get("frequency_pct")
+            or item.get("frequency_pct")
+            or 5
         )
         rarity_source = infer_rarity_source(item)
         rarity_shareable = bool(
@@ -1224,17 +1300,8 @@ def build_rare_combinations(
             and rarity_source in {"calculated", "approved_research_estimate"}
         )
 
-        classification = (
-            item.get("combo_classification")
-            or item.get("classification")
-            or (
-                "true_rare"
-                if rarity_percent is not None and rarity_percent <= 5
-                else "notable"
-            )
-        )
-
         out.append({
+            # Original fields preserved.
             "dimension_1": d1,
             "dimension_2": d2,
             "label_1": DIMENSION_LABELS.get(d1, d1),
@@ -1250,52 +1317,151 @@ def build_rare_combinations(
                 or dimensions.get(d2, {}).get("percentile")
             ),
             "rarity_percent": rarity_percent,
-            "rarity_source": rarity_source,
-            "rarity_shareable": rarity_shareable,
-            "sample_basis": (
-                item.get("sample_basis")
-                or item.get("benchmark_basis")
-                or item.get("n")
-            ),
             "description": (
                 item.get("description")
-                or f"{DIMENSION_LABELS.get(d1, d1)} + {DIMENSION_LABELS.get(d2, d2)}"
+                or f"{DIMENSION_LABELS.get(d1, d1)} + "
+                   f"{DIMENSION_LABELS.get(d2, d2)}"
             ),
-            "combo_classification": classification,
+            "combo_classification": (
+                item.get("combo_classification")
+                or item.get("classification")
+                or (
+                    "true_rare"
+                    if (rarity_percent or 5) <= 5
+                    else "notable"
+                )
+            ),
             "combination_id": item.get("combination_id"),
             "signal_type": item.get("signal_type"),
             "band_dim1": item.get("band_dim1"),
             "band_dim2": item.get("band_dim2"),
             "research_signal": combo_signal(d1, d2, item),
+
+            # V2 provenance fields. Public copy must check rarity_shareable.
+            "rarity_source": rarity_source,
+            "rarity_shareable": rarity_shareable,
+            "public_rarity_percent": (
+                rarity_percent if rarity_shareable else None
+            ),
+            "sample_basis": (
+                item.get("sample_basis")
+                or item.get("benchmark_basis")
+                or item.get("n")
+            ),
         })
 
-    # Keep all valid detections in the canonical data. Downstream presentation
-    # normally uses only the strongest one.
     return out
 
 
-def combination_sort_key(item: Dict[str, Any]) -> tuple:
-    """Rank combinations by supported rarity and profile extremity."""
-    shareable = 1 if item.get("rarity_shareable") else 0
-    rarity = item.get("rarity_percent")
-    rarity_score = (100 - float(rarity)) if rarity is not None else 0
-    p1 = clean_int(item.get("percentile_1"), 50) or 50
-    p2 = clean_int(item.get("percentile_2"), 50) or 50
-    extremity = abs(p1 - 50) + abs(p2 - 50)
-    return (shareable, rarity_score, extremity)
+def build_what_to_protect(dimensions: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "dimension": dim,
+            "label": DIMENSION_LABELS[dim],
+            "definition": definition_for_dimension(dim),
+            "percentile": dimensions[dim]["percentile"],
+            "positioning": protect_position_phrase(dimensions[dim]["percentile"]),
+            "research_insight": dimensions[dim].get("research_insight", ""),
+            "hrl_context": dimensions[dim].get("hrl_context", {}),
+        }
+        for dim in PROTECT_DIMENSIONS
+    ]
 
 
-def select_strongest_combination(
-    combinations: List[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
-    if not combinations:
-        return None
-    return deepcopy(max(combinations, key=combination_sort_key))
+def build_if_nothing_changes(dimensions: Dict[str, Dict[str, Any]], demographics: Dict[str, Any]) -> Dict[str, Any]:
+    ranked = sorted(dimensions.values(), key=lambda d: d["percentile"], reverse=True)
+
+    # Prefer clearly elevated dimensions, but never leave the section empty.
+    # If no dimension reaches the high-strength threshold, use the strongest
+    # two current dimensions so Section 10 still reflects the participant's
+    # most prominent current patterns rather than displaying a missing-data message.
+    threshold_strengths = [d for d in ranked if d["percentile"] >= 71]
+    strengths = threshold_strengths[:3]
+    using_fallback_strengths = len(strengths) == 0
+
+    if len(strengths) < 2:
+        for dim in ranked:
+            if dim not in strengths:
+                strengths.append(dim)
+            if len(strengths) >= 2:
+                break
+
+    monitor = [dimensions[d] for d in ["verification", "reliance", "human_agency"] if d in dimensions]
+
+    return {
+        "usage_frequency": demographics.get("_frequency_benchmark") or demographics.get("ai_tool_use_frequency") or demographics.get("frequency"),
+        "strengths_likely_to_deepen": strengths,
+        "using_fallback_strengths": using_fallback_strengths,
+        "areas_worth_monitoring": monitor[:3],
+        "highest_dimension": ranked[0] if ranked else None,
+        "monitoring_anchor": monitor[0] if monitor else None,
+    }
+
+
+
+
+def build_human_capital_inputs(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Prepare a single synthesis package for the Human Capital narrative."""
+    synth = report_data.get("synthesis_inputs", {})
+    return {
+        "overall_profile": synth,
+        "dimensions": report_data.get("dimensions", {}),
+        "top_dimensions": synth.get("top_dimensions", []),
+        "lowest_dimensions": synth.get("lowest_dimensions", []),
+        "rare_combinations": report_data.get("rare_combinations", []),
+        "distinctive_responses": report_data.get("distinctive_responses", []),
+        "behaviour_story": report_data.get("narrative_blocks", {}).get("behaviour_story"),
+        "perception_gap": report_data.get("perception_gap", {}),
+        "usage_frequency": report_data.get("demographics", {}).get("_frequency_benchmark"),
+        "demographics": report_data.get("demographics", {}),
+    }
+
+def build_data_quality(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    warnings = []
+
+    if len(report_data.get("dimensions", {})) != 9:
+        warnings.append("Expected 9 dimensions.")
+    if len(report_data.get("dashboard", [])) != 9:
+        warnings.append("Expected 9 dashboard cards.")
+    if len(report_data.get("questions", [])) != 39:
+        warnings.append(f"Expected 39 question cards, got {len(report_data.get('questions', []))}.")
+
+    dashboard_missing_age = [c["key"] for c in report_data.get("dashboard", []) if not c["comparisons"][1].get("percentile")]
+    dashboard_missing_freq = [c["key"] for c in report_data.get("dashboard", []) if not c["comparisons"][0].get("percentile")]
+
+    if dashboard_missing_age:
+        warnings.append(f"Dashboard age-group percentile missing for {len(dashboard_missing_age)} dimensions: {dashboard_missing_age}.")
+    if dashboard_missing_freq:
+        warnings.append(f"Dashboard frequency percentile missing for {len(dashboard_missing_freq)} dimensions: {dashboard_missing_freq}.")
+
+    missing_overall_dist = [q["key"] for q in report_data.get("questions", []) if not q.get("distribution_everyone")]
+    missing_freq_dist = [q["key"] for q in report_data.get("questions", []) if not q.get("distribution_frequency")]
+
+    if missing_overall_dist:
+        warnings.append(f"{len(missing_overall_dist)} overall question distributions missing.")
+    if missing_freq_dist:
+        warnings.append(f"{len(missing_freq_dist)} AI-use frequency question distributions missing or below threshold.")
+
+    neutral_question_pcts = [q["key"] for q in report_data.get("questions", []) if q.get("percentile") == 50]
+    if len(neutral_question_pcts) > 25:
+        warnings.append("Many question percentiles are 50; benchmark question-level lookup may be unavailable or mis-keyed.")
+
+    demographics = report_data.get("demographics") or {}
+    if demographics.get("_frequency_original") != demographics.get("_frequency_benchmark"):
+        warnings.append(f"Frequency normalised from {demographics.get('_frequency_original')} to {demographics.get('_frequency_benchmark')}.")
+    if demographics.get("_age_group_original") != demographics.get("_age_group_benchmark"):
+        warnings.append(f"Age group normalised from {demographics.get('_age_group_original')} to {demographics.get('_age_group_benchmark')}.")
+
+    return {
+        "ok": not warnings,
+        "warnings": warnings,
+        "generated_at": now_iso(),
+    }
 
 
 
 # ---------------------------------------------------------------------
-# V2 deterministic report structures
+# V2 additive report structures
 # ---------------------------------------------------------------------
 
 REPORT_SCHEMA_VERSION = "hci_report_data_v2"
@@ -1304,12 +1470,17 @@ BENCHMARK_RESPONSE_COUNT_LABEL = "10,000+ participant responses"
 BENCHMARK_STUDY_COUNT = 21
 MAIN_EVIDENCE_MIN = 5
 MAIN_EVIDENCE_MAX = 7
+MIN_COMPARISON_SHIFT = 10
 
 
 def benchmark_metadata(benchmark: Any) -> Dict[str, Any]:
-    """Read available benchmark provenance without inventing missing metadata."""
+    """Read benchmark provenance without inventing unavailable metadata."""
     data = get_benchmark_data(benchmark)
-    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    metadata = (
+        data.get("metadata")
+        if isinstance(data.get("metadata"), dict)
+        else {}
+    )
 
     def first_value(*values: Any) -> Any:
         for value in values:
@@ -1347,15 +1518,24 @@ def build_report_meta(
     email: Optional[str],
     demographics: Dict[str, Any],
     benchmark: Any,
+    assessment_timestamp: Optional[str],
+    created_at: str,
 ) -> Dict[str, Any]:
-    created_at = now_iso()
+    """
+    Build report metadata using the scoring timestamp as the baseline date.
+
+    Rebuilding an existing report must not silently move the participant's
+    assessment date.
+    """
+    baseline_date = assessment_timestamp or created_at
     return {
         "session_id": session_id,
         "email": email,
         "created_at": created_at,
+        "assessment_completed_at": baseline_date,
+        "baseline_date": baseline_date,
         "report_version": REPORT_VERSION,
         "schema_version": REPORT_SCHEMA_VERSION,
-        "baseline_date": created_at,
         "reported_ai_use_frequency": (
             demographics.get("_frequency_benchmark")
             or demographics.get("ai_tool_use_frequency")
@@ -1374,7 +1554,9 @@ def build_position(
     dimensions: Dict[str, Dict[str, Any]],
     demographics: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
-    """Build the nine deterministic position cards used by the V2 report."""
+    """
+    Build nine V2 position cards from the original canonical dimension objects.
+    """
     frequency_label = (
         demographics.get("_frequency_benchmark")
         or demographics.get("ai_tool_use_frequency")
@@ -1399,20 +1581,36 @@ def build_position(
             "definition": d.get("definition"),
             "raw_score": d.get("raw_score"),
             "overall_percentile": overall,
-            "overall_percentile_label": ordinal(overall) if overall is not None else "Unavailable",
-            "overall_position": position_phrase(overall) if overall is not None else "comparison unavailable",
+            "overall_percentile_label": (
+                ordinal(overall) if overall is not None else "Unavailable"
+            ),
+            "overall_position": (
+                position_phrase(overall)
+                if overall is not None
+                else "comparison unavailable"
+            ),
             "frequency_percentile": frequency,
-            "frequency_percentile_label": ordinal(frequency) if frequency is not None else "Unavailable",
-            "frequency_label": f"Participants reporting {frequency_label} AI use",
+            "frequency_percentile_label": (
+                ordinal(frequency)
+                if frequency is not None
+                else "Unavailable"
+            ),
+            "frequency_label": (
+                f"Participants reporting {frequency_label} AI use"
+            ),
             "frequency_n": d.get("n_frequency"),
             "frequency_available": frequency is not None,
             "age_percentile": age,
-            "age_percentile_label": ordinal(age) if age is not None else "Unavailable",
+            "age_percentile_label": (
+                ordinal(age) if age is not None else "Unavailable"
+            ),
             "age_label": f"Age group {age_label}",
             "age_n": d.get("n_age_group"),
             "age_available": age is not None,
             "overall_n": d.get("n_overall"),
-            "distance_from_centre": abs((overall if overall is not None else 50) - 50),
+            "distance_from_centre": (
+                abs(overall - 50) if overall is not None else None
+            ),
             "frequency_shift": (
                 overall - frequency
                 if overall is not None and frequency is not None
@@ -1423,12 +1621,11 @@ def build_position(
 
 
 def comparison_meaning(overall: int, frequency: int) -> str:
-    """Return a concise deterministic explanation of a cohort shift."""
     shift = overall - frequency
-    magnitude = abs(shift)
-
-    if magnitude < 10:
-        return "Your overall and similar-use positions are broadly aligned."
+    if abs(shift) < MIN_COMPARISON_SHIFT:
+        return (
+            "Your overall and similar-use positions are broadly aligned."
+        )
     if shift > 0:
         return (
             "This stands out more in the overall benchmark than it does among "
@@ -1443,7 +1640,14 @@ def comparison_meaning(overall: int, frequency: int) -> str:
 def build_comparison_shifts(
     position: List[Dict[str, Any]],
     limit: int = 5,
+    minimum_shift: int = MIN_COMPARISON_SHIFT,
 ) -> List[Dict[str, Any]]:
+    """
+    Return only meaningful overall-versus-similar-use differences.
+
+    Small differences are treated as alignment rather than promoted as premium
+    findings.
+    """
     candidates: List[Dict[str, Any]] = []
     for item in position:
         overall = item.get("overall_percentile")
@@ -1452,7 +1656,10 @@ def build_comparison_shifts(
             continue
 
         shift = int(overall) - int(frequency)
-        row = {
+        if abs(shift) < minimum_shift:
+            continue
+
+        candidates.append({
             "dimension": item.get("key"),
             "label": item.get("label"),
             "overall_percentile": overall,
@@ -1463,26 +1670,43 @@ def build_comparison_shifts(
                 "less distinctive among similar users"
                 if shift > 0
                 else "more distinctive among similar users"
-                if shift < 0
-                else "aligned"
             ),
             "meaning": comparison_meaning(int(overall), int(frequency)),
             "frequency_n": item.get("frequency_n"),
-        }
-        candidates.append(row)
+        })
 
     candidates.sort(
-        key=lambda x: (x["absolute_shift"], abs((x["overall_percentile"] or 50) - 50)),
+        key=lambda item: (
+            item["absolute_shift"],
+            abs((item["overall_percentile"] or 50) - 50),
+        ),
         reverse=True,
     )
     return candidates[:limit]
 
 
+def build_comparison_summary(
+    position: List[Dict[str, Any]],
+    comparison_shifts: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    valid = [
+        item for item in position
+        if item.get("overall_percentile") is not None
+        and item.get("frequency_percentile") is not None
+    ]
+    return {
+        "valid_comparison_count": len(valid),
+        "meaningful_shift_count": len(comparison_shifts),
+        "broadly_aligned": bool(valid) and not comparison_shifts,
+        "minimum_shift_threshold": MIN_COMPARISON_SHIFT,
+    }
+
+
 def evidence_counts_by_dimension(
-    distinctive_responses: List[Dict[str, Any]],
+    responses: List[Dict[str, Any]],
 ) -> Dict[str, int]:
     counts: Dict[str, int] = {}
-    for item in distinctive_responses:
+    for item in responses:
         dim = item.get("dimension")
         if dim:
             counts[dim] = counts.get(dim, 0) + 1
@@ -1496,13 +1720,14 @@ def build_defining_signals(
     limit: int = 3,
 ) -> List[Dict[str, Any]]:
     """
-    Select the dimensions carrying the most information in the current profile.
+    Select defining signals using a transparent hierarchy.
 
-    Selection considers:
-    - distance from the HCI benchmark centre;
-    - distinction from similar-frequency users;
-    - involvement in the strongest combination;
-    - number of main evidence responses.
+    Primary rule: distance from the HCI benchmark centre.
+    Tie-breakers only: similar-frequency extremity, strongest-combination
+    membership, evidence count, then locked dimension order.
+
+    This avoids arbitrary weighted scoring that could override the canonical
+    dimension positions.
     """
     evidence_counts = evidence_counts_by_dimension(distinctive_responses)
     combo_dimensions = set()
@@ -1513,20 +1738,13 @@ def build_defining_signals(
         ])
 
     ranked: List[Dict[str, Any]] = []
-    for dim in DIMENSION_ORDER:
+    for order_index, dim in enumerate(DIMENSION_ORDER):
         d = dimensions[dim]
         overall = clean_int(d.get("percentile"), 50) or 50
         frequency = clean_int(d.get("percentile_frequency"))
-        extremity = abs(overall - 50)
-        frequency_distinction = abs(overall - frequency) if frequency is not None else 0
-        combination_bonus = 35 if dim in combo_dimensions else 0
-        evidence_bonus = min(evidence_counts.get(dim, 0), 2) * 8
-
-        information_score = (
-            extremity
-            + (0.45 * frequency_distinction)
-            + combination_bonus
-            + evidence_bonus
+        distance = abs(overall - 50)
+        frequency_extremity = (
+            abs(frequency - 50) if frequency is not None else -1
         )
 
         ranked.append({
@@ -1537,24 +1755,38 @@ def build_defining_signals(
             "frequency_percentile": frequency,
             "age_percentile": d.get("percentile_age_group"),
             "position": d.get("position"),
-            "distance_from_centre": extremity,
+            "distance_from_centre": distance,
+            "frequency_extremity": (
+                frequency_extremity if frequency_extremity >= 0 else None
+            ),
             "frequency_difference": (
                 overall - frequency if frequency is not None else None
             ),
             "in_strongest_combination": dim in combo_dimensions,
             "supporting_evidence_count": evidence_counts.get(dim, 0),
-            "information_score": round(information_score, 2),
+            "selection_basis": "distance_from_hci_benchmark_centre",
+            "_order_index": order_index,
         })
 
     ranked.sort(
-        key=lambda x: (
-            x["information_score"],
-            x["distance_from_centre"],
-            x["overall_percentile"],
+        key=lambda item: (
+            item["distance_from_centre"],
+            item.get("frequency_extremity")
+            if item.get("frequency_extremity") is not None
+            else -1,
+            1 if item["in_strongest_combination"] else 0,
+            item["supporting_evidence_count"],
+            -item["_order_index"],
         ),
         reverse=True,
     )
-    return ranked[:limit]
+
+    selected = []
+    for item in ranked[:limit]:
+        clean_item = dict(item)
+        clean_item.pop("_order_index", None)
+        selected.append(clean_item)
+    return selected
 
 
 def build_main_evidence(
@@ -1562,63 +1794,96 @@ def build_main_evidence(
     defining_signals: List[Dict[str, Any]],
     limit: int = MAIN_EVIDENCE_MAX,
 ) -> List[Dict[str, Any]]:
-    """Select 5–7 auditable evidence cards for the main report."""
-    defining = {item.get("key") for item in defining_signals}
-    candidates: List[Dict[str, Any]] = []
+    """
+    Select 5–7 evidence cards without changing question values or percentiles.
 
+    First select the most distinctive available item for each defining signal,
+    then fill remaining places by question-level distance from the benchmark
+    centre, with a two-item cap per dimension.
+    """
+    candidates: List[Dict[str, Any]] = []
     for question in questions:
         percentile = question.get("percentile")
         if percentile is None:
             continue
 
         item = deepcopy(question)
-        distance = abs((clean_int(percentile, 50) or 50) - 50)
-        frequency = clean_int(question.get("percentile_frequency"))
-        frequency_distance = abs((clean_int(percentile, 50) or 50) - frequency) if frequency is not None else 0
-        defining_bonus = 18 if question.get("dimension") in defining else 0
-        item["evidence_score"] = round(
-            distance + (0.35 * frequency_distance) + defining_bonus,
-            2,
+        item["distance_from_centre"] = abs(
+            (clean_int(percentile, 50) or 50) - 50
         )
-        item["distance_from_centre"] = distance
         item["evidence_statement"] = (
-            f"This response is one of the clearest pieces of evidence "
-            f"supporting your {question.get('dimension_label')} result."
+            f"This response is one of the clearest items helping explain your "
+            f"{question.get('dimension_label')} result."
+        )
+        item["scoring_note"] = (
+            "This item is reverse-scored in the dimension calculation."
+            if question.get("is_reverse_scored")
+            else None
         )
         candidates.append(item)
 
     candidates.sort(
-        key=lambda x: (
-            x.get("evidence_score", 0),
-            x.get("distance_from_centre", 0),
+        key=lambda item: (
+            item["distance_from_centre"],
+            item.get("percentile") or 0,
         ),
         reverse=True,
     )
 
     selected: List[Dict[str, Any]] = []
+    selected_keys = set()
     per_dimension: Dict[str, int] = {}
 
-    # First pass: preserve breadth across the profile.
+    # Guarantee representation from each defining signal where data exists.
+    for signal in defining_signals:
+        dim = signal.get("key")
+        match = next(
+            (
+                item for item in candidates
+                if item.get("dimension") == dim
+                and item.get("key") not in selected_keys
+            ),
+            None,
+        )
+        if match:
+            selected.append(match)
+            selected_keys.add(match.get("key"))
+            per_dimension[dim] = per_dimension.get(dim, 0) + 1
+
+    # Fill by distinctiveness while preserving breadth.
     for item in candidates:
+        if len(selected) >= limit:
+            break
+        if item.get("key") in selected_keys:
+            continue
         dim = item.get("dimension") or "unknown"
         if per_dimension.get(dim, 0) >= 2:
             continue
         selected.append(item)
+        selected_keys.add(item.get("key"))
         per_dimension[dim] = per_dimension.get(dim, 0) + 1
-        if len(selected) >= limit:
-            break
 
-    # Fill remaining places if sparse benchmark data prevented a full set.
+    # Sparse-data fallback.
     if len(selected) < MAIN_EVIDENCE_MIN:
-        seen = {item.get("key") for item in selected}
         for item in candidates:
-            if item.get("key") in seen:
-                continue
-            selected.append(item)
             if len(selected) >= min(limit, MAIN_EVIDENCE_MIN):
                 break
+            if item.get("key") in selected_keys:
+                continue
+            selected.append(item)
+            selected_keys.add(item.get("key"))
 
     return selected[:limit]
+
+
+def select_strongest_combination(
+    combinations: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """
+    Preserve scorer ordering. The scoring engine already ranks its combinations;
+    the builder must not silently replace that ordering with new product logic.
+    """
+    return deepcopy(combinations[0]) if combinations else None
 
 
 def extract_perceived_percentile(
@@ -1641,41 +1906,82 @@ def extract_perceived_percentile(
 def build_perception_summary(
     perception_gap: Dict[str, Any],
 ) -> Dict[str, Any]:
+    """
+    Join the original perception rows to the exact scoring-engine gap shape.
+
+    The live scorer identifies a gap using ``question`` rather than ``key``.
+    """
     gaps = perception_gap.get("gaps") or []
-    gap_by_key = {
-        str(item.get("key")): item
-        for item in gaps
-        if isinstance(item, dict) and item.get("key")
-    }
+    gap_by_key: Dict[str, Dict[str, Any]] = {}
+    for item in gaps:
+        if not isinstance(item, dict):
+            continue
+        gap_key = item.get("key") or item.get("question")
+        if gap_key:
+            gap_by_key[str(gap_key)] = item
 
     items: List[Dict[str, Any]] = []
     for row in perception_gap.get("self_perception") or []:
         key = row.get("key")
-        gap = gap_by_key.get(str(key))
+        gap = gap_by_key.get(str(key)) if key is not None else None
         perceived_percentile = extract_perceived_percentile(gap)
-        actual = clean_int(row.get("actual_percentile"))
-        difference = (
+
+        row_actual = clean_int(row.get("actual_percentile"))
+        gap_actual = clean_int(gap.get("actual_percentile")) if gap else None
+        # Where the live scoring engine supplied a gap, preserve its exact
+        # comparison target. The row-level value is a fallback for non-gap rows.
+        actual = gap_actual if gap_actual is not None else row_actual
+
+        signed_difference = (
             actual - perceived_percentile
             if actual is not None and perceived_percentile is not None
             else None
         )
+        gap_magnitude = (
+            clean_float(gap.get("gap_magnitude"))
+            if gap
+            else None
+        )
+        if gap_magnitude is None and signed_difference is not None:
+            gap_magnitude = abs(signed_difference)
 
         items.append({
             "key": key,
             "question": row.get("question"),
-            "self_estimate": row.get("answer"),
+            "self_estimate": (
+                gap.get("perceived_answer")
+                if gap and gap.get("perceived_answer") is not None
+                else row.get("answer")
+            ),
             "comparison_area": row.get("comparison_area"),
             "assessment_percentile": actual,
-            "assessment_position": row.get("actual_position"),
+            "assessment_position": (
+                position_phrase(actual)
+                if actual is not None
+                else row.get("actual_position")
+            ),
             "perceived_percentile": perceived_percentile,
-            "difference": difference,
-            "difference_available": difference is not None,
+            "difference": signed_difference,
+            "gap_magnitude": gap_magnitude,
+            "difference_available": signed_difference is not None,
+            "direction": (
+                "assessment position above self-estimate"
+                if signed_difference is not None and signed_difference > 0
+                else "assessment position below self-estimate"
+                if signed_difference is not None and signed_difference < 0
+                else "aligned"
+                if signed_difference == 0
+                else None
+            ),
             "basis": row.get("measured_basis"),
         })
 
-    comparable = [item for item in items if item.get("difference") is not None]
+    comparable = [
+        item for item in items
+        if item.get("gap_magnitude") is not None
+    ]
     largest = (
-        max(comparable, key=lambda x: abs(x.get("difference") or 0))
+        max(comparable, key=lambda item: item.get("gap_magnitude") or 0)
         if comparable
         else None
     )
@@ -1702,7 +2008,7 @@ def build_dimension_reference(
                 f"Your result sits at the {ordinal(overall)} percentile within "
                 "the HCI participant benchmark."
             )
-        elif abs(overall - frequency) < 10:
+        elif abs(overall - frequency) < MIN_COMPARISON_SHIFT:
             note = (
                 "Your overall position and your position among participants "
                 "with similar AI-use frequency are broadly aligned."
@@ -1738,35 +2044,27 @@ def build_baseline(
     perception_summary: Dict[str, Any],
     evidence: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """
-    Create the immutable current-reference package used by the Baseline section.
-
-    The final personalised return question is generated later. The comparison
-    priorities themselves are deterministic.
-    """
-    priorities: List[Dict[str, Any]] = []
-
-    for signal in defining_signals:
-        priorities.append({
+    priorities = [
+        {
             "type": "dimension",
             "key": signal.get("key"),
             "label": signal.get("label"),
             "current_percentile": signal.get("overall_percentile"),
             "reason": (
-                "This is one of the three signals carrying the most information "
-                "in your current profile."
+                "This is one of the three dimensions furthest from the HCI "
+                "benchmark centre in your current profile."
             ),
-        })
-
-    # Keep exactly three priorities. Defining signals already contain three
-    # under a valid nine-dimension report.
-    priorities = priorities[:3]
+        }
+        for signal in defining_signals[:3]
+    ]
 
     return {
         "baseline_date": report_meta.get("baseline_date"),
         "report_version": report_meta.get("report_version"),
         "benchmark": deepcopy(report_meta.get("benchmark") or {}),
-        "reported_ai_use_frequency": report_meta.get("reported_ai_use_frequency"),
+        "reported_ai_use_frequency": (
+            report_meta.get("reported_ai_use_frequency")
+        ),
         "dimension_positions": deepcopy(position),
         "defining_signals": deepcopy(defining_signals),
         "strongest_combination": deepcopy(strongest_combination),
@@ -1798,7 +2096,9 @@ def build_methodology(
             for dim in DIMENSION_ORDER
         ],
         "benchmark_name": benchmark.get("name"),
-        "benchmark_response_count_label": benchmark.get("response_count_label"),
+        "benchmark_response_count_label": benchmark.get(
+            "response_count_label"
+        ),
         "benchmark_study_count": benchmark.get("study_count"),
         "benchmark_version": benchmark.get("version"),
         "benchmark_generated_at": benchmark.get("generated_at"),
@@ -1806,7 +2106,8 @@ def build_methodology(
         "minimum_cohort_n": benchmark.get("minimum_cohort_n"),
         "percentile_explanation": (
             "Percentiles show where a participant's self-reported assessment "
-            "result sits within the relevant HCI participant benchmark distribution."
+            "result sits within the relevant HCI participant benchmark "
+            "distribution."
         ),
         "cohort_rule": (
             "Age and AI-use-frequency comparisons are shown only where the "
@@ -1825,7 +2126,6 @@ def build_signature_skeleton(
     evidence: List[Dict[str, Any]],
     perception_summary: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Prepare the deterministic ingredients for the generated Signature page."""
     return {
         "signature_sentence": None,
         "defining_signals": deepcopy(defining_signals),
@@ -1877,8 +2177,14 @@ def build_distinctive_pattern(
     }
 
 
-def build_v2_data_quality(report_data: Dict[str, Any]) -> Dict[str, Any]:
-    warnings: List[str] = []
+def build_v2_data_quality(
+    report_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Preserve every original QA check, then add V2 contract checks.
+    """
+    legacy = build_data_quality(report_data)
+    warnings = list(legacy.get("warnings") or [])
     errors: List[str] = []
 
     if report_data.get("schema_version") != REPORT_SCHEMA_VERSION:
@@ -1894,17 +2200,14 @@ def build_v2_data_quality(report_data: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     evidence_count = len(report_data.get("evidence") or [])
-    if evidence_count < MAIN_EVIDENCE_MIN or evidence_count > MAIN_EVIDENCE_MAX:
-        warnings.append(
+    if not MAIN_EVIDENCE_MIN <= evidence_count <= MAIN_EVIDENCE_MAX:
+        errors.append(
             f"Expected {MAIN_EVIDENCE_MIN}–{MAIN_EVIDENCE_MAX} main evidence "
             f"items, got {evidence_count}."
         )
 
     if len(report_data.get("defining_signals") or []) != 3:
         errors.append("Expected exactly 3 defining signals.")
-
-    if not report_data.get("comparison_shifts"):
-        warnings.append("No valid similar-frequency comparison shifts were available.")
 
     unsupported_rarity = [
         item
@@ -1915,18 +2218,7 @@ def build_v2_data_quality(report_data: Dict[str, Any]) -> Dict[str, Any]:
     if unsupported_rarity:
         warnings.append(
             f"{len(unsupported_rarity)} combination rarity values are retained "
-            "internally but are not approved for public display."
-        )
-
-    missing_frequency = [
-        item.get("key")
-        for item in report_data.get("position") or []
-        if item.get("frequency_percentile") is None
-    ]
-    if missing_frequency:
-        warnings.append(
-            f"Similar-frequency position unavailable for {len(missing_frequency)} "
-            f"dimensions: {missing_frequency}."
+            "for legacy compatibility but are blocked from public display."
         )
 
     benchmark = (report_data.get("report_meta") or {}).get("benchmark") or {}
@@ -1936,12 +2228,12 @@ def build_v2_data_quality(report_data: Dict[str, Any]) -> Dict[str, Any]:
         warnings.append("Benchmark hash metadata is unavailable.")
 
     return {
-        "ok": not errors,
+        "ok": not errors and not warnings,
         "errors": errors,
         "warnings": warnings,
+        "legacy_checks_ok": legacy.get("ok"),
         "generated_at": now_iso(),
     }
-
 
 
 # ---------------------------------------------------------------------
@@ -1955,7 +2247,12 @@ def build_report_data(
     email: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Build the canonical HCI premium-report V2 data object."""
+    """
+    Build V2 report_data while preserving the original production data flow.
+
+    The original canonical objects are built first and retained under their
+    original keys. V2 sections are then derived from those exact objects.
+    """
     if not isinstance(scoring_results, dict):
         raise ValueError("scoring_results must be a dict")
 
@@ -1970,47 +2267,119 @@ def build_report_data(
     )
 
     benchmark = get_benchmark_instance()
-    normalised_demographics = normalise_demographics_for_benchmark(
+    demographics = normalise_demographics_for_benchmark(
         original_demographics,
         benchmark,
     )
 
+    # -----------------------------------------------------------------
+    # Original canonical data flow — deliberately preserved.
+    # -----------------------------------------------------------------
     dimensions = normalize_dimensions(
         scoring_results,
-        normalised_demographics,
+        demographics,
         benchmark,
     )
     questions = build_questions(
         responses,
-        normalised_demographics,
+        demographics,
         benchmark,
     )
-    raw_perception = build_perception_gap(
+    perception = build_perception_gap(
         scoring_results,
         responses,
         dimensions,
-        normalised_demographics,
+        demographics,
         benchmark,
     )
-    perception_summary = build_perception_summary(raw_perception)
-
-    rare_combinations = build_rare_combinations(
+    rare = build_rare_combinations(
         scoring_results,
         dimensions,
     )
-    strongest_combination = select_strongest_combination(
-        rare_combinations,
+    distinctive = build_distinctive_responses(
+        questions,
+        7,
     )
 
-    # Initial distinctiveness is used only as an input to defining-signal
-    # selection. Main-report evidence is then selected against those signals.
-    initial_distinctive = build_distinctive_responses(
-        questions,
-        MAIN_EVIDENCE_MAX,
+    created_at = now_iso()
+    assessment_timestamp = (
+        scoring_results.get("timestamp")
+        or scoring_results.get("created_at")
+        or created_at
     )
+
+    report_data: Dict[str, Any] = {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "legacy_schema_version": "hci_report_data_v1",
+        "session_id": session_id,
+        "email": email,
+        "created_at": created_at,
+        "assessment_completed_at": assessment_timestamp,
+        "demographics": demographics,
+        "responses": responses,
+
+        # Original keys and structures preserved.
+        "dimensions": dimensions,
+        "dashboard": build_dashboard(dimensions, demographics),
+        "typicality": build_typicality(dimensions),
+        "rare_combinations": rare,
+        "questions": questions,
+        "distinctive_responses": distinctive,
+        "perception_gap": perception,
+        "what_to_protect": build_what_to_protect(dimensions),
+        "if_nothing_changes": build_if_nothing_changes(
+            dimensions,
+            demographics,
+        ),
+
+        "synthesis_inputs": {
+            "most_distinctive_variable": (
+                distinctive[0] if distinctive else None
+            ),
+            "largest_perception_gap": perception.get("largest_gap"),
+            "top_rare_combination": rare[0] if rare else None,
+            "top_dimensions": sorted(
+                dimensions.values(),
+                key=lambda d: d["percentile"],
+                reverse=True,
+            )[:5],
+            "lowest_dimensions": sorted(
+                dimensions.values(),
+                key=lambda d: d["percentile"],
+            )[:3],
+            "signals": {
+                "trends": (
+                    SIGNALS.get("trends", {})
+                    if isinstance(SIGNALS, dict)
+                    else {}
+                ),
+                "combinations": (
+                    SIGNALS.get("combinations", {})
+                    if isinstance(SIGNALS, dict)
+                    else {}
+                ),
+                "human_reference": (
+                    SIGNALS.get("human_reference", {})
+                    if isinstance(SIGNALS, dict)
+                    else {}
+                ),
+            },
+        },
+
+        "narrative_blocks": {},
+        "human_capital": {},
+    }
+
+    # Preserve the original Human Capital input flow.
+    report_data["human_capital"] = build_human_capital_inputs(report_data)
+
+    # -----------------------------------------------------------------
+    # V2 additive structures — all derived from canonical objects above.
+    # -----------------------------------------------------------------
+    strongest_combination = select_strongest_combination(rare)
     defining_signals = build_defining_signals(
         dimensions,
-        initial_distinctive,
+        distinctive,
         strongest_combination,
         limit=3,
     )
@@ -2019,58 +2388,41 @@ def build_report_data(
         defining_signals,
         limit=MAIN_EVIDENCE_MAX,
     )
-
+    perception_summary = build_perception_summary(perception)
     report_meta = build_report_meta(
-        session_id,
-        email,
-        normalised_demographics,
-        benchmark,
+        session_id=session_id,
+        email=email,
+        demographics=demographics,
+        benchmark=benchmark,
+        assessment_timestamp=assessment_timestamp,
+        created_at=created_at,
     )
-    position = build_position(
-        dimensions,
-        normalised_demographics,
-    )
+    position = build_position(dimensions, demographics)
     comparison_shifts = build_comparison_shifts(
         position,
         limit=5,
     )
-    dimension_reference = build_dimension_reference(dimensions)
-    signature = build_signature_skeleton(
-        defining_signals,
-        strongest_combination,
-        evidence,
-        perception_summary,
-    )
-    distinctive_pattern = build_distinctive_pattern(
-        strongest_combination,
-        defining_signals,
-        evidence,
-    )
-    baseline = build_baseline(
-        report_meta,
-        position,
-        defining_signals,
-        strongest_combination,
-        perception_summary,
-        evidence,
-    )
-    methodology = build_methodology(report_meta)
 
-    report_data: Dict[str, Any] = {
-        "schema_version": REPORT_SCHEMA_VERSION,
+    report_data.update({
         "report_meta": report_meta,
-        "session_id": session_id,
-        "email": email,
-        "created_at": report_meta["created_at"],
-        "demographics": normalised_demographics,
-        "responses": responses,
-
-        # Locked V2 report contract.
-        "signature": signature,
+        "signature": build_signature_skeleton(
+            defining_signals,
+            strongest_combination,
+            evidence,
+            perception_summary,
+        ),
         "position": position,
         "comparison_shifts": comparison_shifts,
+        "comparison_summary": build_comparison_summary(
+            position,
+            comparison_shifts,
+        ),
         "defining_signals": defining_signals,
-        "distinctive_pattern": distinctive_pattern,
+        "distinctive_pattern": build_distinctive_pattern(
+            strongest_combination,
+            defining_signals,
+            evidence,
+        ),
         "evidence": evidence,
         "perception_summary": perception_summary,
         "pattern_synthesis": {
@@ -2078,44 +2430,17 @@ def build_report_data(
             "pattern_narrative": None,
         },
         "human_capital_lens": [],
-        "dimension_reference": dimension_reference,
-        "baseline": baseline,
-        "appendix_questions": deepcopy(questions),
-        "methodology": methodology,
-        "narrative_blocks": {},
-
-        # Internal evidence retained for later context selection and QA.
-        "dimensions": dimensions,
-        "rare_combinations": rare_combinations,
-        "questions": questions,
-        "perception_gap": raw_perception,
-    }
-
-    # Temporary compatibility aliases. These allow the existing API and old
-    # downstream files to import the V2 builder while Items 4–8 are rebuilt.
-    # They are not the V2 presentation contract.
-    report_data.update({
-        "dashboard": build_dashboard(
-            dimensions,
-            normalised_demographics,
+        "dimension_reference": build_dimension_reference(dimensions),
+        "baseline": build_baseline(
+            report_meta,
+            position,
+            defining_signals,
+            strongest_combination,
+            perception_summary,
+            evidence,
         ),
-        "typicality": build_typicality(dimensions),
-        "distinctive_responses": evidence,
-        "what_to_protect": [],
-        "if_nothing_changes": {},
-        "human_capital": {},
-        "synthesis_inputs": {
-            "most_distinctive_variable": evidence[0] if evidence else None,
-            "largest_perception_gap": perception_summary.get(
-                "largest_difference"
-            ),
-            "top_rare_combination": strongest_combination,
-            "top_dimensions": defining_signals,
-            "lowest_dimensions": sorted(
-                dimensions.values(),
-                key=lambda d: d.get("percentile", 50),
-            )[:3],
-        },
+        "appendix_questions": deepcopy(questions),
+        "methodology": build_methodology(report_meta),
     })
 
     report_data["data_quality"] = build_v2_data_quality(report_data)
@@ -2124,15 +2449,31 @@ def build_report_data(
 
 
 def assert_report_data_contract(report_data: Dict[str, Any]) -> None:
-    """Validate the locked HCI report-data V2 contract."""
-    required = [
-        "schema_version",
-        "report_meta",
+    """
+    Validate both the preserved legacy flow and the V2 additive contract.
+    """
+    legacy_required = [
         "session_id",
         "demographics",
+        "dimensions",
+        "dashboard",
+        "typicality",
+        "questions",
+        "distinctive_responses",
+        "perception_gap",
+        "what_to_protect",
+        "if_nothing_changes",
+        "synthesis_inputs",
+        "narrative_blocks",
+        "human_capital",
+    ]
+    v2_required = [
+        "schema_version",
+        "report_meta",
         "signature",
         "position",
         "comparison_shifts",
+        "comparison_summary",
         "defining_signals",
         "distinctive_pattern",
         "evidence",
@@ -2143,31 +2484,50 @@ def assert_report_data_contract(report_data: Dict[str, Any]) -> None:
         "baseline",
         "appendix_questions",
         "methodology",
-        "narrative_blocks",
         "data_quality",
     ]
-    missing = [key for key in required if key not in report_data]
+
+    missing = [
+        key for key in legacy_required + v2_required
+        if key not in report_data
+    ]
     if missing:
-        raise ValueError(f"report_data missing required V2 keys: {missing}")
+        raise ValueError(
+            f"report_data missing required keys: {missing}"
+        )
 
     if report_data.get("schema_version") != REPORT_SCHEMA_VERSION:
         raise ValueError(
             f"schema_version must be {REPORT_SCHEMA_VERSION}"
         )
-    if len(report_data.get("position") or []) != 9:
+
+    # Original contract checks preserved.
+    if len(report_data["dimensions"]) != 9:
+        raise ValueError("report_data must contain 9 dimensions")
+    if len(report_data["dashboard"]) != 9:
+        raise ValueError("dashboard must contain 9 cards")
+    if len(report_data["questions"]) != 39:
+        raise ValueError("questions must contain 39 cards")
+    if len(report_data["what_to_protect"]) != 4:
+        raise ValueError("what_to_protect must contain 4 fixed sections")
+
+    # V2 additive checks.
+    if len(report_data["position"]) != 9:
         raise ValueError("position must contain exactly 9 dimension cards")
-    if len(report_data.get("dimension_reference") or []) != 9:
+    if len(report_data["dimension_reference"]) != 9:
         raise ValueError(
             "dimension_reference must contain exactly 9 dimensions"
         )
-    if len(report_data.get("defining_signals") or []) != 3:
-        raise ValueError("defining_signals must contain exactly 3 items")
-    if len(report_data.get("appendix_questions") or []) != 39:
+    if len(report_data["defining_signals"]) != 3:
+        raise ValueError(
+            "defining_signals must contain exactly 3 items"
+        )
+    if len(report_data["appendix_questions"]) != 39:
         raise ValueError(
             "appendix_questions must contain exactly 39 questions"
         )
 
-    evidence_count = len(report_data.get("evidence") or [])
+    evidence_count = len(report_data["evidence"])
     if not MAIN_EVIDENCE_MIN <= evidence_count <= MAIN_EVIDENCE_MAX:
         raise ValueError(
             f"evidence must contain {MAIN_EVIDENCE_MIN}–"
@@ -2176,9 +2536,9 @@ def assert_report_data_contract(report_data: Dict[str, Any]) -> None:
 
     for combo in report_data.get("rare_combinations") or []:
         if combo.get("rarity_shareable"):
-            if combo.get("rarity_percent") is None:
+            if combo.get("public_rarity_percent") is None:
                 raise ValueError(
-                    "Shareable rarity requires rarity_percent"
+                    "Shareable rarity requires public_rarity_percent"
                 )
             if combo.get("rarity_source") not in {
                 "calculated",
@@ -2187,4 +2547,3 @@ def assert_report_data_contract(report_data: Dict[str, Any]) -> None:
                 raise ValueError(
                     "Shareable rarity requires an approved source"
                 )
-
