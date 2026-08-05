@@ -62,7 +62,10 @@ except Exception:
     get_benchmark = None
 
 try:
-    from hci_signals_library import SIGNALS
+    # Participant-facing reports must use the legally and scientifically
+    # restrained signals layer. If it is unavailable, fail closed to empty
+    # context rather than falling back to the stronger internal synthesis.
+    from hci_signals_library import REPORT_SAFE_SIGNALS as SIGNALS
 except Exception:
     SIGNALS = {"dimensions": {}, "trends": {}, "combinations": {}, "human_reference": {}}
 
@@ -377,28 +380,74 @@ def normalise_demographics_for_benchmark(demographics: Dict[str, Any], benchmark
 # Signal / HRL helpers
 # ---------------------------------------------------------------------
 
-def signal_for_dimension(dim: str, percentile: Any) -> str:
+def safe_dimension_source(dim: str) -> Dict[str, Any]:
+    """Return the participant-facing signal dictionary for one dimension."""
     dims = SIGNALS.get("dimensions", {}) if isinstance(SIGNALS, dict) else {}
     signal = dims.get(dim) or dims.get(DIMENSION_LABELS.get(dim, dim)) or {}
-    if not isinstance(signal, dict):
-        return str(signal or "")
+    return signal if isinstance(signal, dict) else {}
+
+
+def definition_for_dimension(dim: str) -> str:
+    """Prefer the report-safe definition, with the locked definition as fallback."""
+    signal = safe_dimension_source(dim)
+    return str(signal.get("definition") or DIMENSION_DEFINITIONS.get(dim, ""))
+
+
+def signal_for_dimension(dim: str, percentile: Any) -> str:
+    signal = safe_dimension_source(dim)
+    if not signal:
+        return ""
 
     p = clean_int(percentile, 50) or 50
-    text = (signal.get("high") if p >= 50 else signal.get("low")) or signal.get("series") or signal.get("definition")
+    if p >= 71:
+        text = signal.get("high")
+    elif p <= 40:
+        text = signal.get("low")
+    else:
+        text = signal.get("typical")
+
+    text = text or signal.get("series") or signal.get("definition")
     return str(text or "")
 
 
-def hrl_context(dim: str) -> Dict[str, Any]:
+def hrl_context(dim: str, percentile: Any = None) -> Dict[str, Any]:
+    """
+    Return only explicitly approved participant-facing HRL fields.
+
+    Do not pass complete HRL dictionaries through by generic dimension lookup.
+    Several HRL libraries use concept, pattern or cohort keys rather than
+    dimension keys, and broad passthrough can supply irrelevant interpretation.
+    """
     if HRL is None:
         return {}
 
-    out: Dict[str, Any] = {}
-    for attr in ["HBE_FRAMEWORK", "VALUES_SIGNALS", "HUMAN_REFERENCE_LAYER", "REFRAME_LIBRARY", "RESEARCH_INSIGHTS"]:
-        source = getattr(HRL, attr, None)
-        if isinstance(source, dict):
-            item = source.get(dim) or source.get(DIMENSION_LABELS.get(dim, dim))
-            if item is not None:
-                out[attr.lower()] = item
+    framework = getattr(HRL, "HBE_FRAMEWORK", None)
+    if not isinstance(framework, dict):
+        return {}
+
+    item = framework.get(dim) or framework.get(DIMENSION_LABELS.get(dim, dim))
+    if not isinstance(item, dict):
+        return {}
+
+    out: Dict[str, Any] = {
+        "hbe_framework": {
+            key: item.get(key)
+            for key in ("hbe_baseline", "ai_pressure", "reframe")
+            if item.get(key) is not None
+        }
+    }
+
+    get_reframe = getattr(HRL, "get_values_reframe", None)
+    if callable(get_reframe):
+        p = clean_int(percentile, 50) or 50
+        position = "high" if p >= 71 else "low" if p <= 40 else "moderate"
+        try:
+            reframe = get_reframe(dim, position)
+            if reframe and "not available in library" not in str(reframe):
+                out["values_reframe"] = reframe
+        except Exception:
+            pass
+
     return out
 
 
@@ -690,7 +739,7 @@ def normalize_dimensions(scoring_results: Dict[str, Any], demographics: Dict[str
         dimensions[dim] = {
             "key": dim,
             "label": DIMENSION_LABELS[dim],
-            "definition": DIMENSION_DEFINITIONS[dim],
+            "definition": definition_for_dimension(dim),
             "raw_score": clean_float(raw_score),
             "percentile": p,
             "percentile_overall": p,
@@ -702,7 +751,7 @@ def normalize_dimensions(scoring_results: Dict[str, Any], demographics: Dict[str
             "position": position_phrase(p),
             "protect_position": protect_position_phrase(p),
             "research_insight": signal_for_dimension(dim, p),
-            "hrl_context": hrl_context(dim),
+            "hrl_context": hrl_context(dim, p),
         }
 
     return dimensions
@@ -1169,7 +1218,7 @@ def build_what_to_protect(dimensions: Dict[str, Dict[str, Any]]) -> List[Dict[st
         {
             "dimension": dim,
             "label": DIMENSION_LABELS[dim],
-            "definition": DIMENSION_DEFINITIONS[dim],
+            "definition": definition_for_dimension(dim),
             "percentile": dimensions[dim]["percentile"],
             "positioning": protect_position_phrase(dimensions[dim]["percentile"]),
             "research_insight": dimensions[dim].get("research_insight", ""),
