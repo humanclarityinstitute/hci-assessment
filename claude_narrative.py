@@ -1,62 +1,74 @@
 """
-claude_narrative.py
+Claude narrative layer for the HCI premium report.
 
-Claude narrative layer for the clean HCI report system.
+The report uses two structured Anthropic calls:
 
-This version uses Anthropic tool calls for structured output instead of asking
-Claude to return raw JSON. This avoids JSONDecodeError failures caused by
-unescaped quotes/newlines in long narrative text.
+1. profile synthesis;
+2. baseline and return question.
+
+All measured results, selected evidence, comparisons and rarity controls are
+prepared before this module runs. Claude writes only the six approved narrative
+outputs and cannot alter the deterministic report data.
 """
 
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 from typing import Any, Dict, List
 import json
 import os
+import re
 import time
 import traceback
-import urllib.request
 import urllib.error
+import urllib.request
 
 from narrative_context_builder import (
-    build_context_for_claude_section,
-    build_v2_narrative_context,
-    assert_v2_narrative_context_contract,
+    assert_narrative_context_contract,
+    build_narrative_context,
 )
 
 
 CLAUDE_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+REQUEST_TIMEOUT_SECONDS = 120
+MAX_REQUEST_ATTEMPTS = 2
 
+PROFILE_OUTPUT_FIELDS = {
+    "signature_sentence",
+    "combination_narrative",
+    "pattern_narrative",
+    "human_capital_lens",
+}
+BASELINE_OUTPUT_FIELDS = {
+    "return_question",
+    "baseline_closing",
+}
 
 REPORT_CLAIM_GUARDRAILS = """
 Evidence boundary:
 - This is a structured self-report assessment. Treat answers, scores, benchmark
   positions and combinations as evidence of reported patterns, not direct
   observation of the participant's real-world behaviour.
-- Meaningful interpretation is expected. Write naturally and confidently, while
-  keeping conclusions proportionate to the evidence. Use language such as
-  "appears", "suggests", "may reflect", "is consistent with", or "one possible
-  interpretation" where interpretation goes beyond the response itself.
-- Do not repeat legal qualifiers mechanically in every sentence. Preserve a clear,
-  human, premium-report voice.
+- State supplied measurements clearly. Use proportionate language such as
+  "appears", "suggests", "may reflect" or "is consistent with" only when
+  moving from measurement into interpretation.
+- Do not repeat legal qualifiers mechanically. Preserve a clear, human,
+  premium-report voice.
 - Do not present an association or benchmark difference as a proven cause,
-  mechanism, predictor, inevitable progression, or verified outcome.
+  mechanism, predictor, inevitable progression or verified outcome.
 - Do not infer individual change over time from one assessment. The result is a
   current reference point for possible later comparison.
-- Do not claim that AI has developed, strengthened, weakened, eroded, preserved or
-  removed a human capability. Human-capability sections may reflect on capabilities
-  that the responses suggest are currently relevant or being exercised.
-- Do not imply clinical assessment, diagnosis, addiction, impairment, psychological
-  measurement, objective observation, or independently verified behaviour.
-- Refer to the HCI participant benchmark or a specifically named HCI research
-  sample. Do not describe it as the general population or a population norm.
-- Directly reported reliance, unease or dependence-related experiences may be
-  described as reported experiences, but not diagnosed as dependency.
-- Do not use participant-specific certainty language such as "proves", "confirms",
-  "causes", "predicts", "inevitably", "underlying dependence", "erosion",
-  "degradation", "stable trait", or "better outcomes".
+- Do not claim that AI has developed, strengthened, weakened, eroded, preserved
+  or removed a human capability.
+- Do not imply clinical assessment, diagnosis, addiction, impairment,
+  psychological measurement, objective observation or independently verified
+  behaviour.
+- Refer to the HCI participant benchmark. Do not describe it as the general
+  population, everyone or a population norm.
+- Do not diagnose directly reported reliance, unease or dependence-related
+  experiences as dependency.
 """
 
 
@@ -64,169 +76,36 @@ def add_claude_narratives(
     report_data: Dict[str, Any],
     api_key: str | None = None,
 ) -> Dict[str, Any]:
-    """
-    Public narrative entry point retained for API compatibility.
-
-    - Stored V1 report objects continue through the original six-call workflow.
-    - V2 report objects use the locked two-call workflow.
-
-    This version routing protects existing report_data and recovery paths while
-    new assessments transition to the V2 report contract.
-    """
+    """Add the six approved narrative outputs to canonical report data."""
     if not isinstance(report_data, dict):
         raise ValueError("report_data must be a dictionary")
 
-    if report_data.get("schema_version") == "hci_report_data_v2":
-        return _add_v2_claude_narratives(report_data, api_key)
-
-    return _add_legacy_claude_narratives(report_data, api_key)
-
-
-def _add_legacy_claude_narratives(report_data: Dict[str, Any], api_key: str | None = None) -> Dict[str, Any]:
-    """
-    Fill report_data["narrative_blocks"] with HCI-grounded Claude output.
-
-    Safe:
-    - If no API key, returns report_data unchanged with status.
-    - If one call fails, other calls still run.
-    - Renderer falls back to deterministic text where blocks are missing.
-    """
-    report_data = deepcopy(report_data)
-    api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-
-    report_data.setdefault("narrative_blocks", {})
-    report_data.setdefault("narrative_generation", {})
-
-    if not api_key:
-        report_data["narrative_generation"] = {
-            "status": "skipped_no_api_key",
-            "calls": {},
-        }
-        return report_data
-
-    status = {
-        "status": "started",
-        "model": CLAUDE_MODEL,
-        "calls": {},
-    }
-
-    # Run all calls sequentially for stability and predictability.
-    # Each call can optionally use narrative_blocks from prior calls as context.
-    
-    # Call 1: Profile Narrative
-    try:
-        blocks = generate_profile_narrative(report_data, api_key)
-        report_data["narrative_blocks"].update(blocks)
-        status["calls"]["profile_narrative"] = "success"
-    except Exception as e:
-        print(f"[CLAUDE] profile_narrative failed: {e}")
-        traceback.print_exc()
-        status["calls"]["profile_narrative"] = f"failed: {str(e)}"
-
-    # Call 2: Distinctive and Perception Narrative
-    try:
-        blocks = generate_distinctive_and_perception_narrative(report_data, api_key)
-        report_data["narrative_blocks"].update(blocks)
-        status["calls"]["distinctive_and_perception"] = "success"
-    except Exception as e:
-        print(f"[CLAUDE] distinctive_and_perception failed: {e}")
-        traceback.print_exc()
-        status["calls"]["distinctive_and_perception"] = f"failed: {str(e)}"
-
-    # Call 3: Trajectory Narrative
-    try:
-        blocks = generate_trajectory_narrative(report_data, api_key)
-        report_data["narrative_blocks"].update(blocks)
-        status["calls"]["trajectory"] = "success"
-    except Exception as e:
-        print(f"[CLAUDE] trajectory failed: {e}")
-        traceback.print_exc()
-        status["calls"]["trajectory"] = f"failed: {str(e)}"
-
-    # Call 4: Human Capital Narrative
-    try:
-        blocks = generate_human_capital_narrative(report_data, api_key)
-        report_data["narrative_blocks"].update(blocks)
-        status["calls"]["human_capital"] = "success"
-    except Exception as e:
-        print(f"[CLAUDE] human_capital failed: {e}")
-        traceback.print_exc()
-        status["calls"]["human_capital"] = f"failed: {str(e)}"
-
-    # Call 5: Deep Dive Narrative
-    try:
-        blocks = generate_deep_dive_narrative(report_data, api_key)
-        report_data["narrative_blocks"].update(blocks)
-        status["calls"]["deep_dive"] = "success"
-    except Exception as e:
-        print(f"[CLAUDE] deep_dive failed: {e}")
-        traceback.print_exc()
-        status["calls"]["deep_dive"] = f"failed: {str(e)}"
-
-    # Call 6: Closing Reflection Narrative
-    try:
-        blocks = generate_closing_reflection_narrative(report_data, api_key)
-        report_data["narrative_blocks"].update(blocks)
-        status["calls"]["closing_reflection"] = "success"
-    except Exception as e:
-        print(f"[CLAUDE] closing_reflection failed: {e}")
-        traceback.print_exc()
-        status["calls"]["closing_reflection"] = f"failed: {str(e)}"
-
-    status["status"] = "complete"
-    report_data["narrative_generation"] = status
-    return report_data
-
-
-
-# =====================================================================
-# REPORT V2 — TWO STRUCTURED CALLS
-# =====================================================================
-
-V2_PROFILE_OUTPUT_FIELDS = {
-    "signature_sentence",
-    "combination_narrative",
-    "pattern_narrative",
-    "human_capital_lens",
-}
-V2_BASELINE_OUTPUT_FIELDS = {
-    "return_question",
-    "baseline_closing",
-}
-
-
-def _add_v2_claude_narratives(
-    report_data: Dict[str, Any],
-    api_key: str | None = None,
-) -> Dict[str, Any]:
-    """Add only the six narrative outputs permitted by REPORT_V2_SPEC.md."""
     result = deepcopy(report_data)
-    result.setdefault("narrative_blocks", {})
-    result.setdefault("narrative_generation", {})
     result.setdefault("signature", {})
     result.setdefault("distinctive_pattern", {})
     result.setdefault("pattern_synthesis", {})
     result.setdefault("human_capital_lens", [])
     result.setdefault("baseline", {})
+    result.setdefault("narrative_blocks", {})
 
-    context = build_v2_narrative_context(result)
-    assert_v2_narrative_context_contract(context)
+    context = build_narrative_context(result)
+    assert_narrative_context_contract(context)
 
-    # Install complete deterministic content before any network request. A
-    # failed or unavailable Claude call cannot leave the V2 report unrenderable.
-    _apply_v2_profile_output(
+    # Install complete deterministic text before any network request. The report
+    # remains renderable when the API key is absent or either request fails.
+    apply_profile_output(
         result,
-        _v2_profile_fallback(context["profile_synthesis"]),
+        profile_fallback(context["profile_synthesis"]),
     )
-    _apply_v2_baseline_output(
+    apply_baseline_output(
         result,
-        _v2_baseline_fallback(context["baseline_return"]),
+        baseline_fallback(context["baseline_return"]),
     )
 
     api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     status = {
         "status": "started" if api_key else "skipped_no_api_key",
-        "workflow": "hci_report_v2_two_call",
+        "workflow": "two_structured_calls",
         "model": CLAUDE_MODEL,
         "expected_calls": 2,
         "attempted_calls": 0,
@@ -240,31 +119,34 @@ def _add_v2_claude_narratives(
 
     status["attempted_calls"] += 1
     try:
-        profile = generate_v2_profile_synthesis(
+        profile_output = generate_profile_synthesis(
             context["profile_synthesis"],
             api_key,
         )
-        _validate_v2_profile_output(profile, context["profile_synthesis"])
-        _apply_v2_profile_output(result, profile)
+        validate_profile_output(
+            profile_output,
+            context["profile_synthesis"],
+        )
+        apply_profile_output(result, profile_output)
         status["successful_calls"] += 1
         status["calls"]["profile_synthesis"] = "success"
     except Exception as exc:
-        print(f"[CLAUDE] V2 profile_synthesis failed: {exc}")
+        print(f"[CLAUDE] profile_synthesis failed: {exc}")
         traceback.print_exc()
         status["calls"]["profile_synthesis"] = f"failed: {str(exc)}"
 
     status["attempted_calls"] += 1
     try:
-        baseline = generate_v2_baseline_return(
+        baseline_output = generate_baseline_return(
             context["baseline_return"],
             api_key,
         )
-        _validate_v2_baseline_output(baseline)
-        _apply_v2_baseline_output(result, baseline)
+        validate_baseline_output(baseline_output)
+        apply_baseline_output(result, baseline_output)
         status["successful_calls"] += 1
         status["calls"]["baseline_return"] = "success"
     except Exception as exc:
-        print(f"[CLAUDE] V2 baseline_return failed: {exc}")
+        print(f"[CLAUDE] baseline_return failed: {exc}")
         traceback.print_exc()
         status["calls"]["baseline_return"] = f"failed: {str(exc)}"
 
@@ -279,75 +161,70 @@ def _add_v2_claude_narratives(
     return result
 
 
-def generate_v2_profile_synthesis(
+def generate_profile_synthesis(
     context: Dict[str, Any],
     api_key: str,
 ) -> Dict[str, Any]:
-    """V2 call 1: signature, combination, pattern and Human Capital Lens."""
-    print("[CLAUDE] Starting V2 profile_synthesis...")
+    """Generate signature, pattern synthesis and Human Capital Lens text."""
+    print("[CLAUDE] Starting profile_synthesis...")
     start = time.time()
 
     prompt = f"""
 Write four narrative outputs for the Human Clarity Institute AI Identity &
-Behaviour Report V2.
+Behaviour Report.
 
 {REPORT_CLAIM_GUARDRAILS}
 
 Core product rule:
 Reveal more. Explain only what improves clarity.
 
-Use only the supplied context. Claude does not select, calculate or alter any
+Use only the supplied context. Do not select, calculate, change or estimate any
 score, percentile, cohort comparison, rarity, defining signal or evidence item.
 
 Return exactly these fields:
 
 1. signature_sentence
 - Exactly one sentence, approximately 18–35 words.
-- Describe the participant's current response pattern in a memorable but
+- Describe the relationship among the defining signals in a memorable but
   restrained way.
-- Begin from the relationship among the defining signals rather than from a
-  percentile.
-- Do not create a type, persona, diagnosis, identity label or permanent trait.
+- Do not create a persona, type, diagnosis, identity label or permanent trait.
 
 2. combination_narrative
-- Two concise paragraphs, approximately 130–210 words total.
-- First explain what the supplied strongest combination or coherent pattern
-  shows.
+- Exactly two concise paragraphs, approximately 130–210 words total.
+- First explain what the supplied combination or coherent pattern shows.
 - Then explain what that pattern may suggest about the participant's current
   relationship with AI.
-- If rarity_percent is absent, do not describe the pattern as rare or imply a
-  prevalence value.
-- Do not redefine every dimension and do not introduce advice.
+- Mention prevalence only when an approved rarity percentage is supplied.
+- Do not redefine every dimension or introduce advice.
 
 3. pattern_narrative
 - Approximately 250–350 words in three or four flowing paragraphs.
 - Explain the organising feature of the profile and how the defining signals,
-  selected evidence and self-perception comparison fit together.
-- Use numbers selectively. Do not repeat every score.
+  selected evidence, similar-user comparisons and self-perception fit together.
+- Use numbers selectively. Do not repeat every result.
 - End with one clear synthesis of the current response pattern.
 - Do not discuss future trajectory, recommendations or capability change.
 
 4. human_capital_lens
 - Exactly three objects with title and body.
-- Use exactly the three supplied titles, unchanged.
-- Each body is one concise sentence, approximately 18–38 words.
-- Explain why that human capability is relevant to the current response
-  pattern.
-- Do not claim that the capability is strong, weak, developing, declining,
-  protected, lost or objectively measured.
+- Use exactly the three supplied titles, unchanged and in the same order.
+- Each body must be one concise sentence, approximately 18–38 words.
+- Explain why the capability is relevant to this response pattern.
+- Do not claim that it is strong, weak, developing, declining, protected, lost
+  or objectively measured.
 - Do not include scores or percentile language.
 
 General writing rules:
-- Direct to "you".
-- Plain English, calm, precise and premium.
+- Write directly to "you".
+- Use plain English with a calm, precise, premium tone.
 - Describe self-reported patterns, not observed behaviour.
 - State supplied evidence clearly; qualify interpretation rather than weakening
   the evidence.
 - No Markdown, headings, bullets, coaching, diagnosis, causation, prediction,
-  general-population claims or raw variable IDs.
+  general-population claims or internal variable IDs.
 
 Context:
-{compact_context(context, max_chars=22000)}
+{compact_context(context, max_chars=24000)}
 """
 
     capability_schema = {
@@ -362,15 +239,23 @@ Context:
     schema = {
         "signature_sentence": {
             "type": "string",
-            "description": "One evidence-led sentence describing the current response pattern.",
+            "description": (
+                "One evidence-led sentence describing the current response pattern."
+            ),
         },
         "combination_narrative": {
             "type": "string",
-            "description": "Two concise paragraphs explaining the strongest combination or coherent pattern.",
+            "description": (
+                "Two concise paragraphs explaining the selected combination or "
+                "coherent pattern."
+            ),
         },
         "pattern_narrative": {
             "type": "string",
-            "description": "250–350 word synthesis of the defining signals, evidence and perception comparison.",
+            "description": (
+                "A 250–350 word synthesis of the defining signals, selected "
+                "evidence, similar-user comparisons and self-perception."
+            ),
         },
         "human_capital_lens": {
             "type": "array",
@@ -380,25 +265,25 @@ Context:
         },
     }
 
-    blocks = call_claude_structured(api_key, prompt, schema)
+    output = call_claude_structured(api_key, prompt, schema)
     print(
-        f"[CLAUDE] V2 profile_synthesis completed in "
+        f"[CLAUDE] profile_synthesis completed in "
         f"{time.time() - start:.1f}s"
     )
-    return blocks
+    return output
 
 
-def generate_v2_baseline_return(
+def generate_baseline_return(
     context: Dict[str, Any],
     api_key: str,
 ) -> Dict[str, str]:
-    """V2 call 2: personalised return question and baseline closing."""
-    print("[CLAUDE] Starting V2 baseline_return...")
+    """Generate the personalised return question and baseline closing."""
+    print("[CLAUDE] Starting baseline_return...")
     start = time.time()
 
     prompt = f"""
 Write the two generated fields for the Baseline and Closing pages of the Human
-Clarity Institute AI Identity & Behaviour Report V2.
+Clarity Institute AI Identity & Behaviour Report.
 
 {REPORT_CLAIM_GUARDRAILS}
 
@@ -408,7 +293,7 @@ Return exactly these fields:
 - Exactly one question, approximately 18–36 words.
 - It must be answerable only by comparing a later assessment with this dated
   baseline.
-- Base it on the supplied comparison priorities or strongest pattern.
+- Base it on the supplied comparison priorities or strongest combination.
 - Do not predict a direction of change.
 - Do not instruct the participant to improve, reduce, protect, increase or
   monitor anything.
@@ -418,10 +303,10 @@ Return exactly these fields:
 - Exactly one sentence, approximately 18–32 words.
 - Explain that this report establishes a dated reference point for later
   comparison.
-- Do not sell another report, promote HCI or introduce new interpretation.
+- Do not promote HCI, sell another report or introduce new interpretation.
 
 Use only the supplied context. No Markdown, advice, prediction, diagnosis,
-causal claim, general-population language or raw variable IDs.
+causal claim, general-population language or internal variable IDs.
 
 Context:
 {compact_context(context, max_chars=12000)}
@@ -434,22 +319,25 @@ Context:
         },
         "baseline_closing": {
             "type": "string",
-            "description": "One sentence describing the value of the dated baseline.",
+            "description": (
+                "One sentence describing the value of the dated baseline."
+            ),
         },
     }
 
-    blocks = call_claude_structured(api_key, prompt, schema)
+    output = call_claude_structured(api_key, prompt, schema)
     print(
-        f"[CLAUDE] V2 baseline_return completed in "
+        f"[CLAUDE] baseline_return completed in "
         f"{time.time() - start:.1f}s"
     )
-    return blocks
+    return output
 
 
-def _apply_v2_profile_output(
+def apply_profile_output(
     report_data: Dict[str, Any],
     output: Dict[str, Any],
 ) -> None:
+    """Place profile narrative outputs into their canonical report fields."""
     signature_sentence = clean_narrative_text(
         str(output.get("signature_sentence") or "")
     )
@@ -476,26 +364,25 @@ def _apply_v2_profile_output(
     report_data["human_capital_lens"] = lens
 
     defining = report_data.get("defining_signals") or []
-    if defining and not report_data["pattern_synthesis"].get("organising_feature"):
-        report_data["pattern_synthesis"]["organising_feature"] = defining[0].get("label")
+    report_data["pattern_synthesis"]["organising_feature"] = (
+        defining[0].get("label")
+        if defining and isinstance(defining[0], dict)
+        else None
+    )
 
     report_data["narrative_blocks"].update({
         "signature_sentence": signature_sentence,
         "combination_narrative": combination_narrative,
         "pattern_narrative": pattern_narrative,
         "human_capital_lens": deepcopy(lens),
-
-        # Transitional aliases keep the current renderer usable while the V2
-        # report_sections.py rebuild is completed. No new data is introduced.
-        "rare_combinations_narrative": combination_narrative,
-        "behaviour_story": pattern_narrative,
     })
 
 
-def _apply_v2_baseline_output(
+def apply_baseline_output(
     report_data: Dict[str, Any],
     output: Dict[str, Any],
 ) -> None:
+    """Place baseline narrative outputs into their canonical report fields."""
     question = clean_narrative_text(
         str(output.get("return_question") or "")
     )
@@ -511,7 +398,8 @@ def _apply_v2_baseline_output(
     })
 
 
-def _v2_profile_fallback(context: Dict[str, Any]) -> Dict[str, Any]:
+def profile_fallback(context: Dict[str, Any]) -> Dict[str, Any]:
+    """Create complete deterministic profile text when Claude is unavailable."""
     defining = context.get("defining_signals") or []
     labels = [
         item.get("label")
@@ -521,13 +409,13 @@ def _v2_profile_fallback(context: Dict[str, Any]) -> Dict[str, Any]:
 
     if len(labels) >= 3:
         signature = (
-            f"Your current responses are most strongly defined by {labels[0]}, "
-            f"{labels[1]} and {labels[2]}."
+            f"Your current profile is most clearly shaped by the relationship "
+            f"between {labels[0]}, {labels[1]} and {labels[2]}."
         )
     elif labels:
         signature = (
-            "Your current responses are most strongly defined by "
-            + ", ".join(labels)
+            "Your current profile is most clearly shaped by "
+            + join_labels(labels)
             + "."
         )
     else:
@@ -536,105 +424,141 @@ def _v2_profile_fallback(context: Dict[str, Any]) -> Dict[str, Any]:
             "areas measured in this assessment."
         )
 
-    pattern = context.get("strongest_pattern") or {}
-    combo = pattern.get("combination") or {}
-    if combo.get("label_1") and combo.get("label_2"):
-        combination = (
+    strongest_pattern = context.get("strongest_pattern") or {}
+    combination = strongest_pattern.get("combination") or {}
+    if combination.get("label_1") and combination.get("label_2"):
+        prevalence = ""
+        if combination.get("rarity_percent") is not None:
+            prevalence = (
+                f" The approved benchmark estimate places this combination "
+                f"at approximately {combination.get('rarity_percent'):g}% of "
+                "the relevant sample."
+            )
+        combination_narrative = (
             f"The clearest interaction in your profile is between "
-            f"{combo.get('label_1')} and {combo.get('label_2')}. These two "
-            "positions provide more information together than either result "
-            "does alone.\n\nTaken together, they suggest that these aspects "
-            "of your current relationship with AI help organise the wider "
-            "response pattern."
+            f"{combination.get('label_1')} and {combination.get('label_2')}. "
+            "These two positions provide more information together than either "
+            f"result does alone.{prevalence}\n\n"
+            "Taken together, they may indicate that these aspects of your "
+            "reported AI use are operating as one connected pattern rather than "
+            "as separate behaviours. This interaction is therefore one of the "
+            "most useful ways to understand the wider shape of your profile."
         )
     else:
-        combination = (
+        combination_narrative = (
             "Your profile is not defined by one isolated result. Its clearest "
             "feature is the way the defining signals combine into a coherent "
-            "overall shape.\n\nThat coherence makes the relationship between "
-            "the results more informative than any one dimension by itself."
+            "overall shape.\n\n"
+            "That coherence suggests the relationship between the results is "
+            "more informative than any one dimension by itself. The pattern is "
+            "therefore best understood through the way the leading signals "
+            "reinforce, balance or qualify one another."
         )
 
-    signal_sentences = []
+    measurement_sentences = []
     for item in defining:
         if not isinstance(item, dict):
             continue
         label = item.get("label")
         percentile = item.get("overall_percentile")
+        similar = item.get("similar_use_percentile")
         if label and percentile is not None:
-            signal_sentences.append(
-                f"{label} sits at the {_v2_ordinal(percentile)} percentile"
+            sentence = (
+                f"{label} sits at the {ordinal(percentile)} percentile within "
+                "the HCI participant benchmark"
             )
+            if similar is not None:
+                sentence += (
+                    f" and at the {ordinal(similar)} percentile among "
+                    "participants reporting similar AI-use frequency"
+                )
+            measurement_sentences.append(sentence + ".")
 
-    opening = (
+    first_paragraph = (
         "The organising feature of your current profile is the relationship "
-        "between its defining signals."
-    )
-    if signal_sentences:
-        opening += " " + "; ".join(signal_sentences) + "."
+        "between its defining signals. "
+        + " ".join(measurement_sentences)
+    ).strip()
 
-    perception = (context.get("perception") or {}).get("largest_difference") or {}
-    if perception.get("difference_available"):
-        perception_text = (
-            "Your self-estimate and assessment-based position provide two "
-            "different views of the same relationship with AI. The difference "
-            "adds a benchmark perspective that can be difficult to establish "
-            "from personal experience alone."
+    similar_shifts = context.get("similar_user_comparisons") or []
+    if similar_shifts:
+        strongest_shift = similar_shifts[0]
+        similar_paragraph = (
+            f"The comparison with similar AI users adds an important layer. "
+            f"For {strongest_shift.get('label')}, "
+            f"{strongest_shift.get('meaning', '').lower()} This helps separate "
+            "what may be associated with frequent AI use from what remains "
+            "especially distinctive within your own response pattern."
         )
     else:
-        perception_text = (
-            "Your self-estimates provide a second perspective on the profile. "
-            "The report keeps that view alongside the response-based benchmark "
-            "position without treating either as a complete account."
+        similar_paragraph = (
+            "Where similar-use comparisons are available, the profile is best "
+            "read as a combination of overall position and context. The absence "
+            "of a large shift is also informative because it shows where your "
+            "standing is broadly consistent across the two benchmark views."
         )
 
+    perception = context.get("self_perception") or {}
+    largest = perception.get("largest_difference") or {}
+    if largest.get("difference_available"):
+        perception_paragraph = (
+            "Your self-perception and assessment-based position provide two "
+            "views of the same relationship with AI. Their largest difference "
+            "does not invalidate your self-understanding; it adds a benchmark "
+            "perspective that is difficult to establish from personal "
+            "experience alone."
+        )
+    else:
+        perception_paragraph = (
+            "Your self-perception provides a second perspective on the profile. "
+            "The report keeps that view alongside the response-based benchmark "
+            "position without treating either as a complete account by itself."
+        )
+
+    concluding_paragraph = (
+        "The value of the profile is therefore not a single high or low score. "
+        "It lies in the way the defining signals, selected evidence and "
+        "self-perception comparison combine into one clear account of where "
+        "your reported relationship with AI sits today."
+    )
     pattern_narrative = "\n\n".join([
-        opening,
-        (
-            "These positions do not operate independently. Read together, "
-            "they show which parts of your reported AI use carry the most "
-            "information within the HCI participant benchmark and which "
-            "responses give the profile its particular shape."
-        ),
-        perception_text,
-        (
-            "The main value of the pattern is therefore not a single high or "
-            "low result. It is the way the defining signals, selected evidence "
-            "and self-perception comparison combine into one current reference "
-            "point for understanding your relationship with AI."
-        ),
+        first_paragraph,
+        similar_paragraph,
+        perception_paragraph,
+        concluding_paragraph,
     ])
 
     lens = []
-    for theme in context.get("human_capital_candidates") or []:
+    for theme in context.get("human_capital_themes") or []:
         title = theme.get("title") or "Human capability"
-        dimensions = [
+        dimension_labels = [
             item.get("label")
             for item in theme.get("supporting_dimensions") or []
             if isinstance(item, dict) and item.get("label")
         ]
-        if dimensions:
+        if dimension_labels:
             body = (
-                f"This capability is relevant because your current "
-                f"{_join_v2_labels(dimensions)} results help shape the wider "
-                "response pattern."
+                f"This capability is relevant because your reported "
+                f"{join_labels(dimension_labels)} pattern contributes directly "
+                "to the overall shape of the profile."
             )
         else:
             body = (
-                "This capability provides one useful lens for understanding "
-                "the current response pattern."
+                "This capability offers a useful human lens for interpreting "
+                "the current response pattern without treating it as measured."
             )
         lens.append({"title": title, "body": body})
 
     return {
         "signature_sentence": signature,
-        "combination_narrative": combination,
+        "combination_narrative": combination_narrative,
         "pattern_narrative": pattern_narrative,
         "human_capital_lens": lens[:3],
     }
 
 
-def _v2_baseline_fallback(context: Dict[str, Any]) -> Dict[str, str]:
+def baseline_fallback(context: Dict[str, Any]) -> Dict[str, str]:
+    """Create deterministic baseline text when Claude is unavailable."""
     priorities = context.get("comparison_priorities") or []
     labels = [
         item.get("label")
@@ -664,7 +588,7 @@ def _v2_baseline_fallback(context: Dict[str, Any]) -> Dict[str, str]:
     )
     closing = (
         f"This report records your current response pattern as a dated "
-        f"baseline from {_display_v2_date(baseline_date)} for later comparison."
+        f"baseline from {display_date(baseline_date)} for later comparison."
     )
     return {
         "return_question": question,
@@ -672,17 +596,22 @@ def _v2_baseline_fallback(context: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-def _validate_v2_profile_output(
+def validate_profile_output(
     output: Dict[str, Any],
     context: Dict[str, Any],
 ) -> None:
+    """Validate Claude's first structured response before applying it."""
     if not isinstance(output, dict):
-        raise ValueError("V2 profile output must be a dictionary")
-    missing = V2_PROFILE_OUTPUT_FIELDS.difference(output.keys())
+        raise ValueError("profile output must be a dictionary")
+    missing = PROFILE_OUTPUT_FIELDS.difference(output.keys())
     if missing:
-        raise ValueError(f"V2 profile output missing fields: {sorted(missing)}")
+        raise ValueError(f"profile output missing fields: {sorted(missing)}")
 
-    for key in ("signature_sentence", "combination_narrative", "pattern_narrative"):
+    for key in (
+        "signature_sentence",
+        "combination_narrative",
+        "pattern_narrative",
+    ):
         if not isinstance(output.get(key), str) or not output[key].strip():
             raise ValueError(f"{key} must be a non-empty string")
 
@@ -692,7 +621,7 @@ def _validate_v2_profile_output(
 
     expected_titles = [
         item.get("title")
-        for item in context.get("human_capital_candidates") or []
+        for item in context.get("human_capital_themes") or []
     ]
     returned_titles = [
         item.get("title") if isinstance(item, dict) else None
@@ -701,1006 +630,104 @@ def _validate_v2_profile_output(
     if returned_titles != expected_titles:
         raise ValueError("Claude changed the locked Human Capital theme titles")
 
-    _validate_v2_output_language(output)
+    validate_output_language(output)
 
 
-def _validate_v2_baseline_output(output: Dict[str, Any]) -> None:
+def validate_baseline_output(output: Dict[str, Any]) -> None:
+    """Validate Claude's second structured response before applying it."""
     if not isinstance(output, dict):
-        raise ValueError("V2 baseline output must be a dictionary")
-    missing = V2_BASELINE_OUTPUT_FIELDS.difference(output.keys())
+        raise ValueError("baseline output must be a dictionary")
+    missing = BASELINE_OUTPUT_FIELDS.difference(output.keys())
     if missing:
-        raise ValueError(f"V2 baseline output missing fields: {sorted(missing)}")
+        raise ValueError(f"baseline output missing fields: {sorted(missing)}")
 
-    for key in V2_BASELINE_OUTPUT_FIELDS:
+    for key in BASELINE_OUTPUT_FIELDS:
         if not isinstance(output.get(key), str) or not output[key].strip():
             raise ValueError(f"{key} must be a non-empty string")
     if not output["return_question"].strip().endswith("?"):
         raise ValueError("return_question must end with a question mark")
 
-    _validate_v2_output_language(output)
+    validate_output_language(output)
 
 
-def _validate_v2_output_language(output: Any) -> None:
-    import re
-
+def validate_output_language(output: Any) -> None:
+    """Reject unsupported or unsafe model language before rendering."""
     text = json.dumps(output, ensure_ascii=False).lower()
     prohibited = {
-        "raw_variable_id": r"\b(?:rel|trust|ver|del|agency|emot|disc|thought|soc)_q\d+\b",
+        "internal_variable_id": (
+            r"\b(?:rel|trust|ver|del|agency|emot|disc|thought|soc)_q\d+\b"
+        ),
         "diagnosis": r"\bdiagnos(?:e|ed|is|tic)\b",
         "addiction": r"\baddict(?:ion|ed|ive)?\b",
         "causal_certainty": r"\bcaused by\b|\bproves\b|\bconfirms that\b",
-        "prediction": r"\bwill inevitably\b|\bwill definitely\b|\bis certain to\b",
+        "prediction": (
+            r"\bwill inevitably\b|\bwill definitely\b|\bis certain to\b"
+        ),
         "coaching": r"\byou should\b|\btry to\b|\bmake sure\b",
         "population_scope": r"\bgeneral population\b|\bpopulation norm\b",
         "objective_claim": r"\bobjective reality\b|\bmeasured reality\b",
+        "capability_change": (
+            r"\bcapabilit(?:y|ies) (?:has|have) (?:developed|declined|weakened|strengthened)\b"
+        ),
     }
     found = [
-        label for label, pattern in prohibited.items()
+        label
+        for label, pattern in prohibited.items()
         if re.search(pattern, text, flags=re.IGNORECASE)
     ]
     if found:
         raise ValueError(
-            f"V2 narrative output contains prohibited content: {found}"
+            f"narrative output contains prohibited content: {found}"
         )
 
 
-def _v2_ordinal(value: Any) -> str:
-    try:
-        number = int(round(float(value)))
-    except Exception:
-        return "unavailable"
-    suffix = (
-        "th"
-        if 10 <= number % 100 <= 20
-        else {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
-    )
-    return f"{number}{suffix}"
-
-
-def _join_v2_labels(values: List[str]) -> str:
-    values = [str(value) for value in values if value]
-    if not values:
-        return ""
-    if len(values) == 1:
-        return values[0]
-    if len(values) == 2:
-        return f"{values[0]} and {values[1]}"
-    return ", ".join(values[:-1]) + f", and {values[-1]}"
-
-
-def _display_v2_date(value: Any) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return "this assessment date"
-    return text[:10] if "T" in text else text
-
-def compact_context(context: Any, max_chars: int = 26000) -> str:
-    """
-    Keep prompts smaller and faster.
-
-    Anthropic receives complete enough context, but we avoid huge prompt bloat.
-    """
-    text = json.dumps(context, ensure_ascii=False, indent=2, default=str)
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars] + "\n\n[CONTEXT TRUNCATED FOR PROMPT SIZE]"
-
-
-# ---------------------------------------------------------------------
-# Call 1: Opening + Section 4 + Section 5
-# ---------------------------------------------------------------------
-
-def generate_profile_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    print(f"[CLAUDE] Starting profile_narrative...")
-    start = time.time()
-    
-    context = {
-        "opening": build_context_for_claude_section(report_data, "opening"),
-        "rare_combinations": build_context_for_claude_section(report_data, "rare_combinations"),
-        "behaviour_story": build_context_for_claude_section(report_data, "behaviour_story"),
-    }
-
-    prompt = f"""
-Write selected narrative blocks for a Human Clarity Institute premium report.
-
-{REPORT_CLAIM_GUARDRAILS}
-
-The report structure is locked. Do not create sections, score anything, or give advice.
-
-Fill exactly these blocks:
-- opening_findings
-- profile_shape_summary
-- rare_combinations_narrative
-- behaviour_story
-
-For opening_findings, write the opening synthesis for the report.
-The purpose of this section is not simply to describe what stands out.
-
-Its purpose is to immediately demonstrate that the report genuinely understands this person's relationship with AI.
-
-Each finding should answer four questions:
-
-• What stands out?
-• Why does it matter?
-• What does it reveal about their relationship with AI?
-• Why is this one of the defining characteristics of their overall profile?
-
-Avoid simply describing benchmark differences. Always connect observations back to the participant's wider relationship with AI.
-
-This is the first personalised interpretation the reader sees. It must make the reader feel the report has actually analysed their pattern.
-
-Write 330-430 words total.
-Use exactly three short editorial subheadings, each followed by one substantial paragraph.
-Write the subheadings as plain text only. Do not wrap subheadings in Markdown bold markers such as **Heading** and do not prefix them with #, ##, or ###.
-Do not use boxes, bullets, numbering, labels like "Behavioural finding", or fields such as "Data:" / "Interpretation:" / "Why it matters:".
-
-The three subheadings should cover:
-1. The strongest organising feature of the participant's profile. This will usually be their most distinctive signal, but its purpose is to explain why this feature shapes the wider behavioural pattern rather than simply describing an extreme score.
-2. How the participant's self-understanding compares with the benchmark. Where differences exist, frame them as insight rather than correction. Where alignment exists, explain why accurate self-awareness is itself meaningful.
-3. The overall shape emerging across the participant's profile. If a rare combination exists, use it as the organising example. If not, explain the wider behavioural pattern that best characterises the participant. The purpose is to introduce the relationship that the remainder of the report will gradually unpack.
-
-Each paragraph should naturally conclude by explaining why this observation matters within the participant's broader relationship with AI.
-Avoid ending on statistics or description.
-End on meaning.
-
-Assume later sections will provide detailed evidence.
-This opening should introduce the participant to the overall story of their relationship with AI, not attempt to fully explain it.
-
-Also write profile_shape_summary as one separate 50-80 word paragraph for the later section titled "The Shape of Your Profile". This paragraph should answer: "What does this profile look like?" Keep it visual, concise, and descriptive rather than analytical. Summarise the overall shape created by all nine dimensions without explaining why the shape exists. Do not repeat the opening findings. Do not discuss every dimension individually. Describe whether the profile is concentrated around a few defining signals or broadly aligned with the HCI participant benchmark. Avoid percentages and percentile language. Do not drift into Behaviour Story; later sections will explain why these dimensions appear together.
-
-For rare_combinations_narrative, write the narrative for the section titled "What Makes You Different".
-Keep the existing deterministic combination selection as the source of truth.
-If rare combinations exist, focus the narrative almost entirely on the strongest combination.
-Other detected combinations may be mentioned briefly only where they genuinely strengthen the interpretation.
-Do not try to explain every detected combination equally.
-
-Make the participant the centre of the narrative from the beginning.
-Use this flow naturally:
-1. Start with what is unusual about this participant's combination.
-2. Give brief benchmark context in approximately one paragraph.
-3. Spend the largest part of the narrative explaining how this participant departs from the usual pattern.
-4. Explain what the combination appears to signal about their relationship with AI.
-5. End with one concise synthesis explaining why this combination is one of the defining features of their wider profile.
-
-Assume the participant already understands what the individual dimensions mean from earlier sections.
-Do not spend significant time re-explaining Thought Partnership, Emotional Regulation, Human Agency, or other dimensions individually.
-Focus on the interaction between dimensions rather than defining each dimension again.
-
-Reduce benchmark exposition, academic explanation, repeated dimension explanation, and lengthy theoretical discussion.
-Use plain behavioural language.
-Do not use Markdown, bold markers, headings with #, or shorthand such as %ile.
-Prefer careful signalling language such as "This appears to signal...", "This pattern often reflects...", and "This combination suggests...".
-Avoid certainty language such as "This proves..." or "This demonstrates...".
-Do not give advice, predict future behaviour, introduce strengths or shadows, discuss worth protecting, human capability, future monitoring, or observation guidance.
-The participant should finish this section understanding what makes their relationship with AI genuinely different from most HCI benchmark participants and why that distinction matters, without being told what to do.
-
-For behaviour_story, write the narrative centre of the report: an observational behavioural story, not a dramatic narrative.
-This section should answer: "What kind of relationship with AI is emerging, and why do these patterns exist together?"
-Write approximately 450 words total, in 4-5 flowing paragraphs, with no internal headings or bullets.
-Open with one concise paragraph describing the participant's overall relationship with AI. Begin with the participant's story, not with dimensions, scores, or mechanics.
-Treat dimensions as evidence for the story, not the story itself.
-Assume earlier sections have already introduced the dimensions. Briefly reference Thought Partnership, Human Agency, Reliance, Emotional Regulation, Trust, Verification, Disclosure, or Social Transparency only when needed to explain how the pattern works.
-Do not re-teach individual dimensions. Do not try to cover every dimension. Do not list all nine dimensions. Do not restate the dashboard.
-Explain the 2-3 behavioural dynamics or relationships that best help the profile make sense. Focus on behavioural boundaries, interaction style, trust dynamics, reliance patterns and how these elements appear to relate within the participant's current pattern of AI use.
-Where supported by the context, surface less visible relationships within the response pattern, such as quiet normalisation, perception gaps, subtle tensions, or differences between visible use and directly reported reliance or unease. Do not infer hidden dependency or change over time.
-Use HCI research as supporting evidence, not as the main subject of the section. Suitable phrasing includes "Across the HCI research supplied for this section...", "Within the HCI participant benchmark...", or "Looking across your responses..." but only where the supplied context directly supports it.
-Avoid repeating comparisons already shown earlier in the report, such as age-group comparisons, everyday-user comparisons, or bare percentile rankings.
-Do not use means, averages, statistical shorthand, or technical language.
-Do not give advice, make recommendations, predict future behaviour, discuss what to protect, translate the profile into human capability or human capital language, add reflection questions, or introduce future trajectory.
-End with one clear, memorable behavioural insight about the participant's relationship with AI. This should be a conclusion, not a teaser or transition.
-The participant should finish this section thinking: "This explains the story my profile is telling."
-
-Style the opening_findings subheadings like a premium research report, for example:
-Your strongest organising feature
-How your self-understanding compares
-The shape of the wider pattern
-Return those headings as plain lines only, not Markdown.
-
-Use benchmark statistics sparingly.
-Only include numbers when they strengthen understanding.
-Never allow numbers to become the focus of the narrative.
-Never use means, averages, standard deviations, effect sizes, raw score averages, or statistical shorthand that a general reader has to interpret. Do not write phrases such as "mean of 1.1" or "average of 4.4". If cohort differences matter, explain them in plain behavioural language, for example: "everyday AI users report higher reliance, but your pattern sits beyond that already-high group."
-
-Tone:
-- observational
-- research-grounded
-- plain English
-- direct to "you"
-- curious, not dramatic
-- insightful rather than impressive
-- avoid long academic explanations where one clear behavioural insight communicates the same idea
-- not clinical
-- not self-help
-- not prescriptive
-- no diagnosis
-- no unsupported predictions
-
-Use only this context:
-{compact_context(context)}
-"""
-
-    schema = {
-        "opening_findings": {
-            "type": "string",
-            "description": "330-430 word opening synthesis with exactly three short editorial subheadings, each followed by one substantial paragraph. Subheadings must be plain text lines only, with no Markdown bold markers and no # heading markers. No bullets, no numbering, no 'Behavioural finding', no Data/Interpretation/Why-it-matters labels, and no means/averages/statistical shorthand."
-        },
-        "profile_shape_summary": {
-            "type": "string",
-            "description": "50-80 word paragraph for The Shape of Your Profile. Describe what the overall profile looks like across all nine dimensions. Keep it visual and descriptive, do not explain why the shape exists, do not repeat the opening findings, do not list every dimension, and avoid percentages/percentiles."
-        },
-        "rare_combinations_narrative": {
-            "type": "string",
-            "description": "If rare combinations exist, focus the narrative almost entirely on the strongest combination in 300-420 words. Keep benchmark context brief, make the participant central, explain what the combination appears to signal and why it matters within the wider AI relationship. Mention other detected combinations only briefly if they strengthen the interpretation. If none exist, write 120-180 words explaining what no rare combo means."
-        },
-        "behaviour_story": {
-            "type": "string",
-            "description": "Approximately 450 word behavioural story in 4-5 flowing paragraphs. Begin with the participant's overall relationship with AI, treat dimensions as evidence rather than the story, explain the 2-3 behavioural dynamics that make the response pattern coherent, surface less visible relationships only where supported, use HCI research lightly as support, avoid dashboard repetition, no causal claims, predictions, advice, capability translation, or future trajectory."
-        },
-    }
-
-    blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] profile_narrative completed in {elapsed:.1f}s")
-    return blocks
-
-
-
-def build_compact_distinctive_perception_context(report_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Compact, guaranteed-complete context for Sections 7 and 8.
-
-    This intentionally removes raw variable keys from the Claude-facing context,
-    so codes like del_q3 never appear in the generated report.
-    """
-    dimensions = report_data.get("dimensions") or {}
-    distinctive = report_data.get("distinctive_responses") or []
-
-    cleaned_responses = []
-    for i, q in enumerate(distinctive[:7], 1):
-        dim = q.get("dimension")
-        dim_data = dimensions.get(dim, {})
-        cleaned_responses.append({
-            "rank": i,
-            "dimension_label": q.get("dimension_label") or dim_data.get("label"),
-            "question_text": q.get("question_text"),
-            "answer_display": q.get("answer_display"),
-            "percentile": q.get("percentile"),
-            "percentile_label": q.get("percentile_label"),
-            "age_group_percentile": q.get("percentile_age_group"),
-            "comparison_statement": q.get("comparison_statement"),
-            "dimension_percentile": dim_data.get("percentile"),
-            "dimension_position": dim_data.get("position"),
-            "dimension_research_signal": dim_data.get("research_insight"),
-            "is_reverse_scored": q.get("is_reverse_scored"),
-        })
-
-    perception = report_data.get("perception_gap") or {}
-    cleaned_perception = {
-        "self_perception": perception.get("self_perception", []),
-        "gaps": perception.get("gaps", []),
-        "largest_gap": perception.get("largest_gap"),
-        "has_significant_gap": perception.get("has_significant_gap"),
-    }
-
-    top_dims = []
-    for d in sorted(dimensions.values(), key=lambda x: x.get("percentile", 50), reverse=True)[:5]:
-        top_dims.append({
-            "label": d.get("label"),
-            "percentile": d.get("percentile"),
-            "position": d.get("position"),
-            "research_signal": d.get("research_insight"),
-        })
-
-    low_dims = []
-    for d in sorted(dimensions.values(), key=lambda x: x.get("percentile", 50))[:3]:
-        low_dims.append({
-            "label": d.get("label"),
-            "percentile": d.get("percentile"),
-            "position": d.get("position"),
-            "research_signal": d.get("research_insight"),
-        })
-
-    return {
-        "distinctive_response_count": len(cleaned_responses),
-        "distinctive_responses": cleaned_responses,
-        "perception_gap": cleaned_perception,
-        "top_dimensions": top_dims,
-        "lowest_dimensions": low_dims,
-        "instruction": "Use only plain labels and question text. Never output variable IDs.",
-    }
-
-
-# ---------------------------------------------------------------------
-# Call 2: Section 7 + Section 8
-# ---------------------------------------------------------------------
-
-def generate_distinctive_and_perception_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    print(f"[CLAUDE] Starting distinctive_and_perception_narrative...")
-    start = time.time()
-    
-    context = build_compact_distinctive_perception_context(report_data)
-
-    prompt = f"""
-Write two HCI report narrative blocks:
-
-{REPORT_CLAIM_GUARDRAILS}
-1. Section 7: Your Most Distinctive Responses
-2. Section 8: Perception Gap Analysis
-
-The raw data lists/tables already exist. Explain what they mean.
-
-For Section 7:
-- This section is titled "Your Most Distinctive Responses" and its job is validation, not new interpretation.
-- The cards already show the dimension, question, participant response, percentile, and benchmark comparison. The narrative should explain why each response is important evidence supporting the participant's overall benchmark profile.
-- Assume the participant has already read the Behaviour Story and earlier benchmark sections. Treat those conclusions as established; do not repeat or expand them.
-- You MUST explain all 7 distinctive responses provided.
-- Write exactly 7 concise evidence annotations, one per response.
-- Each annotation must be 25-50 words, usually 1-2 sentences. Be strict: do not write mini-essays.
-- Do NOT write an introductory paragraph. The renderer already provides the section introduction.
-- Do NOT use Markdown, bold markers, bullets, numbered lists, tables, or headings with **.
-- Do NOT use raw variable names or codes such as del_q3, agency_q1, trust_q3, rel_q1.
-- Start each annotation with a short plain-language evidence label, followed by a colon. Use natural labels such as "Trusting AI accuracy:" or "Hiding AI use socially:" rather than copying the full question every time.
-- For each response, explain only:
-  1. why the response is statistically distinctive,
-  2. how it supports the participant's overall benchmark profile.
-- Do not redefine behavioural dimensions such as Human Agency, Trust, Reliance, Verification, or Thought Partnership. Reference the dimension only when necessary.
-- Do not introduce new interpretations, repeat the Behaviour Story, provide coaching, recommend actions, discuss human capability, future guidance, Human Capital, worth protecting, strengths, shadows, or observation guidance.
-- Avoid repeating the dashboard, age-group comparisons, frequency comparisons, or multiple statistics. The card already shows answer and benchmark position.
-- Keep the writing concise, evidence-based, confidence-building, highly readable, and participant-focused.
-
-For Section 8:
-- This section is now titled "How You See Yourself". Write the narrative for the heading "What this comparison suggests".
-- This section exists to compare the participant's self-perception with the benchmark profile indicated by their assessment responses. Its purpose is reflection rather than correction.
-- Write exactly four concise paragraphs, 190-240 words total.
-- Focus on helping the participant understand where their intuition aligns with the benchmark and where the benchmark provides additional perspective.
-- Treat the benchmark as complementary to the participant's own understanding rather than replacing it.
-- Paragraph 1 must begin by summarising self-perception using the phrase "You described yourself as" or a close natural variation.
-- Paragraph 2 must explain benchmark positioning using the phrase "The benchmark places you" or a close natural variation.
-- Paragraph 3 must focus on alignment, difference, and perspective. Do not explain mechanisms or why the pattern exists.
-- Paragraph 4 must be a reflective closing synthesis. Prefer this intent: "The benchmark does not replace your own understanding of yourself. It simply provides a perspective that is difficult to see from the inside. Together, your self-perception and the benchmark offer a more complete picture of your relationship with AI." Adapt only as needed to match the data.
-- Compare self-perception to benchmark positioning.
-- Frame gaps as illuminating, not corrective.
-- Never say "you were wrong".
-- If alignment is strong, explain why accurate self-perception matters.
-- Avoid long behavioural explanations, research summaries, mechanism explanations, or heavy-user generalisations. Those belong in other sections.
-- Avoid repeating the same dimension label sentence after sentence. Vary language naturally with phrases such as AI relationship, AI engagement, behavioural profile, benchmark positioning, self-view, response pattern, and interaction with AI.
-- Separate data from reflection: assume the renderer has already shown the card data and comparison table, so do not restate every card.
-- Do not introduce Behaviour Story, future discussion, Human Capital, worth protecting, advice, recommendations, or coaching.
-
-Rules:
-- Direct to "you".
-- Observational, research-grounded, curious.
-- No diagnosis.
-- No prescriptions.
-- No unsupported claims.
-- Never write "[context truncated]" or imply any response data was unavailable.
-- If all 7 responses are present in context, write all 7.
-
-Use only this compact context:
-{compact_context(context, max_chars=18000)}
-"""
-
-    schema = {
-        "distinctive_responses_narrative": {
-            "type": "string",
-            "description": "Exactly 7 concise evidence annotations, 25-50 words each. No introductory paragraph, no Markdown, no bold markers, no bullets, no numbering, no variable IDs. Each annotation should explain why the response is statistically distinctive and how it supports the participant\'s overall benchmark profile, without redefining dimensions or adding advice."
-        },
-        "perception_gap_narrative": {
-            "type": "string",
-            "description": "Exactly four concise paragraphs, 190-240 words total, for Section 8's 'What this comparison suggests'. Reflect on how self-perception aligns with benchmark positioning and where the benchmark adds perspective. Treat the benchmark as complementary, not corrective. Avoid mechanism explanation, research exposition, advice, future discussion, and Human Capital framing."
-        },
-    }
-
-    blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] distinctive_and_perception_narrative completed in {elapsed:.1f}s")
-    return blocks
-
-
-# ---------------------------------------------------------------------
-# Call 3: Section 10
-# ---------------------------------------------------------------------
-
-def generate_trajectory_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    print(f"[CLAUDE] Starting trajectory_narrative...")
-    start = time.time()
-    
-    context = build_context_for_claude_section(report_data, "trajectory")
-
-    prompt = f"""
-Write HCI report Section 11 narrative blocks for the redesigned section: "Looking Ahead".
-
-{REPORT_CLAIM_GUARDRAILS}
-
-This section replaces the old "Trajectory / If Nothing Changes" section.
-Its job is not to interpret the participant again, predict their future, or repeat Human Capital.
-Its job is to turn the report into a measurement roadmap.
-
-The section answers one question:
-What will be most interesting to measure next time?
-
-Write only these blocks:
-- looking_ahead_intro
-- behavioural_tipping_points
-- measurement_questions
-
-The renderer will deterministically display these fixed subsections:
-1. Signals Likely to Hold
-2. Signals Most Sensitive to Change
-3. Behavioural Tipping Points
-4. Questions for Your Next Measurement
-
-Treat these as measurement-oriented headings, not predictions. A single assessment cannot establish which signals will remain stable or change.
-
-Do not create extra sections.
-Do not mention "Why Return" because later report sections already handle the longitudinal meaning and closing reflection.
-Do not write an overall outlook.
-Do not write "Commonly observed", "Strengths That May Continue Developing", "Areas Worth Monitoring", or an at-a-glance table.
-
-For looking_ahead_intro:
-- Write 80-120 words in 1-2 paragraphs.
-- Explain that the profile is a snapshot, not a verdict or fixed identity.
-- Explain that the value of measuring again is not chasing better scores; it is comparing whether the reported pattern looks similar or different at a later measurement.
-- Use plain, direct language.
-- Do not summarise the full profile again.
-- Do not give advice.
-
-For behavioural_tipping_points:
-- Write exactly three tipping points.
-- Format each as: Short heading: one concise explanation.
-- Separate each tipping point with a blank line.
-- Each explanation should describe a possible real-world change that could be compared at a later measurement.
-- Use these three concepts unless the context strongly requires a different wording:
-  1. Earlier AI initiation — AI becomes the first place thinking begins rather than a place to refine an existing view.
-  2. Reduced verification friction — checking starts to feel less necessary because AI feels fluent, familiar, or usually right.
-  3. Expanding role boundaries — AI begins entering areas of work, decision-making, or personal life where it previously played little role.
-- Keep this observational, not alarming.
-- Do not say these changes will happen.
-
-For measurement_questions:
-- Write exactly five questions.
-- Put each question on its own line.
-- Do not use bullets, numbering, or Markdown.
-- Questions should be specific enough that the participant can compare their behaviour at the next measurement.
-- Focus on noticing change, not judging whether change is good or bad.
-- Include at least one question about whether they form an independent view before using AI.
-- Include at least one question about verification.
-- Include at least one question about whether AI has entered more areas of life or work.
-- Include at least one question about boundaries.
-
-Rules:
-- No predictions.
-- No coaching.
-- No recommendations.
-- No urgency.
-- No alarmism.
-- No "you should".
-- No optimisation language.
-- No clinical language.
-- No moral judgement about high or low scores.
-- Do not repeat the Human Capital section.
-- Do not re-explain the profile.
-- Do not include percentages or statistics unless absolutely necessary.
-- Prefer measurement language: compare, notice, re-measure, next measurement, response pattern, reference point.
-- Tone: premium, concise, scientifically disciplined, practical, HCI-specific.
-
-The participant should finish this section thinking:
-"I know what to pay attention to between now and my next measurement."
-
-Use only this context:
-{compact_context(context)}
-"""
-
-    schema = {
-        "looking_ahead_intro": {
-            "type": "string",
-            "description": "80-120 words. Introduce Looking Ahead as a measurement roadmap: the profile is a current reference point and a later measurement can show whether the reported pattern looks similar or different. No advice, prediction, or full profile summary."
-        },
-        "behavioural_tipping_points": {
-            "type": "string",
-            "description": "Exactly three possible changes to compare later, each formatted 'Short heading: one concise explanation', separated by blank lines. No prediction, causal claim, or alarmism."
-        },
-        "measurement_questions": {
-            "type": "string",
-            "description": "Exactly five questions, one per line, no bullets or numbering. Questions for the next measurement focused on independent view formation, verification, expanding AI role, boundaries, and unnoticed change."
-        },
-    }
-
-    blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] trajectory_narrative completed in {elapsed:.1f}s")
-    return blocks
-
-
-
-# ---------------------------------------------------------------------
-# Call 4: Section 9 Human Capital
-# ---------------------------------------------------------------------
-
-def generate_human_capital_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, Any]:
-    print(f"[CLAUDE] Starting human_capital_narrative...")
-    start = time.time()
-    
-    context = build_context_for_claude_section(report_data, "human_capital")
-
-    prompt = f"""
-Write HCI report Section 9: "Your Human Capital".
-
-{REPORT_CLAIM_GUARDRAILS}
-
-This is a translation section, not an interpretation section, not a benchmark section, and not advice.
-Its job is to reflect on human capabilities that may be relevant to, or currently exercised within, the participant's reported pattern of AI use.
-
-Core question:
-"Which human capabilities appear relevant to the way I currently report using AI, and what evidence in my responses makes them worth reflecting on?"
-
-Use the complete participant context, including dimension scores, question-level evidence, rare combinations, Behaviour Story, distinctive responses, Profile Shape, Perception Gap, usage frequency, demographics where relevant, and HCI signals.
-
-The section must feel human, concise, and evidence-led.
-It should not primarily talk about AI, scores, dimensions, percentiles, or benchmark mechanics.
-It should translate response-based behavioural evidence into a cautious reflection on human capabilities.
-
-Return exactly these fields:
-- capabilities_developing
-- worth_protecting
-- worth_watching
-- human_capital_priorities
-- human_capital_closing
-
-Output requirements:
-1. capabilities_developing
-   - Exactly 3 items.
-   - Each item has:
-     - title
-     - body
-   - Title: a plain human capability, 2-6 words.
-   - Body: 40-60 words.
-   - Explain why this capability appears relevant or actively exercised within the current response pattern, what behavioural evidence supports that reflection, and why it matters. Do not claim proven development.
-   - Do not call these "strengths".
-
-2. worth_protecting
-   - Exactly 3 items.
-   - Each item has:
-     - title
-     - body
-   - Title: a plain human capability, 2-6 words.
-   - Body: 40-60 words.
-   - Identify capabilities that appear central to how this participant currently reports working with AI and may be useful to keep visible in later comparisons. Do not imply objective preservation or risk of loss.
-   - These are not necessarily the highest scores.
-
-3. worth_watching
-   - Exactly 3 items.
-   - Each item has:
-     - title
-     - body
-   - Title: a plain human capability, 2-6 words.
-   - Body: 40-60 words.
-   - Identify capabilities that may be useful to compare again over time.
-   - These are not weaknesses, risks, warnings, or problems to solve.
-   - Explain why they are worth watching without creating anxiety.
-
-4. human_capital_priorities
-   - Exactly 3 items.
-   - Each item has:
-     - title
-     - body
-   - Title: short, concrete, human, 2-5 words.
-   - Body: approximately 30 words.
-   - These are the three capability themes that best summarise the reflection supported by this participant's responses today.
-   - They should be memorable and suitable for a visually prominent summary block.
-
-5. human_capital_closing
-   - 80-120 words.
-   - Use this intent:
-     A single assessment cannot establish that a capability is developing or declining. It can provide a starting point for reflecting on which capabilities appear relevant to the participant's current response pattern. A later measurement may show whether that pattern looks similar or different, without treating either result as a judgement of competence or worth.
-   - Tailor lightly to the participant's profile without giving advice.
-
-Writing rules:
-- Translate reported behaviour into a cautious capability reflection.
-- Use plain human language.
-- Stay directly traceable to evidence elsewhere in the report.
-- Use cautious language: "appears", "suggests", "currently", "may", "seems".
-- Avoid inflated or aspirational claims.
-- Do not invent qualities unsupported by the participant's data.
-- Do not mention percentiles.
-- Do not mention dimension names.
-- Do not mention raw scores.
-- Do not use benchmark jargon.
-- Do not repeat the Behaviour Story.
-- Do not give behavioural advice.
-- Do not predict future outcomes.
-- Do not judge behaviour.
-- Do not use "you should", "try", "consider", or coaching language.
-- Do not introduce Looking Forward content, observation cards, reflection questions, strengths/shadows, or recommendations.
-
-The participant should finish this section thinking:
-"I now have a thoughtful, evidence-based reflection on the human capabilities connected with my reported AI-use pattern."
-
-Use only this context:
-{compact_context(context, max_chars=30000)}
-"""
-
-    capability_item_schema = {
-        "type": "object",
-        "properties": {
-            "title": {
-                "type": "string",
-                "description": "Plain human capability title."
-            },
-            "body": {
-                "type": "string",
-                "description": "Evidence-led translation of the capability."
-            },
-        },
-        "required": ["title", "body"],
-        "additionalProperties": False,
-    }
-
-    schema = {
-        "capabilities_developing": {
-            "type": "array",
-            "description": "Exactly 3 capability themes currently relevant or exercised within the response pattern. The field name is retained for renderer compatibility, but the prose must not claim proven development. No dimensions, scores, percentiles, advice, or benchmark jargon.",
-            "minItems": 3,
-            "maxItems": 3,
-            "items": capability_item_schema,
-        },
-        "worth_protecting": {
-            "type": "array",
-            "description": "Exactly 3 capability themes that appear important within the current response pattern and may be useful to keep visible in later comparison. Do not claim preservation or risk. No dimensions, scores, percentiles, advice, or benchmark jargon.",
-            "minItems": 3,
-            "maxItems": 3,
-            "items": capability_item_schema,
-        },
-        "worth_watching": {
-            "type": "array",
-            "description": "Exactly 3 capability themes that may be useful to compare at a later measurement. Not risks, warnings, weaknesses, predictions, or advice.",
-            "minItems": 3,
-            "maxItems": 3,
-            "items": capability_item_schema,
-        },
-        "human_capital_priorities": {
-            "type": "array",
-            "description": "Exactly 3 concise Human Capital priorities with short bodies suitable for a visually prominent summary block.",
-            "minItems": 3,
-            "maxItems": 3,
-            "items": capability_item_schema,
-        },
-        "human_capital_closing": {
-            "type": "string",
-            "description": "80-120 word closing paragraph. Reflective, human, non-prescriptive, no predictions or advice.",
-        },
-    }
-
-    blocks = call_claude_structured(api_key, prompt, schema)
-    if isinstance(blocks, dict) and "human_capital_closing" in blocks and "closing" not in blocks:
-        blocks["closing"] = blocks.get("human_capital_closing")
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] human_capital_narrative completed in {elapsed:.1f}s")
-    return {"human_capital": blocks}
-
-
-
-# ---------------------------------------------------------------------
-# Call 5: Final Deep Dive
-# ---------------------------------------------------------------------
-
-def generate_deep_dive_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, str]:
-    print(f"[CLAUDE] Starting deep_dive_narrative...")
-    start = time.time()
-    
-    context = build_context_for_claude_section(report_data, "deep_dive")
-
-    prompt = f"""
-Write the HCI report section titled "Dimension Deep Dives".
-
-{REPORT_CLAIM_GUARDRAILS}
-
-This section exists to help the participant understand each behavioural dimension in greater depth.
-Its purpose is exploration, not overall interpretation.
-Assume the participant has already read the earlier sections of the report.
-Do not re-establish the overall story of the profile.
-Your job is to help them explore each HCI behavioural dimension with more nuance and context than earlier sections provided.
-
-Write a reference-style explanation of the participant's HCI dimensions.
-For each dimension included in the context, stay focused on that dimension only.
-
-Each dimension entry should naturally answer exactly four questions:
-1. What does this dimension measure?
-2. Where does the participant sit?
-3. What does this typically look like behaviourally?
-4. Why does understanding this dimension matter?
-
-Structure:
-- Use the dimension name as a plain heading.
-- Do not prefix dimension headings with #, ##, ###, bold markers, or any Markdown syntax.
-- Do not insert horizontal separators such as --- between dimension entries.
-- Under each heading, write 3-4 concise paragraphs.
-- Keep each dimension entry clear, educational, and scannable.
-- The full section should feel like a high-quality reference manual for the participant's behavioural dimensions, not another Behaviour Story.
-- Do not make every entry dramatic or memorable. Make it reliable, precise, useful, and easy to understand.
-
-Content rules:
-- Use the participant's response-based benchmark position as context.
-- Use HCI research and signals only where they help explain the dimension more deeply.
-- Include behavioural examples where useful.
-- Explain what higher, lower, or benchmark-range positioning may look like within the HCI participant benchmark, without implying direct observation of the participant's behaviour.
-- Increase understanding of the construct rather than repeating basic definitions from earlier sections.
-- Stay focused on one dimension at a time.
-- Briefly mention the wider profile only if absolutely necessary for context.
-
-Do not:
-- Re-explain the participant's Behaviour Story.
-- Summarise the overall profile.
-- Explain how multiple dimensions interact.
-- Repeat conclusions already established earlier in the report.
-- Introduce Human Capital, human capability, worth protecting, strengths/shadows, future trajectory, monitoring, advice, behavioural recommendations, or reflection questions.
-- Use future language such as "over time", "as AI develops", "watch for", "this may become", or "long term".
-- Use coaching language such as "consider", "try", "you should", or "it may help".
-- Use Markdown formatting, bold markers, bullet lists, numbered lists, or horizontal rules such as ---.
-- Diagnose, prescribe, alarm, or exaggerate uniqueness.
-
-End each dimension entry with one short concluding paragraph explaining why that dimension is useful to understand as one part of the participant's relationship with AI.
-The ending should be consistent in purpose across dimensions, but not identical in wording.
-A suitable style is: "This dimension provides one perspective on your relationship with AI. Like every HCI dimension, it is most meaningful when interpreted alongside the rest of your benchmark profile."
-
-Tone:
-- exploratory
-- educational
-- research-grounded
-- direct to "you"
-- plain English
-- professional
-- not dramatic
-- not self-help
-- not prescriptive
-
-Use only this context:
-{compact_context(context, max_chars=32000)}
-"""
-
-    schema = {
-        "deep_dive": {
-            "type": "string",
-            "description": "Dimension Deep Dives section. Reference-style explanations for the HCI dimensions in the context. Each dimension should use a plain heading and answer what it measures, where the participant sits, what it typically looks like, and why understanding it matters. Exploration only; no overall profile synthesis, no advice, no future trajectory, no Human Capital framing."
-        },
-    }
-
-    blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] deep_dive_narrative completed in {elapsed:.1f}s")
-    return blocks
-
-
-
 def clean_narrative_text(text: str) -> str:
-    """
-    Final safety cleanup for model output.
-
-    Removes raw variable-code labels if Claude accidentally includes them.
-    It does not remove question text or substantive content.
-    """
+    """Remove accidental internal IDs and light Markdown from model output."""
     if not text:
         return text
 
-    import re
-
-    # Remove markdown labels like **1. del_q3 — "...":
     text = re.sub(
-        r'(\*\*\s*\d+\.\s+)([a-z]+_q\d+\s*[—-]\s*)',
-        r'\1',
+        r"\b(?:rel|trust|ver|del|agency|emot|disc|thought|soc)_q\d+\b",
+        "",
         text,
         flags=re.IGNORECASE,
     )
-
-    # Remove standalone variable-code prefixes at line starts.
-    text = re.sub(
-        r'(?m)^(\s*(?:\*\*)?\d+\.\s+)([a-z]+_q\d+\s*[—-]\s*)',
-        r'\1',
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # Remove bracketed placeholder failure text.
-    text = re.sub(
-        r'\n?\s*\*\*?\s*\d+\.\s*\[Seventh distinctive response[^\]]*\].*?(?=\n\s*\*\*?\s*\d+\.|\Z)',
-        '',
-        text,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"(?m)^#{1,6}\s*", "", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
-# ---------------------------------------------------------------------
-# Call 6: Closing Reflection
-# ---------------------------------------------------------------------
-
-def build_closing_reflection_context(report_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Build compact whole-report context for the final Closing Reflection.
-
-    This intentionally uses the completed report_data and narrative_blocks rather
-    than asking Claude to generate new evidence. The final section should distil
-    the report into one enduring question and a hopeful conclusion.
-    """
-    narrative_blocks = report_data.get("narrative_blocks") or {}
-    synthesis_inputs = report_data.get("synthesis_inputs") or {}
-
-    return {
-        "section_purpose": (
-            "Distil the completed HCI report into one enduring question and one "
-            "calm, hopeful closing reflection. This is reflection, not advice."
-        ),
-        "profile": {
-            "session_id": report_data.get("session_id"),
-            "demographics": report_data.get("demographics", {}),
-            "usage_frequency": (report_data.get("demographics") or {}).get("ai_tool_use_frequency")
-                or (report_data.get("demographics") or {}).get("frequency"),
-        },
-        "benchmark_overview": {
-            "top_dimensions": synthesis_inputs.get("top_dimensions", []),
-            "lowest_dimensions": synthesis_inputs.get("lowest_dimensions", []),
-            "most_distinctive_variable": synthesis_inputs.get("most_distinctive_variable"),
-            "largest_perception_gap": synthesis_inputs.get("largest_perception_gap"),
-            "top_rare_combination": synthesis_inputs.get("top_rare_combination"),
-        },
-        "profile_shape": report_data.get("typicality", {}),
-        "rare_combinations": report_data.get("rare_combinations", []),
-        "distinctive_responses": (report_data.get("distinctive_responses") or [])[:7],
-        "perception_gap": report_data.get("perception_gap", {}),
-        "human_capital_inputs": report_data.get("human_capital", {}),
-        "trajectory_inputs": report_data.get("if_nothing_changes", {}),
-        "looking_forward_inputs": report_data.get("looking_forward") or report_data.get("what_to_protect", []),
-        "completed_narrative_blocks": {
-            "opening_findings": narrative_blocks.get("opening_findings"),
-            "profile_shape_summary": narrative_blocks.get("profile_shape_summary"),
-            "rare_combinations_narrative": narrative_blocks.get("rare_combinations_narrative"),
-            "behaviour_story": narrative_blocks.get("behaviour_story"),
-            "distinctive_responses_narrative": narrative_blocks.get("distinctive_responses_narrative"),
-            "perception_gap_narrative": narrative_blocks.get("perception_gap_narrative"),
-            "human_capital": narrative_blocks.get("human_capital"),
-            "likely_to_continue": narrative_blocks.get("likely_to_continue"),
-            "overall_outlook": narrative_blocks.get("overall_outlook"),
-            "deep_dive": narrative_blocks.get("deep_dive"),
-        },
-        "writing_rules": [
-            "Do not introduce new evidence.",
-            "Do not give advice or recommendations.",
-            "Do not predict outcomes.",
-            "The personalised question must be answerable only over time, not today.",
-            "End with the participant's ongoing measurement journey, not with promotion.",
-        ],
-    }
+def compact_context(context: Any, max_chars: int) -> str:
+    """Serialise compact context and fail rather than silently truncating it."""
+    text = json.dumps(context, ensure_ascii=False, indent=2, default=str)
+    if len(text) > max_chars:
+        raise ValueError(
+            f"Narrative context is {len(text)} characters; maximum is {max_chars}"
+        )
+    return text
 
 
-def generate_closing_reflection_narrative(report_data: Dict[str, Any], api_key: str) -> Dict[str, Any]:
-    print(f"[CLAUDE] Starting closing_reflection_narrative...")
-    start = time.time()
-    
-    context = build_context_for_claude_section(report_data, "closing_reflection")
-
-    prompt = f"""
-Write HCI report Section 12: "Closing Reflection".
-
-{REPORT_CLAIM_GUARDRAILS}
-
-Primary job:
-Reflection and inspiration. This section concludes the participant's journey. It should not introduce new evidence, recommendations, coaching, predictions, or action steps. It should help the participant step back from the benchmark and consider the broader meaning of their relationship with AI.
-
-Core question for this section:
-Why is continuing to understand my relationship with AI worthwhile?
-
-Distil the participant's entire benchmark profile into one meaningful question and one thoughtful conclusion. The participant should finish feeling understood, curious, hopeful, and motivated to continue observing their relationship with AI over time.
-
-Return exactly one object under these fields:
-- one_question
-- why_this_question_matters
-- what_will_be_interesting_next_time
-- closing_reflection
-
-Output requirements:
-
-1. one_question
-- Exactly one question.
-- Approximately 15-30 words.
-- It must emerge naturally from the complete benchmark profile.
-- It should summarise the deepest tension, opportunity, or curiosity revealed by the report.
-- It should feel personal, memorable, emotionally resonant, evidence-based, and unresolved.
-- It must not be answerable today; it should become more meaningful as time passes.
-
-2. why_this_question_matters
-- 80-120 words.
-- Explain why this question fits this participant.
-- Connect it directly to the overall behavioural pattern already established in the report.
-- Explain why it is worth carrying forward.
-- Do not give advice, instructions, or motivation.
-
-3. what_will_be_interesting_next_time
-- 100-120 words.
-- Bridge today's benchmark with future measurement.
-- Explain that the value of returning is not simply comparing scores, but discovering how the participant's relationship with AI has evolved.
-- Include that behavioural change is usually gradual and that relationships with AI naturally evolve.
-- Include an explicit, gentle recommendation to return in around six months.
-- Include the carry-forward principle: this report does not ask the participant to carry forward another rule or recommendation; it asks them to carry forward one question. Over time, that question becomes a lens through which they may notice how their relationship with AI continues evolving.
-
-4. closing_reflection
-- 180-250 words.
-- Finish the report with perspective, not findings or recommendations.
-- Begin with a brief looking-back moment. Use this idea naturally: "You've now seen where your responses place you today, what makes the pattern distinctive, which human capabilities may be relevant to it, and what could be interesting to compare at a later measurement."
-- Then transition naturally to: one question remains.
-- Widen the lens beyond today's benchmark.
-- Reinforce human agency, curiosity, intentional AI use, and human flourishing.
-- Explain that AI will continue evolving, human relationships with AI will continue evolving, and there is no single correct way to use AI.
-- The value lies in remaining aware of how that relationship changes.
-- Mention Human Clarity Institute only if it feels natural and non-promotional. If mentioned, use this meaning: HCI exists to help people measure and understand reported patterns in how they relate to AI, and to reflect on the human capabilities connected with those patterns over time.
-- End with the participant, not the organisation. Do not include the report's final standalone sentence here; the renderer adds it after this paragraph.
-
-Profile-dependent reassurance rule:
-- If the participant's responses support strong retained agency or clear authorship, the closing may acknowledge that as one reassuring feature of the current response pattern. Do not infer identity stability.
-- If the evidence does not support that, do not mention retained agency as reassurance. Never claim that the assessment establishes identity stability.
-
-Writing rules:
-- Be personal, calm, evidence-led, hopeful, and reflective.
-- Encourage curiosity, agency, and longitudinal measurement.
-- Do not introduce new evidence.
-- Do not summarise the whole report mechanically.
-- Do not give advice.
-- Do not predict outcomes.
-- Do not use fear, urgency, or coaching language.
-- Do not sound promotional.
-- Do not repeat earlier sections.
-- Do not say "you should", "try", "make sure", or "the next step is".
-- Avoid generic motivational language.
-- Use direct plain English.
-
-The participant should finish thinking:
-"I understand my relationship with AI. I know what is worth paying attention to. I have one meaningful question to carry forward. I'm curious to discover how my relationship changes over time."
-
-Use only this completed-report context:
-{compact_context(context, max_chars=34000)}
-"""
-
-    schema = {
-        "one_question": {
-            "type": "string",
-            "description": "Exactly one personalised evidence-based question, 15-30 words, unresolved and meaningful over time.",
-        },
-        "why_this_question_matters": {
-            "type": "string",
-            "description": "80-120 words explaining why the question fits the participant's established benchmark profile. No advice or new evidence.",
-        },
-        "what_will_be_interesting_next_time": {
-            "type": "string",
-            "description": "100-120 words connecting the question to future measurement and a gentle return in around six months. No coaching or prediction.",
-        },
-        "closing_reflection": {
-            "type": "string",
-            "description": "180-250 word final reflection with looking-back transition, agency, curiosity, and HCI purpose if natural. Do not include the final standalone sentence; the renderer adds it.",
-        },
-    }
-
-    blocks = call_claude_structured(api_key, prompt, schema)
-    
-    elapsed = time.time() - start
-    print(f"[CLAUDE] closing_reflection_narrative completed in {elapsed:.1f}s")
-    return {"closing_reflection": blocks}
+def _clean_structured_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return clean_narrative_text(value.strip())
+    if isinstance(value, list):
+        return [_clean_structured_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _clean_structured_value(item)
+            for key, item in value.items()
+        }
+    return value
 
 
-
-# ---------------------------------------------------------------------
-# Anthropic structured-output wrapper
-# ---------------------------------------------------------------------
-
-def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict[str, str]]) -> Dict[str, str]:
-    """
-    Force Claude to return a tool_use block with structured fields.
-    This avoids freeform JSON parsing errors.
-    """
+def call_claude_structured(
+    api_key: str,
+    prompt: str,
+    properties: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Request a structured Anthropic tool-use response with bounded retries."""
     tool_schema = {
         "name": "write_hci_report_blocks",
         "description": "Return HCI report narrative blocks.",
@@ -1717,53 +744,116 @@ def call_claude_structured(api_key: str, prompt: str, properties: Dict[str, Dict
         "max_tokens": 5000,
         "temperature": 0.25,
         "tools": [tool_schema],
-        "tool_choice": {"type": "tool", "name": "write_hci_report_blocks"},
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
+        "tool_choice": {
+            "type": "tool",
+            "name": "write_hci_report_blocks",
+        },
+        "messages": [{"role": "user", "content": prompt}],
     }
 
-    print(f"[CLAUDE-API] Starting request: model={CLAUDE_MODEL}, properties={list(properties.keys())}")
-    start_time = time.time()
-
-    req = urllib.request.Request(
-        ANTHROPIC_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        method="POST",
+    print(
+        f"[CLAUDE-API] Starting request: model={CLAUDE_MODEL}, "
+        f"properties={list(properties.keys())}"
     )
 
-    try:
-        with urllib.request.urlopen(req, timeout=120) as response:
-            raw = json.loads(response.read().decode("utf-8"))
+    last_error: Exception | None = None
+    for attempt in range(1, MAX_REQUEST_ATTEMPTS + 1):
+        start_time = time.time()
+        request = urllib.request.Request(
+            ANTHROPIC_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            ) as response:
+                raw = json.loads(response.read().decode("utf-8"))
+                elapsed = time.time() - start_time
+                usage = raw.get("usage") or {}
+                print(
+                    f"[CLAUDE-API] Response received in {elapsed:.1f}s | "
+                    f"tokens: {usage.get('input_tokens', '?')}→"
+                    f"{usage.get('output_tokens', '?')}"
+                )
+                break
+        except urllib.error.HTTPError as exc:
             elapsed = time.time() - start_time
-            
-            tokens_in = raw.get("usage", {}).get("input_tokens", "?")
-            tokens_out = raw.get("usage", {}).get("output_tokens", "?")
-            print(f"[CLAUDE-API] Response received in {elapsed:.1f}s | tokens: {tokens_in}→{tokens_out}")
-    except urllib.error.HTTPError as e:
-        elapsed = time.time() - start_time
-        body = e.read().decode("utf-8", errors="replace")
-        print(f"[CLAUDE-API] FAILED after {elapsed:.1f}s | HTTP {e.code}: {body[:500]}")
-        raise RuntimeError(f"Anthropic HTTP {e.code}: {body[:500]}")
+            body = exc.read().decode("utf-8", errors="replace")
+            retryable = exc.code in {429, 500, 502, 503, 504}
+            print(
+                f"[CLAUDE-API] HTTP {exc.code} after {elapsed:.1f}s "
+                f"on attempt {attempt}: {body[:500]}"
+            )
+            last_error = RuntimeError(
+                f"Anthropic HTTP {exc.code}: {body[:500]}"
+            )
+            if not retryable or attempt >= MAX_REQUEST_ATTEMPTS:
+                raise last_error
+        except urllib.error.URLError as exc:
+            elapsed = time.time() - start_time
+            print(
+                f"[CLAUDE-API] Network failure after {elapsed:.1f}s "
+                f"on attempt {attempt}: {exc}"
+            )
+            last_error = RuntimeError(f"Anthropic network error: {exc}")
+            if attempt >= MAX_REQUEST_ATTEMPTS:
+                raise last_error
+
+        time.sleep(float(attempt))
+    else:
+        raise last_error or RuntimeError("Anthropic request failed")
 
     for block in raw.get("content", []):
         if isinstance(block, dict) and block.get("type") == "tool_use":
             data = block.get("input") or {}
-            cleaned = {}
-            for k in properties.keys():
-                value = data.get(k, "")
-                if isinstance(value, str):
-                    cleaned[k] = clean_narrative_text(value.strip())
-                else:
-                    cleaned[k] = value
-            return cleaned
+            return {
+                key: _clean_structured_value(data.get(key, ""))
+                for key in properties.keys()
+            }
 
-    raise RuntimeError(f"No tool_use block returned by Claude. Raw keys: {list(raw.keys())}")
+    raise RuntimeError(
+        f"No tool_use block returned by Claude. Raw keys: {list(raw.keys())}"
+    )
+
+
+def ordinal(value: Any) -> str:
+    try:
+        number = int(round(float(value)))
+    except Exception:
+        return "unavailable"
+    suffix = (
+        "th"
+        if 10 <= number % 100 <= 20
+        else {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+    )
+    return f"{number}{suffix}"
+
+
+def join_labels(values: List[str]) -> str:
+    values = [str(value) for value in values if value]
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    if len(values) == 2:
+        return f"{values[0]} and {values[1]}"
+    return ", ".join(values[:-1]) + f", and {values[-1]}"
+
+
+def display_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "this assessment date"
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return parsed.strftime("%-d %B %Y")
+    except Exception:
+        return text[:10] if "T" in text else text
