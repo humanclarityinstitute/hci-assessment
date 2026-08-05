@@ -1,6 +1,10 @@
 # Benchmark Context Data for Report Generator
 ## Source: HCI_benchmark_findings.md (extracted & structured)
-## Purpose: Serve as reference layer for API calls
+## Purpose: Serve as participant-facing research context for API calls
+##
+## This file is passed into Claude through narrative_context_builder.py.
+## Keep exact supported findings strong, but do not convert group differences
+## into causation, diagnosis, fixed traits, individual change or better outcomes.
 
 from question_metadata import QUESTION_MAP
 
@@ -26,7 +30,7 @@ FREQUENCY_GRADIENTS = {
         'everyday': 4.57,
         'range': 3.25,
         'note': 'STRONGEST frequency effect of all dimensions',
-        'key_finding': 'People who use AI daily are dramatically more likely to have told AI things they never told another person'
+        'key_finding': 'Everyday users report substantially more personal disclosure to AI than never-users in this benchmark'
     },
     
     'reliance': {
@@ -36,7 +40,8 @@ FREQUENCY_GRADIENTS = {
         'often': 2.40,
         'everyday': 2.91,  # Note: HCI uses 4.4 in raw data; this is normalized
         'range': 1.66,
-        'note': 'Clear dose-response relationship'
+        'note': 'Strong frequency gradient; this is an association, not evidence that frequency causes reliance',
+        'scale_note': 'These are normalized values. Do not combine the everyday value of 2.91 with the separate raw-data figure of 4.4.'
     },
     
     'emotional_regulation': {
@@ -47,7 +52,8 @@ FREQUENCY_GRADIENTS = {
         'everyday': 5.23,
         'range': 1.84,
         'note': 'Variable "AI for emotional relief" shows largest single-variable effect: 2.46 range',
-        'gender_note': 'Women 3.14, Men 3.01'
+        'gender_note': 'Women 3.14, Men 3.01',
+        'data_quality_note': 'The stored range of 1.84 does not match the listed endpoints 1.61 and 5.23. Do not quote the range until the source calculation is reconciled.'
     },
     
     'thought_partnership': {
@@ -67,8 +73,8 @@ FREQUENCY_GRADIENTS = {
         'often': 4.36,
         'everyday': 4.49,
         'range': 0.38,
-        'note': 'UNIQUE: Essentially flat across frequency. Age is stronger predictor.',
-        'key_finding': 'Verification is a stable individual characteristic, not a habit that develops with use'
+        'note': 'Essentially flat across frequency. Age-group differences are stronger in the cited analysis.',
+        'key_finding': 'Verification varies little by usage frequency in this cross-sectional benchmark; this does not establish a fixed individual characteristic'
     },
     
     'social_transparency': {
@@ -78,7 +84,7 @@ FREQUENCY_GRADIENTS = {
         'often': 3.60,
         'everyday': 3.95,
         'range': 1.43,
-        'note': 'Weak frequency effect. Age is much stronger predictor.'
+        'note': 'Weak frequency association. Age-group differences are larger in the cited analysis.'
     },
     
     'decision_delegation': {
@@ -88,7 +94,7 @@ FREQUENCY_GRADIENTS = {
         'often': 3.45,
         'everyday': 3.80,
         'range': 1.40,
-        'key_finding': '26% report reduced oversight over time — drift mechanism'
+        'key_finding': '26% report reduced oversight over time in a retrospective self-report item'
     },
     
     'human_agency': {
@@ -99,7 +105,7 @@ FREQUENCY_GRADIENTS = {
         'everyday': 4.58,
         'range': 0.40,
         'note': 'Minimal frequency effect. Everyday users slightly HIGHER agency.',
-        'key_finding': 'Heavy AI users do not feel less in control; if anything, intentional integration suggests higher agency'
+        'key_finding': 'At group level, everyday users report slightly higher agency than some less frequent groups; this does not establish why'
     }
 }
 
@@ -123,7 +129,7 @@ AGE_COHORT_PATTERNS = {
         'pressure_points': [
             'Verification fatigue highest',
             'Identity questions (is this genuinely mine?)',
-            'Social norm pressure to hide use'
+            'Highest concealment; social or professional context may be relevant'
         ]
     },
     
@@ -140,13 +146,13 @@ AGE_COHORT_PATTERNS = {
             'Highest emotional engagement with AI'
         ],
         'pressure_points': [
-            'Peak cognitive demand + highest AI reliance = decision authorship questions',
-            'Most likely to struggle with: is this my decision or AI-suggested?'
+            'High AI reliance and decision-authorship questions appear together in this cohort',
+            'Most likely to report questions about whether an AI-assisted decision feels fully their own'
         ]
     },
     
     '35-44': {
-        'description': 'Values-Clear Mid-Career Adults (RESILIENCE COHORT)',
+        'description': 'Values-Clear Mid-Career Adults',
         'values_clarity': 'HIGHEST',
         'verification_diligence': 5.00,
         'control_over_ai_use': 'STRONGEST',
@@ -160,7 +166,7 @@ AGE_COHORT_PATTERNS = {
             'Fastest attention recovery',
             'Lowest saturation'
         ],
-        'capacity': 'MOST CAPABLE of current conditions',
+        'capacity': 'Highest reported values clarity and control over AI use in the cited cohort comparison',
         'pressure_points': [
             'Highest surveillance anxiety',
             'Highest self-censorship due to privacy concerns'
@@ -180,10 +186,10 @@ AGE_COHORT_PATTERNS = {
             'Most AI integration',
             'Highest decision delegation'
         ],
-        'interpretation': 'Furthest along adaptation pathway. High career stakes + high AI integration = most benefit AND most exposure',
+        'interpretation': 'This cohort reports the deepest practical AI integration. The benchmark does not establish why the pattern developed or whether it produces greater benefit or exposure.',
         'pressure_points': [
-            'Lowest ability to function without AI in their domain',
-            'Most dependent on systems working'
+            'Lowest reported confidence in functioning without AI in their domain',
+            'Highest reported reliance on AI systems remaining available'
         ]
     },
     
@@ -197,11 +203,11 @@ AGE_COHORT_PATTERNS = {
             'Highest verification diligence',
             'Most self-directed decision-making',
             'Most confident without AI',
-            'Strongest protective instincts',
+            'Highest reported caution about AI',
             'Highest AI skepticism'
         ],
-        'tension': 'Strong protective instincts aimed partially at wrong threats — less able to identify AI-generated content',
-        'strength': 'Best sustained attention, strongest self-trust'
+        'tension': 'High reported caution appears alongside the lowest confidence in identifying AI-generated content',
+        'strength': 'High reported self-trust and self-directed decision-making'
     },
     
     '65+': {
@@ -214,12 +220,12 @@ AGE_COHORT_PATTERNS = {
         'distinctive': [
             'Most socially transparent about AI use',
             'Highest self-direction',
-            'Strongest self-trust',
+            'Highest reported self-trust',
             'Lowest concealment',
             'Lowest agency pressure'
         ],
-        'strength': 'Best sustained attention, strongest sense of self, least socially pressured about AI use',
-        'note': 'Most honest about their use; least socially pressured to hide it'
+        'strength': 'High reported self-direction, social transparency and low concealment',
+        'note': 'Lowest reported concealment and highest reported openness about AI use; the cause is not established'
     }
 }
 
@@ -228,98 +234,98 @@ DISTINCTIVE_FLAGS = {
     
     'high_verification_high_frequency': {
         'rarity': 'Approximately 20% of everyday users',
-        'why_rare': 'Most everyday users show lower verification (frequency doesn\'t predict this)',
-        'meaning': 'Maintained epistemic care despite heavy use; intentional verification as value',
-        'research_insight': 'Less susceptible to AI steering; maintain higher skepticism'
+        'why_rare': 'Verification does not increase consistently with frequency, making this combination less common',
+        'meaning': 'Frequent use alongside consistently high reported verification',
+        'research_insight': 'Shows that frequent use can coexist with high checking and continued scepticism; reduced steering is not established'
     },
     
     'low_reliance_high_frequency': {
         'rarity': 'Approximately 15% of frequent users',
         'why_rare': 'Most frequent users show higher reliance',
-        'meaning': 'Tool-like use rather than integration; maintained independence',
-        'research_insight': 'Lower drift; clearer decision authority'
+        'meaning': 'May reflect more instrumental, task-specific or bounded AI use',
+        'research_insight': 'Shows that frequency and reliance are related but not interchangeable'
     },
     
     'high_emotional_engagement_low_frequency': {
         'rarity': 'Unusual pattern',
         'why_rare': 'Emotional engagement tracks frequency strongly',
-        'meaning': 'When they do use AI, it\'s emotionally significant; possible loneliness signal',
-        'research_insight': 'See dose-response: loneliness (1.49) → emotional support from AI (3.15)'
+        'meaning': 'When AI is used, emotional engagement is comparatively prominent within the reported pattern',
+        'research_insight': 'Higher emotional-support scores also appear across the cited loneliness groups, but this combination does not establish loneliness for an individual'
     },
     
     'low_disclosure_high_frequency': {
         'rarity': 'Unusual pattern',
         'why_rare': 'Disclosure shows STRONGEST frequency effect (3.25 range)',
-        'meaning': 'Maintains privacy boundaries even with heavy use; intentional compartmentalization',
-        'research_insight': 'Unusual to use AI extensively without deepening disclosure'
+        'meaning': 'Frequent use alongside comparatively low personal disclosure',
+        'research_insight': 'Shows that frequent use can coexist with stronger reported privacy boundaries'
     },
     
     'high_agency_high_reliance': {
         'rarity': 'Fewer than 5% of participants',
-        'why_rare': 'High reliance typically co-occurs with some loss of agency',
-        'meaning': 'Intentional integration; deep use without losing sense of control',
-        'research_insight': 'One of the rare POSITIVE combinations; correlates with better outcomes'
+        'why_rare': 'High reliance more often appears alongside lower reported agency',
+        'meaning': 'Deep AI integration alongside a strong current sense of control and authorship',
+        'research_insight': 'Shows that reliance and agency are distinct; better outcomes are not established'
     },
     
     'low_emotional_engagement_high_frequency': {
         'rarity': 'Unusual pattern',
         'why_rare': 'Emotional engagement is the strongest frequency-effect dimension after disclosure',
-        'meaning': 'Instrumental relationship; not turning to AI emotionally despite heavy use',
-        'research_insight': 'May indicate clear boundaries around emotional expression'
+        'meaning': 'Frequent AI use alongside comparatively low reported emotional engagement',
+        'research_insight': 'May reflect current separation between practical or cognitive AI use and emotional use'
     }
 }
 
 KEY_FINDINGS_FOR_REPORTS = {
     'verification_paradox': {
-        'statement': 'Verification is one of the few dimensions where usage frequency predicts almost nothing',
-        'implication': 'It\'s a stable individual characteristic — some people check carefully from the start; others don\'t develop the habit regardless of exposure',
-        'report_language': 'Verification is not a habit that develops with experience; it\'s something people do (or don\'t) from the start.'
+        'statement': 'Verification is one of the few dimensions with very little variation across usage-frequency groups',
+        'implication': 'Verification is much less closely associated with frequency than most dimensions; the data does not establish a fixed trait',
+        'report_language': 'Verification is comparatively flat across AI-use frequencies in the HCI benchmark. Frequent use alone does not correspond with more checking in a simple way.'
     },
     
     'disclosure_strongest_effect': {
         'statement': 'Disclosure shows the strongest frequency effect of any dimension (range 3.25)',
-        'specifics': 'Many people who use AI daily have told it things they\'ve never told another person',
-        'implication': 'As AI use deepens, it naturally becomes a space for things that don\'t get said elsewhere',
-        'report_language': 'Among people who use AI as frequently as you do, disclosure patterns are remarkably consistent — the longer people use AI, the more it becomes a space for things that don\'t get said elsewhere.'
+        'specifics': 'Everyday users report substantially more personal disclosure to AI than never-users',
+        'implication': 'Personal disclosure is strongly associated with how frequently participants use AI',
+        'report_language': 'Disclosure is one of the clearest frequency-related patterns in the HCI benchmark: frequent users tend to report more personal sharing with AI.'
     },
     
     'age_paradox': {
-        'younger_overreliance': 'Younger people (18-34) show higher reliance despite being most digitally native',
-        'implication': 'Integration, not incompetence; AI entered their workflows earlier in career formation',
-        'older_verification': 'Older adults (55+) verify more consistently',
-        'implication': 'Habit of epistemic care, but may be aimed at partially wrong threats'
+        'younger_overreliance': 'Younger participants (18-34) report higher reliance alongside high AI familiarity',
+        'implication': 'The cohort difference shows that familiarity and reliance can coexist; the reason is not established',
+        'older_verification': 'Older adults (55+) report more consistent verification',
+        'implication': 'Older cohorts combine higher reported verification with lower confidence identifying some AI-generated material'
     },
     
     'concealment_gap': {
         'finding': 'Largest gap between actual and disclosed use is in 18-34 age group (gap=1.41 points)',
-        'implication': 'Young people most likely to hide their AI use despite being heaviest users',
-        'cause': 'Social norm pressure in professional/social environments where AI use is still being negotiated'
+        'implication': 'Younger participants report the largest gap between AI use and disclosed AI use',
+        'possible_context': 'Social or professional expectations may be relevant, but the benchmark does not establish the cause'
     },
     
     'emotional_engagement_expansion': {
         'finding': '87% believe only humans can meet emotional needs; 27% getting emotional support from AI',
-        'trajectory': 'This gap is growing; emotional engagement is strongest frequency effect in recent data',
-        'dose_response': 'Loneliness correlates directly with AI emotional support (1.49 → 3.15 on 7-point scale)',
+        'trajectory': 'The current data shows a strong frequency relationship and a clear tension between human and AI emotional support',
+        'dose_response': 'Emotional-support scores increase from 1.49 to 3.15 across the cited loneliness groups; causation is not established',
         'gender_note': 'Women slightly higher (3.14) than men (3.01)'
     },
     
     'agency_resilience': {
         'finding': 'Agency does NOT decline with more AI use; range is only 0.40 points',
         'slight_reversal': 'Everyday users (4.58) actually report slightly HIGHER agency than occasional users (4.18)',
-        'implication': 'Heavy users develop intentionality about their relationship to AI; not passive drift'
+        'implication': 'High AI-use frequency and strong reported agency can coexist; the benchmark does not establish why'
     },
     
     'thought_partnership_inevitability': {
         'finding': 'Thought partnership shows largest single-variable frequency effect (3.26 range)',
-        'implication': 'People who use AI frequently almost inevitably begin using it as a thinking partner',
-        'nature': 'A natural consequence of deep integration, not a conscious choice',
+        'implication': 'Frequent users are much more likely to report using AI as a thinking partner',
+        'nature': 'A strong frequency-related association; the benchmark does not establish inevitability or whether the pattern was consciously chosen',
         'distinction': 'Partnership (using AI to challenge thinking) vs. outsourcing (using AI to replace thinking) — this boundary is worth monitoring'
     },
     
     'universal_finding': {
-        'statement': 'Usage frequency is the single strongest predictor of AI behavior across all dimensions',
-        'nuance': 'Age and gender add nuance but rarely override frequency signal',
-        'implication': 'Personal intentionality matters more than demographics'
+        'statement': 'Usage frequency is one of the strongest organising variables across the HCI benchmark dimensions',
+        'nuance': 'Age and gender add context, while the strength of the frequency relationship differs by dimension',
+        'implication': 'Frequency is highly informative but does not determine an individual participant’s behaviour'
     }
 }
 
@@ -328,10 +334,10 @@ COHORT_NARRATIVES = {
     
     '18-24': {
         'label': 'Daily AI Workers & Young Professionals',
-        'pattern': 'Most digitally native but most pressured',
-        'paradox': 'Heaviest users; highest concealment. Highest capability and highest cost simultaneously.',
-        'observation': 'This generation is simultaneously most capable with AI and most burdened by its expectations. Young adults carry the highest cognitive and emotional costs of the current AI transition.',
-        'pressure_points': 'Verification fatigue, identity questions, social norm pressure to hide use despite being the heaviest users',
+        'pattern': 'Highest AI engagement alongside some of the highest reported pressure',
+        'paradox': 'Heaviest reported use appears alongside the highest concealment and substantial reported cognitive and emotional pressure.',
+        'observation': 'Within HCI samples, this cohort combines extensive AI engagement with some of the highest reported cognitive, emotional and social pressure.',
+        'pressure_points': 'Verification fatigue, authorship questions and high concealment despite heavy use; the cause of concealment is not established',
         'use_in_report': 'Section 5, 7, 10 — when explaining their cohort context'
     },
     
@@ -339,44 +345,44 @@ COHORT_NARRATIVES = {
         'label': 'Peak-Career Integrators',
         'pattern': 'Highest inner conflict about AI influence',
         'paradox': 'Stable work identity but highest questions about decision authorship',
-        'observation': 'Career peak cognitive demand driving highest AI uptake as decision support. Most likely to struggle with: is this decision genuinely mine?',
-        'pressure_points': 'Identity authorship questions, especially as AI enters high-stakes professional decisions',
+        'observation': 'This cohort reports high AI uptake alongside the strongest questions about decision authorship. Career demand is a possible context, not an established cause.',
+        'pressure_points': 'Questions about authorship, especially where AI is involved in consequential professional decisions',
         'use_in_report': 'Section 5, 8 — when explaining agency/decision delegation patterns'
     },
     
     '35-44': {
-        'label': 'Values-Clear Mid-Career Adults — RESILIENCE COHORT',
-        'pattern': 'Most capable of current conditions',
-        'strength': 'Highest values clarity, strongest work identity, most control over AI use',
-        'observation': 'Not immune to pressure but best positioned to navigate it. Research shows this cohort retains clearest alignment between values and action.',
-        'distinctive': 'Highest verification diligence paired with intentional use — they\'ve chosen verification as a value',
+        'label': 'Values-Clear Mid-Career Adults',
+        'pattern': 'Highest reported values clarity and control over AI use',
+        'strength': 'Highest reported values clarity, work identity and control over AI use',
+        'observation': 'This cohort reports the clearest alignment between values, work identity and current AI-use boundaries in the cited comparison.',
+        'distinctive': 'Highest reported verification diligence alongside strong reported control over AI use',
         'use_in_report': 'Section 1, 5 — as anchor for resilience narrative'
     },
     
     '45-54': {
         'label': 'Peak-Career Integrators',
-        'pattern': 'Furthest along adaptation pathway',
-        'depth': 'Most AI integration paired with highest career stakes',
-        'observation': 'Most benefit and most exposure simultaneously. This cohort has committed to AI integration as a functioning necessity in their domain.',
-        'distinctive': 'Highest reliance is a practical choice reflecting career demands, not drift',
+        'pattern': 'Deepest reported practical AI integration',
+        'depth': 'Highest reported AI integration and decision delegation in the cited cohort comparison',
+        'observation': 'This cohort reports especially deep AI integration in work and decisions. Necessity, benefit and exposure are not established by the benchmark.',
+        'distinctive': 'High reliance appears alongside extensive work and decision use; the reason for that pattern is not established',
         'use_in_report': 'Section 4, 5 — when explaining rare combinations of reliance + agency'
     },
     
     '55-64': {
         'label': 'Digitally Wary Older Adults',
-        'pattern': 'Strong protective instincts aimed partially at wrong threats',
-        'strength': 'Genuine wisdom about maintaining human function; best sustained attention',
-        'limitation': 'Environment has changed in ways their existing defenses don\'t fully address; lower AI detection confidence',
-        'observation': 'Good judgment but incomplete information. Their caution is real and valuable, but calibrated toward risks that no longer apply.',
+        'pattern': 'High reported caution alongside low AI-detection confidence',
+        'strength': 'High reported verification, self-direction and confidence without AI',
+        'limitation': 'Lowest reported confidence identifying AI-generated material in the cited cohort comparison',
+        'observation': 'This cohort combines high reported caution and personal oversight with lower confidence identifying some AI-generated material.',
         'use_in_report': 'Section 9 — when framing "what to protect" for this age group'
     },
     
     '65+': {
         'label': 'Digitally Wary Older Adults',
-        'pattern': 'Most transparent, least socially pressured',
-        'strength': 'Strongest sense of self and personal authority; most honest about their use',
-        'advantage': 'Least socially pressured by norms around AI use — can be authentically themselves',
-        'observation': 'Best sustained attention, strongest sense of self. This group maintains clearest sense of identity and personal authority.',
+        'pattern': 'Highest reported transparency and lowest concealment',
+        'strength': 'High reported self-direction, self-trust and openness about AI use',
+        'advantage': 'Lowest reported concealment in the cited cohort comparison; the reason is not established',
+        'observation': 'This cohort reports comparatively strong self-direction, self-trust and social transparency. The 65+ agency comparison uses a small sample and should be treated cautiously.',
         'use_in_report': 'Section 11 — when discussing boundaries and intentional choices'
     }
 }
@@ -385,15 +391,15 @@ PRESSURE_POINTS = {
     # By dimension: where the research shows drift/pressure occurs
     
     'reliance': [
-        'Cognitive tasks feel harder without AI',
-        'Struggling to function independently',
-        'Loss of confidence in own abilities'
+        'Tasks feeling harder without AI, where directly reported',
+        'Confidence completing particular tasks without AI',
+        'Changes in self-reported confidence without AI'
     ],
     
     'trust': [
-        'Over-acceptance of outputs',
-        'Reduced verification burden but increased risk',
-        'Confidence outpacing accuracy'
+        'High confidence paired with limited independent checking',
+        'How trust relates to verification across different task types',
+        'Whether confidence differs by task importance or familiarity'
     ],
     
     'verification': [
@@ -403,45 +409,45 @@ PRESSURE_POINTS = {
     ],
     
     'decision_delegation': [
-        'Loss of personal oversight',
-        'Skill decline in areas delegated',
-        'Habitual acceptance without thinking',
-        'Reduced decision-making capacity'
+        'Reduced personal oversight, where directly reported',
+        'How often delegated tasks are also completed independently',
+        'Frequency of independent reconsideration before acting',
+        'Clarity about who makes and owns the final decision'
     ],
     
     'human_agency': [
-        'Process-level drift (59% feel subtly steered)',
+        'Feeling subtly steered (59% report this in relevant HCI research)',
         'Attention fragmentation (65% experience it)',
-        'Convenience overrides intentional choice',
-        'Values-action gap widens'
+        'Convenience influencing choices or how options are framed',
+        'Reported gaps between values and follow-through'
     ],
     
     'emotional_regulation': [
-        'Emotional substitution (boundary between supplement and replacement blurs)',
-        'Reduced human connection',
-        'Boundary erosion over time',
-        'Dependency formation'
+        'The role AI plays alongside human emotional support',
+        'How AI support relates to reported human support',
+        'Clarity of emotional boundaries at later measurement',
+        'Reliance on AI availability for emotional support, where directly reported'
     ],
     
     'disclosure': [
-        'Privacy erosion',
-        'Normalization of sharing',
+        'Clarity of privacy boundaries',
+        'Extent and context of personal sharing',
         'Data accumulation concerns',
-        'Loss of privacy sense'
+        'Awareness of what information has accumulated across AI interactions'
     ],
     
     'thought_partnership': [
-        'Outsourced thinking (34-38% question authorship)',
-        'Loss of independent reasoning',
-        'Dependency on AI framing',
-        'Authenticity questions'
+        'Authorship questions (34–38% report these in related HCI research)',
+        'Whether an independent view is formed before AI involvement',
+        'How strongly AI framing shapes the options considered',
+        'Whether AI-assisted conclusions feel fully the participant’s own'
     ],
     
     'social_transparency': [
-        'Concealment burden (especially 18-34)',
-        'Double-life dynamics',
-        'Social norm pressure',
-        'Isolation from honest conversation'
+        'Concealment of AI use, especially among participants aged 18–34',
+        'Differences between private AI use and public disclosure',
+        'Perceived social or professional expectations',
+        'Comfort discussing AI use honestly in different contexts'
     ]
 }
 
