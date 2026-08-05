@@ -1,1125 +1,588 @@
 """
 narrative_context_builder.py
 
-Clean replacement for the old signal_selection.py.
+HCI premium report V2 narrative-context builder.
 
 Purpose
 -------
-This file does NOT write report prose.
-It prepares HCI-grounded context for Claude sections.
+This file does not calculate participant results and does not write report prose.
+It converts the deterministic ``hci_report_data_v2`` object into two compact,
+auditable context packages for Claude:
 
-It combines:
-- report_data
-- hci_signals_library.py
-- human_reference_layer.py
-- benchmark_context_data.py
-- distinctiveness/routing logic from deleted signal_selection.py
+1. profile synthesis;
+2. baseline and return question.
 
-Claude receives this as grounding. The renderer remains deterministic.
+The builder deliberately excludes broad research-library dumps, trajectory
+material, generic cohort narratives and unrelated Human Reference Layer content.
+Claude receives only the evidence needed for the locked V2 report sections.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 from copy import deepcopy
-
-try:
-    # Participant-facing narrative context must use the restrained source layer.
-    # Fail closed to empty context rather than reverting to the internal synthesis.
-    from hci_signals_library import REPORT_SAFE_SIGNALS as SIGNALS
-except Exception:
-    SIGNALS = {"dimensions": {}, "trends": {}, "combinations": {}, "human_reference": {}}
-
-try:
-    import human_reference_layer as HRL
-except Exception:
-    HRL = None
-
-try:
-    from benchmark_context_data import (
-        FREQUENCY_GRADIENTS,
-        AGE_COHORT_PATTERNS,
-        DISTINCTIVE_FLAGS,
-        KEY_FINDINGS_FOR_REPORTS,
-        COHORT_NARRATIVES,
-    )
-except Exception:
-    FREQUENCY_GRADIENTS = {}
-    AGE_COHORT_PATTERNS = {}
-    DISTINCTIVE_FLAGS = {}
-    KEY_FINDINGS_FOR_REPORTS = {}
-    COHORT_NARRATIVES = {}
-
-try:
-    from report_templates import (
-        DIMENSION_LABELS,
-        DIMENSION_DEFINITIONS,
-        DIMENSION_ORDER,
-        percentile_position,
-        protect_position,
-    )
-except Exception:
-    DIMENSION_LABELS = {}
-    DIMENSION_DEFINITIONS = {}
-    DIMENSION_ORDER = []
-    def percentile_position(p): return "near the HCI benchmark centre"
-    def protect_position(p): return "in the middle"
+from typing import Any, Dict, List, Optional
 
 
-GLOBAL_EVIDENCE_BOUNDARY = {
+# ---------------------------------------------------------------------
+# Locked evidence and writing boundaries
+# ---------------------------------------------------------------------
+
+BENCHMARK_LABEL = "HCI participant benchmark"
+BENCHMARK_SCOPE = "10,000+ participant responses across 21 HCI studies"
+
+EVIDENCE_BOUNDARY = {
     "assessment_basis": (
-        "This assessment is based on the participant's self-reported responses "
-        "and comparison with the HCI participant benchmark."
+        "The report is based on the participant's self-reported responses and "
+        "their position within the HCI participant benchmark."
     ),
-    "permitted_claims": (
-        "State participant responses, benchmark positions, exact supported group "
-        "differences and cautiously worded possible interpretations."
+    "measured_finding_rule": (
+        "State participant responses, calculated percentiles, supported cohort "
+        "comparisons and approved rarity clearly and accurately."
     ),
-    "prohibited_inferences": (
-        "Do not infer diagnosis, personality type, causation, fixed traits, "
-        "objective capability, individual change over time, future outcomes, "
-        "dependency, impairment or better outcomes."
+    "interpretation_rule": (
+        "Interpret what the measured pattern may suggest, but do not present an "
+        "interpretation as an observed fact about the participant."
     ),
-    "comparison_scope": (
-        "Use HCI participant benchmark language. Do not describe the benchmark "
-        "as the general population or a population norm."
+    "prohibited_claims": [
+        "diagnosis or clinical classification",
+        "personality type or fixed identity",
+        "causation",
+        "hidden psychological mechanism",
+        "objective capability gain or loss",
+        "dependency as a diagnosed condition",
+        "future prediction",
+        "individual change over time from one assessment",
+        "general-population claims",
+    ],
+    "benchmark_language": (
+        "Use 'HCI participant benchmark'. Do not call it a population norm, "
+        "the general population, everyone or objective reality."
     ),
 }
 
-EVIDENCE_TYPE_DEFINITIONS = {
-    "participant_response": "A response or score derived from this participant's self-report.",
-    "benchmark_position": "The participant's position within the HCI participant benchmark.",
-    "observed_group_pattern": "A supported difference or recurring pattern observed across HCI participant groups.",
-    "possible_interpretation": "A cautious explanatory frame that is not established as cause or participant-specific fact.",
-}
+WRITING_PRINCIPLES = [
+    "Reveal more. Explain only what improves clarity.",
+    "State the measured finding strongly. Qualify the interpretation, not the evidence.",
+    "Describe a current response pattern, not a permanent identity.",
+    "Prefer direct, specific language over generic AI commentary.",
+    "Do not repeat the same finding across multiple outputs.",
+    "Do not add advice, prescriptions or behaviour-change instructions.",
+]
 
-DIMENSION_KEY_FINDING_MAP = {
-    "verification": "verification_paradox",
-    "disclosure": "disclosure_strongest_effect",
-    "emotional_regulation": "emotional_engagement_expansion",
-    "human_agency": "agency_resilience",
-    "thought_partnership": "thought_partnership_inevitability",
-    "social_transparency": "concealment_gap",
-}
-
-FREQUENCY_ALIASES = {
-    "daily": "everyday",
-    "every day": "everyday",
-    "every_day": "everyday",
-    "veryoften": "very often",
-    "very_often": "very often",
-    "very-often": "very often",
-    "occasionally": "sometimes",
-    "occasional": "sometimes",
+HUMAN_CAPITAL_ALLOWED_THEMES = {
+    "decision_authorship": "Decision authorship",
+    "critical_scepticism": "Critical scepticism",
+    "intellectual_openness": "Intellectual openness",
+    "independent_view_formation": "Independent view formation",
+    "privacy_boundaries": "Privacy boundaries",
+    "emotional_discernment": "Emotional discernment",
 }
 
 
 # ---------------------------------------------------------------------
-# Distinctiveness logic
+# Generic helpers
 # ---------------------------------------------------------------------
 
-def clean_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+def clean_int(value: Any, default: Optional[int] = None) -> Optional[int]:
     try:
         if value is None or value == "":
             return default
-        return float(value)
+        return int(round(float(value)))
     except Exception:
         return default
 
 
-def calculate_distinctiveness_from_percentile(percentile: Any) -> Dict[str, Any]:
-    """
-    Percentile-based distinctiveness used for report routing.
-
-    This is more reliable than raw score vs frequency expectation because the current
-    benchmark pipeline already calculates percentile positions.
-    """
-    p = clean_float(percentile, 50) or 50
-    distance = abs(p - 50)
-
-    if distance <= 15:
-        level = "expected"
-        significance = 0.3
-    elif distance <= 25:
-        level = "slightly_divergent"
-        significance = 0.6
-    elif distance <= 40:
-        level = "distinctive"
-        significance = 0.85
-    else:
-        level = "highly_distinctive"
-        significance = 1.0
-
-    direction = "above" if p > 50 else "below" if p < 50 else "at"
-
+def compact_dict(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
     return {
-        "percentile": int(round(p)),
-        "distance_from_centre": int(round(distance)),
-        "level": level,
-        "direction": direction,
-        "significance": significance,
-        "positioning_language": percentile_position(p),
+        key: item
+        for key, item in value.items()
+        if item not in (None, "", [], {})
     }
 
 
-def select_signal_layers(distinctiveness: Dict[str, Any]) -> Dict[str, Any]:
-    level = distinctiveness.get("level", "expected")
-
-    if level == "expected":
-        return {
-            "include_benchmark": True,
-            "include_master_synthesis": False,
-            "include_human_reference": False,
-            "depth": "light",
-            "emphasis_level": "brief",
-            "note": "This is close to the HCI benchmark centre.",
-        }
-
-    if level == "slightly_divergent":
-        return {
-            "include_benchmark": True,
-            "include_master_synthesis": True,
-            "include_human_reference": False,
-            "depth": "medium",
-            "emphasis_level": "standard",
-            "note": "This diverges somewhat from the HCI benchmark centre.",
-        }
-
-    return {
-        "include_benchmark": True,
-        "include_master_synthesis": True,
-        "include_human_reference": True,
-        "depth": "full",
-        "emphasis_level": "detailed",
-        "note": "This pattern is distinctive enough to receive full HCI interpretation.",
-    }
+def compact_list(values: Any) -> List[Any]:
+    if not isinstance(values, list):
+        return []
+    return [item for item in values if item not in (None, "", [], {})]
 
 
-# ---------------------------------------------------------------------
-# Asset selection
-# ---------------------------------------------------------------------
-
-
-def dimension_signal(dimension: str, percentile: Any) -> Dict[str, Any]:
-    """Select only participant-safe dimension fields and label their evidence type."""
-    signals = SIGNALS.get("dimensions", {}) if isinstance(SIGNALS, dict) else {}
-    source = signals.get(dimension) or signals.get(DIMENSION_LABELS.get(dimension, dimension)) or {}
-
-    if not isinstance(source, dict):
-        source = {}
-
-    try:
-        p = int(round(float(percentile)))
-    except Exception:
-        p = 50
-
-    if p >= 71:
-        selected = source.get("high")
-        band = "high"
-    elif p <= 40:
-        selected = source.get("low")
-        band = "low"
-    else:
-        selected = source.get("typical")
-        band = "typical"
-
-    selected = selected or source.get("series") or source.get("definition") or ""
-
-    observed_group_pattern = source.get("series")
-    return {
-        "definition": source.get("definition"),
-        "participant_position_band": band,
-        "selected": {
-            "evidence_type": "possible_interpretation",
-            "text": selected,
-        },
-        "observed_group_pattern": (
-            {
-                "evidence_type": "observed_group_pattern",
-                "text": observed_group_pattern,
-            }
-            if observed_group_pattern
-            else None
+def dimension_position(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Return only the fields Claude needs from one dimension result."""
+    if not isinstance(item, dict):
+        return {}
+    return compact_dict({
+        "key": item.get("key") or item.get("dimension"),
+        "label": item.get("label"),
+        "definition": item.get("definition"),
+        "overall_percentile": (
+            item.get("overall_percentile")
+            if item.get("overall_percentile") is not None
+            else item.get("percentile")
         ),
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-    }
-
-
-
-def combination_signal(d1: str, d2: str, item: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Resolve one participant-safe rare-combination signal without passing the full library."""
-    combos = SIGNALS.get("combinations", {}) if isinstance(SIGNALS, dict) else {}
-    item = item or {}
-
-    candidate_keys = []
-    for key in [
-        item.get("combination_id"),
-        item.get("research_key"),
-        item.get("signal_type"),
-        f"{d1}+{d2}",
-        f"{d2}+{d1}",
-        f"{d1}_{d2}",
-        f"{d2}_{d1}",
-    ]:
-        if key:
-            candidate_keys.append(str(key))
-
-    b1 = item.get("band_dim1")
-    b2 = item.get("band_dim2")
-    if b1 and b2:
-        candidate_keys.extend([
-            f"{b1}_{d1}_{b2}_{d2}",
-            f"{b2}_{d2}_{b1}_{d1}",
-        ])
-
-    source = None
-    for key in candidate_keys:
-        value = combos.get(key)
-        if value is not None:
-            source = value
-            break
-
-    if isinstance(source, dict):
-        return {
-            "rarity": source.get("rarity") or item.get("rarity_percent"),
-            "observed_group_pattern": {
-                "evidence_type": "observed_group_pattern",
-                "text": source.get("why_unusual"),
-            },
-            "possible_interpretation": {
-                "evidence_type": "possible_interpretation",
-                "text": source.get("what_it_reveals"),
-            },
-            "research_context": {
-                "evidence_type": "observed_group_pattern",
-                "text": source.get("research_signal"),
-            },
-            "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-        }
-
-    fallback = item.get("research_signal")
-    return {
-        "rarity": item.get("rarity_percent"),
-        "observed_group_pattern": None,
-        "possible_interpretation": (
-            {
-                "evidence_type": "possible_interpretation",
-                "text": str(fallback),
-            }
-            if fallback
-            else None
+        "frequency_percentile": (
+            item.get("frequency_percentile")
+            if item.get("frequency_percentile") is not None
+            else item.get("percentile_frequency")
         ),
-        "research_context": None,
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-    }
+        "age_percentile": (
+            item.get("age_percentile")
+            if item.get("age_percentile") is not None
+            else item.get("percentile_age_group")
+        ),
+        "position": item.get("position") or item.get("overall_position"),
+        "frequency_difference": item.get("frequency_difference"),
+        "distance_from_centre": item.get("distance_from_centre"),
+        "in_strongest_combination": item.get("in_strongest_combination"),
+        "supporting_evidence_count": item.get("supporting_evidence_count"),
+    })
 
 
-
-def human_reference_context(
-    dimension: str,
-    percentile: Any,
-    age_group: Any = None,
-) -> Dict[str, Any]:
-    """
-    Whitelist participant-safe HRL fields.
-
-    Human-reference content is possible interpretation, not participant-specific
-    evidence. Raw Values Signals, Reframe Library and Research Insights are not
-    passed through generically.
-    """
-    if HRL is None:
+def evidence_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Return an auditable question-level evidence object."""
+    if not isinstance(item, dict):
         return {}
+    return compact_dict({
+        "key": item.get("key"),
+        "dimension": item.get("dimension"),
+        "dimension_label": item.get("dimension_label"),
+        "question_text": item.get("question_text"),
+        "answer": item.get("answer"),
+        "answer_display": item.get("answer_display"),
+        "overall_percentile": item.get("percentile"),
+        "frequency_percentile": item.get("percentile_frequency"),
+        "age_percentile": item.get("percentile_age_group"),
+        "comparison_statement": item.get("comparison_statement"),
+        "is_reverse_scored": item.get("is_reverse_scored"),
+    })
 
-    context: Dict[str, Any] = {
-        "evidence_type": "possible_interpretation",
-        "dimension_context": {},
-        "cohort_context": {},
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-    }
 
-    framework = getattr(HRL, "HBE_FRAMEWORK", None)
-    if isinstance(framework, dict):
-        value = framework.get(dimension) or framework.get(DIMENSION_LABELS.get(dimension, dimension))
-        if isinstance(value, dict):
-            context["dimension_context"] = {
-                "general_human_context": value.get("hbe_baseline"),
-                "possible_ai_context": value.get("ai_pressure"),
-                "participant_safe_reframe": value.get("reframe"),
-            }
-            context["dimension_context"] = {
-                key: value
-                for key, value in context["dimension_context"].items()
-                if value is not None
-            }
+def combination_item(item: Any) -> Optional[Dict[str, Any]]:
+    """Return only supported combination fields."""
+    if not isinstance(item, dict):
+        return None
 
-    p = clean_float(percentile, 50) or 50
-    position = "high" if p >= 71 else "low" if p <= 40 else "moderate"
+    rarity_shareable = bool(item.get("rarity_shareable"))
+    return compact_dict({
+        "dimension_1": item.get("dimension_1"),
+        "dimension_2": item.get("dimension_2"),
+        "label_1": item.get("label_1"),
+        "label_2": item.get("label_2"),
+        "percentile_1": item.get("percentile_1"),
+        "percentile_2": item.get("percentile_2"),
+        "description": item.get("description"),
+        "mode": "supported_rarity" if rarity_shareable else "combination_without_public_rarity",
+        "rarity_percent": item.get("rarity_percent") if rarity_shareable else None,
+        "rarity_source": item.get("rarity_source") if rarity_shareable else None,
+        "sample_basis": item.get("sample_basis") if rarity_shareable else None,
+        "rarity_shareable": rarity_shareable,
+        "research_signal": item.get("research_signal"),
+    })
 
-    fn = getattr(HRL, "get_values_reframe", None)
-    if callable(fn):
-        try:
-            value = fn(dimension, position)
-            if value and "not available in library" not in str(value):
-                context["values_reframe"] = value
-        except Exception:
-            pass
 
-    cohorts = getattr(HRL, "HBE_COHORT_REFRAMES", None)
-    age = str(age_group or "").strip()
-    if isinstance(cohorts, dict) and age in cohorts and isinstance(cohorts[age], dict):
-        cohort = cohorts[age]
-        context["cohort_context"] = {
-            "observed_cohort_context": cohort.get("profile"),
-            "possible_context": cohort.get("pressure_point"),
-            "participant_safe_reframe": cohort.get("reframe"),
-        }
-        context["cohort_context"] = {
-            key: value
-            for key, value in context["cohort_context"].items()
-            if value is not None
-        }
-
-    if not context["dimension_context"] and not context["cohort_context"] and not context.get("values_reframe"):
+def perception_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(item, dict):
         return {}
-
-    return context
-
-
-
-def normalise_frequency_key(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    text = " ".join(text.split())
-    return FREQUENCY_ALIASES.get(text, text)
-
-
-def safe_frequency_gradient(dimension: str, frequency: Any) -> Dict[str, Any]:
-    source = FREQUENCY_GRADIENTS.get(dimension, {})
-    if not isinstance(source, dict):
-        return {}
-
-    freq = normalise_frequency_key(frequency)
-    group_keys = ["never", "rarely", "sometimes", "often", "very often", "everyday"]
-    group_values = {
-        key: source.get(key)
-        for key in group_keys
-        if isinstance(source.get(key), (int, float))
-    }
-
-    context = {
-        "evidence_type": "observed_group_pattern",
-        "participant_frequency": freq or None,
-        "participant_group_value": source.get(freq) if freq else None,
-        "group_values": group_values,
-        "range": source.get("range"),
-        "note": source.get("note"),
-        "key_finding": source.get("key_finding"),
-        "scale_note": source.get("scale_note"),
-        "data_quality_note": source.get("data_quality_note"),
-        "gender_note": source.get("gender_note"),
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-    }
-
-    # Do not pass a known disputed range into Claude as evidence.
-    if context.get("data_quality_note"):
-        context["range"] = None
-
-    return {key: value for key, value in context.items() if value not in (None, {}, [])}
+    return compact_dict({
+        "key": item.get("key"),
+        "question": item.get("question"),
+        "comparison_area": item.get("comparison_area"),
+        "self_estimate": item.get("self_estimate"),
+        "assessment_percentile": item.get("assessment_percentile"),
+        "assessment_position": item.get("assessment_position"),
+        "perceived_percentile": item.get("perceived_percentile"),
+        "difference": item.get("difference"),
+        "difference_available": item.get("difference_available"),
+        "basis": item.get("basis"),
+    })
 
 
-def safe_age_cohort_context(age_group: Any) -> Dict[str, Any]:
-    age = str(age_group or "").strip()
-    source = AGE_COHORT_PATTERNS.get(age, {})
-    if not isinstance(source, dict):
-        return {}
+def validate_v2_report_data(report_data: Dict[str, Any]) -> None:
+    if not isinstance(report_data, dict):
+        raise ValueError("report_data must be a dictionary")
 
-    evidence_fields = {}
-    for key, value in source.items():
-        if isinstance(value, (int, float)) or key.endswith("_mean") or key in {
-            "values_clarity",
-            "verification_diligence",
-            "control_over_ai_use",
-            "attention_recovery",
-            "saturation",
-            "agency_without_ai",
-            "decision_delegation",
-            "self_directed_decisions",
-            "confidence_without_ai",
-            "ai_detection_confidence",
-            "verification_external_sources",
-            "social_transparency",
-            "concealment",
-            "agency",
-            "ver_q3",
-            "identity_conflict",
-            "disc_q3",
-        }:
-            evidence_fields[key] = value
+    if report_data.get("schema_version") != "hci_report_data_v2":
+        raise ValueError(
+            "narrative_context_builder requires hci_report_data_v2"
+        )
 
-    possible_context = [
-        source.get(key)
-        for key in ("interpretation", "tension", "strength", "capacity", "note")
-        if source.get(key)
+    required = [
+        "report_meta",
+        "signature",
+        "position",
+        "defining_signals",
+        "distinctive_pattern",
+        "evidence",
+        "perception_summary",
+        "baseline",
     ]
-
-    return {
-        "cohort": age or None,
-        "description": source.get("description"),
-        "observed_group_pattern": {
-            "evidence_type": "observed_group_pattern",
-            "values": evidence_fields,
-            "distinctive": list(source.get("distinctive") or []),
-        },
-        "possible_interpretation": (
-            {
-                "evidence_type": "possible_interpretation",
-                "text": possible_context,
-            }
-            if possible_context
-            else None
-        ),
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-    }
+    missing = [key for key in required if key not in report_data]
+    if missing:
+        raise ValueError(
+            f"report_data missing required narrative inputs: {missing}"
+        )
 
 
-def key_finding_for_dimension(dimension: str) -> Dict[str, Any]:
+# ---------------------------------------------------------------------
+# Human Capital Lens selection
+# ---------------------------------------------------------------------
+
+def select_human_capital_themes(
+    report_data: Dict[str, Any],
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
     """
-    Select the actual dimension-level key finding.
+    Select three relevant Human Capital themes from measured profile evidence.
 
-    The source dictionary is keyed by research finding names, not by
-    <dimension>_<high|low|typical>. An explicit map avoids the previous
-    always-None lookup.
+    This selects themes only. It does not claim that a capability has developed,
+    declined, strengthened or weakened.
     """
-    finding_key = DIMENSION_KEY_FINDING_MAP.get(dimension)
-    source = KEY_FINDINGS_FOR_REPORTS.get(finding_key, {}) if finding_key else {}
-    if not isinstance(source, dict):
-        return {}
-
-    observed_keys = (
-        "statement",
-        "finding",
-        "specifics",
-        "slight_reversal",
-        "younger_overreliance",
-        "older_verification",
-        "dose_response",
-        "gender_note",
-    )
-    interpretation_keys = (
-        "implication",
-        "nature",
-        "nuance",
-        "possible_context",
-        "trajectory",
-        "distinction",
-        "report_language",
-    )
-
-    observed = {
-        key: source.get(key)
-        for key in observed_keys
-        if source.get(key) is not None
-    }
-    interpretation = {
-        key: source.get(key)
-        for key in interpretation_keys
-        if source.get(key) is not None
-    }
-
-    return {
-        "finding_key": finding_key,
-        "observed_group_pattern": (
-            {
-                "evidence_type": "observed_group_pattern",
-                "values": observed,
-            }
-            if observed
-            else None
-        ),
-        "possible_interpretation": (
-            {
-                "evidence_type": "possible_interpretation",
-                "values": interpretation,
-            }
-            if interpretation
-            else None
-        ),
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-    }
-
-
-def safe_cohort_narrative(age_group: Any) -> Dict[str, Any]:
-    age = str(age_group or "").strip()
-    source = COHORT_NARRATIVES.get(age, {})
-    if not isinstance(source, dict):
-        return {}
-
-    observed = {
-        key: source.get(key)
-        for key in ("label", "pattern", "strength", "depth", "distinctive")
-        if source.get(key) is not None
-    }
-    interpretation = {
-        key: source.get(key)
-        for key in ("paradox", "observation", "limitation", "advantage")
-        if source.get(key) is not None
-    }
-
-    return {
-        "cohort": age or None,
-        "observed_group_pattern": (
-            {
-                "evidence_type": "observed_group_pattern",
-                "values": observed,
-            }
-            if observed
-            else None
-        ),
-        "possible_interpretation": (
-            {
-                "evidence_type": "possible_interpretation",
-                "values": interpretation,
-            }
-            if interpretation
-            else None
-        ),
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-    }
-
-
-
-def benchmark_context(dimension: str, frequency: Any, age_group: Any, percentile: Any) -> Dict[str, Any]:
-    """
-    Return a compact, consistently shaped benchmark context.
-
-    Raw pressure-point lists and entire interpretive dictionaries are excluded.
-    """
-    return {
-        "frequency_gradient": safe_frequency_gradient(dimension, frequency),
-        "age_cohort_pattern": safe_age_cohort_context(age_group),
-        "key_finding": key_finding_for_dimension(dimension),
-        "cohort_narrative": safe_cohort_narrative(age_group),
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-    }
-
-
-
-def distinctive_flags_for_dimension(dimension: str, percentile: Any, frequency: Any) -> List[Dict[str, Any]]:
-    p = clean_float(percentile, 50) or 50
-    freq = normalise_frequency_key(frequency)
-    flags = []
-
-    checks = {
-        "high_verification_high_frequency": dimension == "verification" and p >= 71 and freq == "everyday",
-        "low_reliance_high_frequency": dimension == "reliance" and p <= 40 and freq == "everyday",
-        "high_emotional_engagement_low_frequency": dimension == "emotional_regulation" and p >= 71 and freq in {"rarely", "sometimes"},
-        "low_disclosure_high_frequency": dimension == "disclosure" and p <= 40 and freq == "everyday",
-        "low_emotional_engagement_high_frequency": dimension == "emotional_regulation" and p <= 40 and freq == "everyday",
-    }
-
-    for key, condition in checks.items():
-        if not condition:
-            continue
-
-        data = DISTINCTIVE_FLAGS.get(key, {})
-        if not isinstance(data, dict):
-            data = {}
-
-        flags.append({
-            "flag": key,
-            "rarity": data.get("rarity"),
-            "observed_group_pattern": {
-                "evidence_type": "observed_group_pattern",
-                "text": data.get("why_rare"),
-            },
-            "possible_interpretation": {
-                "evidence_type": "possible_interpretation",
-                "meaning": data.get("meaning"),
-                "research_context": data.get("research_insight"),
-            },
-            "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-        })
-
-    return flags
-
-
-
-def build_dimension_context(report_data: Dict[str, Any], dimension: str) -> Dict[str, Any]:
     dimensions = report_data.get("dimensions") or {}
-    d = dimensions.get(dimension) or {}
-    demographics = report_data.get("demographics") or {}
-    percentile = d.get("percentile")
+    evidence = report_data.get("evidence") or []
+    evidence_by_dimension: Dict[str, List[Dict[str, Any]]] = {}
 
-    frequency = demographics.get("_frequency_benchmark") or demographics.get("ai_tool_use_frequency") or demographics.get("frequency")
-    age_group = demographics.get("_age_group_benchmark") or demographics.get("age_group")
-
-    distinctiveness = calculate_distinctiveness_from_percentile(percentile)
-    signal_layers = select_signal_layers(distinctiveness)
-
-    return {
-        "dimension": dimension,
-        "label": d.get("label") or DIMENSION_LABELS.get(dimension, dimension),
-        "definition": d.get("definition") or DIMENSION_DEFINITIONS.get(dimension, ""),
-        "participant_response": {
-            "evidence_type": "participant_response",
-            "raw_score": d.get("raw_score"),
-        },
-        "benchmark_position": {
-            "evidence_type": "benchmark_position",
-            "percentile": percentile,
-            "position": d.get("position") or percentile_position(percentile),
-            "protect_position": d.get("protect_position") or protect_position(percentile),
-        },
-        # Retain the established scalar fields for downstream compatibility.
-        "percentile": percentile,
-        "raw_score": d.get("raw_score"),
-        "position": d.get("position") or percentile_position(percentile),
-        "protect_position": d.get("protect_position") or protect_position(percentile),
-        "distinctiveness": distinctiveness,
-        "signal_layers": signal_layers,
-        "dimension_signal": dimension_signal(dimension, percentile),
-        "benchmark_context": benchmark_context(dimension, frequency, age_group, percentile),
-        "human_reference": (
-            human_reference_context(dimension, percentile, age_group)
-            if signal_layers.get("include_human_reference")
-            else {}
-        ),
-        "distinctive_flags": distinctive_flags_for_dimension(dimension, percentile, frequency),
-        # Legacy keys remain present but unsafe future-oriented template copy is
-        # not forwarded into Claude context.
-        "strength_deepening": {},
-        "monitoring": {},
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-    }
-
-
-def build_full_narrative_context(report_data: Dict[str, Any]) -> Dict[str, Any]:
-    dimensions = report_data.get("dimensions") or {}
-    dimension_contexts = {
-        dim: build_dimension_context(report_data, dim)
-        for dim in DIMENSION_ORDER
-        if dim in dimensions
-    }
-
-    return {
-        "profile": {
-            "session_id": report_data.get("session_id"),
-            "demographics": report_data.get("demographics", {}),
-            "top_dimensions": slim_dimensions((report_data.get("synthesis_inputs") or {}).get("top_dimensions", [])),
-            "lowest_dimensions": slim_dimensions((report_data.get("synthesis_inputs") or {}).get("lowest_dimensions", [])),
-            "most_distinctive_variable": slim_question((report_data.get("synthesis_inputs") or {}).get("most_distinctive_variable")),
-            "largest_perception_gap": (report_data.get("synthesis_inputs") or {}).get("largest_perception_gap"),
-            "top_rare_combination": (report_data.get("synthesis_inputs") or {}).get("top_rare_combination"),
-        },
-        "dimension_contexts": dimension_contexts,
-        "rare_combinations": enrich_rare_combinations(report_data),
-        "distinctive_responses": enrich_distinctive_responses(report_data),
-        "perception_gap": report_data.get("perception_gap", {}),
-        "trajectory": build_trajectory_context(report_data, dimension_contexts),
-        "global_hci_assets": {
-            "benchmark_scope": {
-                "benchmark_label": "HCI participant benchmark",
-                "participant_responses": "10,000+",
-                "studies": 21,
-            },
-            "evidence_type_definitions": EVIDENCE_TYPE_DEFINITIONS,
-            "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
-            "hci_principles": [
-                "Describe self-reported patterns, not personality types.",
-                "Distinguish participant responses, benchmark positions, observed group patterns and possible interpretations.",
-                "State supported evidence clearly; qualify interpretation rather than weakening the evidence.",
-                "Do not convert association into causation or group patterns into individual facts.",
-                "Do not diagnose, prescribe behaviour, predict outcomes or claim capability development or loss.",
-                "Use HCI participant benchmark language, not general-population language.",
-                "Use direct plain English.",
-            ],
-        },
-    }
-
-
-def build_human_capital_context(report_data: Dict[str, Any], full: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Build the full evidence context for Section 9: Your Human Capital.
-
-    This context is intentionally broad. Human Capital translates the complete
-    participant profile into human capabilities, so Claude should synthesize
-    across the whole report rather than rely on any single dimension.
-    """
-    narrative_blocks = report_data.get("narrative_blocks") or {}
-    question_evidence = []
-    for q in report_data.get("questions") or []:
-        if not isinstance(q, dict):
-            continue
-        question_evidence.append({
-            "dimension": q.get("dimension"),
-            "dimension_label": q.get("dimension_label"),
-            "question_text": q.get("question_text"),
-            "answer_display": q.get("answer_display"),
-            "percentile": q.get("percentile"),
-            "percentile_frequency": q.get("percentile_frequency"),
-            "comparison_statement": q.get("comparison_statement"),
-            "is_reverse_scored": q.get("is_reverse_scored"),
-        })
-
-    profile_shape = report_data.get("typicality") or {}
-
-    return {
-        "section_purpose": (
-            "Translate current self-reported benchmark patterns into capability-related "
-            "themes without claiming that a capability is developing, declining or objectively measured."
-        ),
-        "profile": full.get("profile", {}),
-        "dimension_contexts": full.get("dimension_contexts", {}),
-        "profile_shape": {
-            "distinctive": slim_dimensions(profile_shape.get("distinctive", [])),
-            "typical": slim_dimensions(profile_shape.get("typical", [])),
-            "moderate": slim_dimensions(profile_shape.get("moderate", [])),
-            "all": slim_dimensions(profile_shape.get("all", [])),
-        },
-        "rare_combinations": full.get("rare_combinations", []),
-        "distinctive_responses": full.get("distinctive_responses", []),
-        "question_level_evidence": question_evidence,
-        "perception_gap": full.get("perception_gap", {}),
-        "trajectory": full.get("trajectory", {}),
-        "previous_narrative_blocks": {
-            "opening_findings": narrative_blocks.get("opening_findings"),
-            "profile_shape_summary": narrative_blocks.get("profile_shape_summary"),
-            "rare_combinations_narrative": narrative_blocks.get("rare_combinations_narrative"),
-            "behaviour_story": narrative_blocks.get("behaviour_story"),
-            "distinctive_responses_narrative": narrative_blocks.get("distinctive_responses_narrative"),
-            "perception_gap_narrative": narrative_blocks.get("perception_gap_narrative"),
-        },
-        "global_hci_assets": full.get("global_hci_assets", {}),
-        "translation_rules": [
-            "Translate reported behaviour into capability-related themes, not measured capability.",
-            "Use plain human language.",
-            "Do not mention dimensions, percentiles, scores, or benchmark mechanics in the final prose.",
-            "Do not invent aspirational qualities unsupported by the evidence.",
-            "Do not give advice, predict future outcomes, or judge behaviour.",
-        ],
-    }
-
-
-
-def build_closing_reflection_context(report_data: Dict[str, Any], full: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Build synthesized whole-report context for Section 12: Closing Reflection.
-
-    This is intentionally different from earlier context builders. The closing
-    reflection should look back across the completed report narrative and render-
-    ready section evidence rather than receive a fresh dump of raw benchmark
-    mechanics. Its job is to help Claude distil the report into one enduring
-    question and one calm conclusion.
-    """
-    narrative_blocks = report_data.get("narrative_blocks") or {}
-
-    # Human Capital may be stored either as a nested object from the latest
-    # architecture or as flat legacy keys from earlier Claude outputs.
-    human_capital = narrative_blocks.get("human_capital")
-    if not isinstance(human_capital, dict):
-        human_capital = {
-            "capabilities_developing": narrative_blocks.get("capabilities_developing", []),
-            "worth_protecting": narrative_blocks.get("worth_protecting", []),
-            "worth_watching": narrative_blocks.get("worth_watching", []),
-            "human_capital_priorities": narrative_blocks.get("human_capital_priorities", []),
-            "closing": narrative_blocks.get("human_capital_closing") or narrative_blocks.get("closing"),
-        }
-
-    looking_forward_items = []
-    for item in report_data.get("what_to_protect") or []:
+    for item in evidence:
         if not isinstance(item, dict):
             continue
-        looking_forward_items.append({
-            "dimension": item.get("dimension") or item.get("key"),
-            "label": item.get("label") or item.get("capacity"),
-            "title": item.get("title"),
-            "positioning": item.get("positioning"),
-        })
-
-    trajectory = full.get("trajectory", {})
-
-    return {
-        "section_purpose": (
-            "Distil the completed benchmark report into one enduring question "
-            "and one hopeful closing reflection."
-        ),
-        "profile": full.get("profile", {}),
-        "synthesized_report_context": {
-            "initial_analysis": narrative_blocks.get("opening_findings"),
-            "profile_shape": narrative_blocks.get("profile_shape_summary"),
-            "rare_combinations": narrative_blocks.get("rare_combinations_narrative"),
-            "behaviour_story": narrative_blocks.get("behaviour_story"),
-            "distinctive_responses": narrative_blocks.get("distinctive_responses_narrative"),
-            "self_perception": narrative_blocks.get("perception_gap_narrative"),
-            "dimension_deep_dives": narrative_blocks.get("deep_dive"),
-            "human_capital": human_capital,
-            "remeasurement_context": {
-                "highest_dimension": trajectory.get("highest_dimension"),
-                "comparison_anchor": trajectory.get("comparison_anchor"),
-                "current_high_signals": trajectory.get("current_high_signals", []),
-                "areas_for_later_comparison": trajectory.get("areas_for_later_comparison", []),
-            },
-            "looking_forward": {
-                "purpose": "Current signals that may be useful to compare at a later measurement.",
-                "items": looking_forward_items,
-            },
-        },
-        "evidence_anchors": {
-            "top_dimensions": full.get("profile", {}).get("top_dimensions", []),
-            "lowest_dimensions": full.get("profile", {}).get("lowest_dimensions", []),
-            "most_distinctive_variable": full.get("profile", {}).get("most_distinctive_variable"),
-            "largest_perception_gap": full.get("profile", {}).get("largest_perception_gap"),
-            "top_rare_combination": full.get("profile", {}).get("top_rare_combination"),
-            "rare_combinations": full.get("rare_combinations", [])[:2],
-            "distinctive_responses": full.get("distinctive_responses", [])[:5],
-        },
-        "closing_rules": [
-            "Use synthesized evidence already established elsewhere in the report.",
-            "Do not introduce new benchmark evidence or new interpretation.",
-            "Do not give advice, recommendations, coaching, or action steps.",
-            "Distil the report into one question the participant can carry forward.",
-            "The question should not be answerable today; it should become more meaningful over time.",
-            "Strong reported agency may be acknowledged as part of the current pattern. Do not make identity-stability claims.",
-            "End with the participant's continuing measurement journey, not with organisational promotion.",
-        ],
-        "global_hci_assets": {
-            "hci_principles": (full.get("global_hci_assets", {}) or {}).get("hci_principles", []),
-        },
-    }
-
-
-
-def with_evidence_boundary(payload: Dict[str, Any]) -> Dict[str, Any]:
-    out = dict(payload or {})
-    out["evidence_boundary"] = GLOBAL_EVIDENCE_BOUNDARY
-    return out
-
-
-def build_context_for_claude_section(report_data: Dict[str, Any], section: str) -> Dict[str, Any]:
-    full = build_full_narrative_context(report_data)
-
-    if section == "opening":
-        return with_evidence_boundary({
-            "profile": full["profile"],
-            "most_distinctive_variable": full["profile"]["most_distinctive_variable"],
-            "largest_perception_gap": full["profile"]["largest_perception_gap"],
-            "top_rare_combination": full["profile"]["top_rare_combination"],
-            "global_hci_assets": full["global_hci_assets"],
-        })
-
-    if section == "rare_combinations":
-        return with_evidence_boundary({
-            "rare_combinations": full["rare_combinations"],
-            "dimension_contexts": full["dimension_contexts"],
-            "global_hci_assets": full["global_hci_assets"],
-        })
-
-    if section == "behaviour_story":
-        return with_evidence_boundary({
-            "profile": full["profile"],
-            "dimension_contexts": full["dimension_contexts"],
-            "rare_combinations": full["rare_combinations"],
-            "perception_gap": full["perception_gap"],
-            "global_hci_assets": full["global_hci_assets"],
-        })
-
-    if section == "deep_dive":
-        return with_evidence_boundary({
-            "profile": full["profile"],
-            "deep_dive_candidate": select_deep_dive_candidate(full),
-            "dimension_contexts": full["dimension_contexts"],
-            "rare_combinations": full["rare_combinations"],
-            "distinctive_responses": full["distinctive_responses"][:3],
-            "perception_gap": full["perception_gap"],
-            "trajectory": full["trajectory"],
-            "previous_narrative_blocks": report_data.get("narrative_blocks", {}),
-            "global_hci_assets": full["global_hci_assets"],
-        })
-
-    if section == "distinctive_responses":
-        return with_evidence_boundary({
-            "distinctive_responses": full["distinctive_responses"],
-            "dimension_contexts": full["dimension_contexts"],
-            "global_hci_assets": full["global_hci_assets"],
-        })
-
-    if section == "perception_gap":
-        return with_evidence_boundary({
-            "perception_gap": full["perception_gap"],
-            "profile": full["profile"],
-            "dimension_contexts": {
-                k: v for k, v in full["dimension_contexts"].items()
-                if k in {"reliance", "decision_delegation", "thought_partnership"}
-            },
-            "global_hci_assets": full["global_hci_assets"],
-        })
-
-    if section == "human_capital":
-        return with_evidence_boundary(build_human_capital_context(report_data, full))
-
-    if section == "closing_reflection":
-        return with_evidence_boundary(build_closing_reflection_context(report_data, full))
-
-    if section == "trajectory":
-        return with_evidence_boundary({
-            "trajectory": full["trajectory"],
-            "dimension_contexts": full["dimension_contexts"],
-            "global_hci_assets": full["global_hci_assets"],
-        })
-
-    return with_evidence_boundary(full)
-
-
-
-def select_deep_dive_candidate(full_context: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Select the most valuable Deep Dive focus.
-
-    Priority:
-    1. Rare combination if present.
-    2. Most distinctive response if very extreme.
-    3. Largest perception gap if significant.
-    4. Highest dimension as fallback.
-    """
-    rare = full_context.get("rare_combinations") or []
-    if rare:
-        return {
-            "type": "rare_combination",
-            "reason": "Rare combinations are the most information-rich HCI pattern when present.",
-            "data": rare[0],
-        }
-
-    most = (full_context.get("profile") or {}).get("most_distinctive_variable")
-    if isinstance(most, dict):
-        pct = clean_float(most.get("percentile"), 50) or 50
-        if abs(pct - 50) >= 35:
-            return {
-                "type": "distinctive_response",
-                "reason": "The strongest individual response is unusually far from the HCI benchmark centre.",
-                "data": most,
-            }
-
-    gap = (full_context.get("profile") or {}).get("largest_perception_gap")
-    if gap:
-        return {
-            "type": "perception_gap",
-            "reason": "The largest difference between self-perception and benchmark position may be a useful point of interpretation.",
-            "data": gap,
-        }
-
-    top = (full_context.get("profile") or {}).get("top_dimensions") or []
-    if top:
-        return {
-            "type": "highest_dimension",
-            "reason": "The highest dimension is the clearest organising feature of the profile.",
-            "data": top[0],
-        }
-
-    return {
-        "type": "overall_pattern",
-        "reason": "No single rare pattern dominates, so the Deep Dive should focus on the overall profile shape.",
-        "data": full_context.get("profile", {}),
-    }
-
-# ---------------------------------------------------------------------
-# Enrichers
-# ---------------------------------------------------------------------
-
-def enrich_rare_combinations(report_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    enriched = []
-    for combo in report_data.get("rare_combinations") or []:
-        item = deepcopy(combo)
-        d1 = item.get("dimension_1")
-        d2 = item.get("dimension_2")
-        item["signal"] = combination_signal(d1, d2, item)
-        item["dimension_1_context"] = build_dimension_context(report_data, d1) if d1 else {}
-        item["dimension_2_context"] = build_dimension_context(report_data, d2) if d2 else {}
-        enriched.append(item)
-    return enriched
-
-
-def enrich_distinctive_responses(report_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    out = []
-    for q in report_data.get("distinctive_responses") or []:
-        item = deepcopy(q)
         dim = item.get("dimension")
-        item["dimension_context"] = build_dimension_context(report_data, dim) if dim else {}
-        out.append(item)
-    return out[:7]
+        if dim:
+            evidence_by_dimension.setdefault(dim, []).append(item)
 
+    candidates = [
+        {
+            "theme_key": "decision_authorship",
+            "title": HUMAN_CAPITAL_ALLOWED_THEMES["decision_authorship"],
+            "dimensions": ["decision_delegation", "human_agency"],
+        },
+        {
+            "theme_key": "critical_scepticism",
+            "title": HUMAN_CAPITAL_ALLOWED_THEMES["critical_scepticism"],
+            "dimensions": ["verification", "trust"],
+        },
+        {
+            "theme_key": "intellectual_openness",
+            "title": HUMAN_CAPITAL_ALLOWED_THEMES["intellectual_openness"],
+            "dimensions": ["thought_partnership"],
+        },
+        {
+            "theme_key": "independent_view_formation",
+            "title": HUMAN_CAPITAL_ALLOWED_THEMES["independent_view_formation"],
+            "dimensions": ["thought_partnership", "human_agency"],
+        },
+        {
+            "theme_key": "privacy_boundaries",
+            "title": HUMAN_CAPITAL_ALLOWED_THEMES["privacy_boundaries"],
+            "dimensions": ["disclosure", "social_transparency"],
+        },
+        {
+            "theme_key": "emotional_discernment",
+            "title": HUMAN_CAPITAL_ALLOWED_THEMES["emotional_discernment"],
+            "dimensions": ["emotional_regulation"],
+        },
+    ]
 
+    ranked: List[Dict[str, Any]] = []
+    for candidate in candidates:
+        score = 0.0
+        supporting_dimensions = []
+        supporting_evidence = []
 
-def build_trajectory_context(report_data: Dict[str, Any], dimension_contexts: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Convert legacy future-oriented report_data fields into current-state and
-    remeasurement context for Claude. No future change is inferred.
-    """
-    data = report_data.get("if_nothing_changes") or {}
+        for dim in candidate["dimensions"]:
+            d = dimensions.get(dim) or {}
+            percentile = clean_int(d.get("percentile"), 50) or 50
+            score += abs(percentile - 50)
+            supporting_dimensions.append(compact_dict({
+                "key": dim,
+                "label": d.get("label"),
+                "percentile": percentile,
+                "frequency_percentile": d.get("percentile_frequency"),
+            }))
 
-    current_high_signals = []
-    for d in data.get("strengths_likely_to_deepen", []):
-        if not isinstance(d, dict):
-            continue
-        current_high_signals.append({
-            "dimension": d.get("key"),
-            "label": d.get("label"),
-            "percentile": d.get("percentile"),
-            "position": d.get("position"),
-            "research_signal": d.get("research_insight"),
-            "evidence_type": "benchmark_position",
+            for item in evidence_by_dimension.get(dim, []):
+                supporting_evidence.append(evidence_item(item))
+                score += 8
+
+        ranked.append({
+            "theme_key": candidate["theme_key"],
+            "title": candidate["title"],
+            "relevance_score": round(score, 2),
+            "supporting_dimensions": supporting_dimensions,
+            "supporting_evidence": supporting_evidence[:2],
         })
 
-    later_comparison = []
-    for d in data.get("areas_worth_monitoring", []):
-        if not isinstance(d, dict):
-            continue
-        later_comparison.append({
-            "dimension": d.get("key"),
-            "label": d.get("label"),
-            "percentile": d.get("percentile"),
-            "position": d.get("position"),
-            "research_signal": d.get("research_insight"),
-            "evidence_type": "benchmark_position",
-        })
+    ranked.sort(
+        key=lambda item: item["relevance_score"],
+        reverse=True,
+    )
+    return ranked[:limit]
+
+
+# ---------------------------------------------------------------------
+# Context package 1: profile synthesis
+# ---------------------------------------------------------------------
+
+def build_profile_synthesis_context(
+    report_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Build the complete input for Claude call 1.
+
+    Expected generated outputs:
+    - signature sentence;
+    - strongest-combination narrative or coherence narrative;
+    - 250–350 word pattern narrative;
+    - three short Human Capital Lens descriptions.
+    """
+    validate_v2_report_data(report_data)
+
+    report_meta = report_data.get("report_meta") or {}
+    signature = report_data.get("signature") or {}
+    distinctive_pattern = report_data.get("distinctive_pattern") or {}
+    perception_summary = report_data.get("perception_summary") or {}
+
+    defining_signals = [
+        dimension_position(item)
+        for item in report_data.get("defining_signals") or []
+    ]
+    evidence = [
+        evidence_item(item)
+        for item in report_data.get("evidence") or []
+    ]
+
+    strongest_combination = combination_item(
+        signature.get("strongest_combination")
+        or distinctive_pattern.get("combination")
+    )
 
     return {
-        "usage_frequency": data.get("usage_frequency"),
-        "highest_dimension": slim_dimension(data.get("highest_dimension")),
-        "comparison_anchor": slim_dimension(data.get("monitoring_anchor")),
-        "current_high_signals": current_high_signals,
-        "areas_for_later_comparison": later_comparison,
-        "evidence_boundary": GLOBAL_EVIDENCE_BOUNDARY,
+        "task": "profile_synthesis",
+        "report_identity": compact_dict({
+            "report_version": report_meta.get("report_version"),
+            "baseline_date": report_meta.get("baseline_date"),
+            "reported_ai_use_frequency": report_meta.get(
+                "reported_ai_use_frequency"
+            ),
+            "age_group": report_meta.get("age_group"),
+        }),
+        "benchmark_scope": compact_dict({
+            "label": BENCHMARK_LABEL,
+            "scope": BENCHMARK_SCOPE,
+            "version": (
+                (report_meta.get("benchmark") or {}).get("version")
+            ),
+        }),
+        "defining_signals": defining_signals,
+        "strongest_pattern": {
+            "mode": distinctive_pattern.get("mode"),
+            "title": distinctive_pattern.get("title"),
+            "combination": strongest_combination,
+            "supporting_evidence": [
+                evidence_item(item)
+                for item in distinctive_pattern.get(
+                    "supporting_evidence"
+                ) or []
+            ],
+        },
+        "main_evidence": evidence,
+        "perception": {
+            "items": [
+                perception_item(item)
+                for item in perception_summary.get("items") or []
+            ],
+            "largest_difference": perception_item(
+                perception_summary.get("largest_difference") or {}
+            ),
+        },
+        "human_capital_candidates": select_human_capital_themes(
+            report_data,
+            limit=3,
+        ),
+        "required_outputs": {
+            "signature_sentence": {
+                "length": "one sentence",
+                "purpose": (
+                    "Describe the participant's current response pattern in a "
+                    "specific, memorable way."
+                ),
+                "must_begin_from_evidence": True,
+            },
+            "combination_narrative": {
+                "length": "two concise paragraphs",
+                "structure": [
+                    "what the data shows",
+                    "what the pattern may suggest",
+                ],
+            },
+            "pattern_narrative": {
+                "length": "250–350 words",
+                "purpose": (
+                    "Explain how the defining results, evidence and perception "
+                    "comparison fit together."
+                ),
+            },
+            "human_capital_lens": {
+                "count": 3,
+                "length": "one concise sentence per theme",
+                "rule": (
+                    "Explain why each capability is relevant to this profile; "
+                    "do not claim it has developed, declined or been measured."
+                ),
+            },
+        },
+        "evidence_boundary": deepcopy(EVIDENCE_BOUNDARY),
+        "writing_principles": list(WRITING_PRINCIPLES),
     }
 
 
-def slim_dimension(d: Any) -> Dict[str, Any] | None:
-    if not isinstance(d, dict):
-        return None
+# ---------------------------------------------------------------------
+# Context package 2: baseline and return question
+# ---------------------------------------------------------------------
+
+def build_baseline_context(
+    report_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Build the complete input for Claude call 2.
+
+    Expected generated outputs:
+    - one personalised return question;
+    - one short baseline closing sentence.
+    """
+    validate_v2_report_data(report_data)
+
+    report_meta = report_data.get("report_meta") or {}
+    baseline = report_data.get("baseline") or {}
+
+    priorities = []
+    for item in baseline.get("comparison_priorities") or []:
+        priorities.append(compact_dict({
+            "type": item.get("type"),
+            "key": item.get("key"),
+            "label": item.get("label"),
+            "current_percentile": item.get("current_percentile"),
+            "reason": item.get("reason"),
+        }))
+
     return {
-        "key": d.get("key"),
-        "label": d.get("label"),
-        "definition": d.get("definition"),
-        "percentile": d.get("percentile"),
-        "position": d.get("position"),
-        "research_insight": d.get("research_insight"),
+        "task": "baseline_return",
+        "report_identity": compact_dict({
+            "baseline_date": baseline.get("baseline_date"),
+            "report_version": baseline.get("report_version"),
+            "reported_ai_use_frequency": baseline.get(
+                "reported_ai_use_frequency"
+            ),
+            "recommended_reassessment_window": baseline.get(
+                "recommended_reassessment_window"
+            ),
+            "benchmark_version": (
+                (baseline.get("benchmark") or {}).get("version")
+            ),
+        }),
+        "comparison_priorities": priorities,
+        "defining_signals": [
+            dimension_position(item)
+            for item in baseline.get("defining_signals") or []
+        ],
+        "strongest_combination": combination_item(
+            baseline.get("strongest_combination")
+        ),
+        "largest_perception_difference": perception_item(
+            baseline.get("largest_perception_difference") or {}
+        ),
+        "required_outputs": {
+            "return_question": {
+                "length": "one sentence",
+                "purpose": (
+                    "Ask a personalised question that only a future assessment "
+                    "can answer."
+                ),
+                "rules": [
+                    "Do not predict what will happen.",
+                    "Do not instruct the participant to change behaviour.",
+                    "Frame the question around comparison over time.",
+                ],
+            },
+            "baseline_closing": {
+                "length": "one concise sentence",
+                "purpose": (
+                    "Reinforce that this report establishes a dated reference "
+                    "point for later comparison."
+                ),
+            },
+        },
+        "longitudinal_boundary": {
+            "permitted": [
+                "The current report establishes a baseline.",
+                "A future assessment can compare later responses and positions.",
+            ],
+            "not_yet_permitted": [
+                "Claiming personal change from one assessment.",
+                "Claiming movement relative to a changed benchmark unless "
+                "historical benchmark versioning is operational.",
+            ],
+        },
+        "evidence_boundary": deepcopy(EVIDENCE_BOUNDARY),
+        "writing_principles": list(WRITING_PRINCIPLES),
     }
 
 
-def slim_dimensions(items: Any) -> List[Dict[str, Any]]:
-    return [x for x in (slim_dimension(i) for i in list(items or [])) if x]
+# ---------------------------------------------------------------------
+# Public aggregate and compatibility entry points
+# ---------------------------------------------------------------------
 
+def build_full_narrative_context(
+    report_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Return both locked V2 context packages.
 
-def slim_question(q: Any) -> Dict[str, Any] | None:
-    if not isinstance(q, dict):
-        return None
+    The name is retained so the next rebuild of ``claude_narrative.py`` can
+    transition cleanly without importing the old broad context architecture.
+    """
     return {
-        "key": q.get("key"),
-        "dimension": q.get("dimension"),
-        "dimension_label": q.get("dimension_label"),
-        "question_text": q.get("question_text"),
-        "answer": q.get("answer"),
-        "answer_display": q.get("answer_display"),
-        "percentile": q.get("percentile"),
-        "percentile_label": q.get("percentile_label"),
-        "percentile_age_group": q.get("percentile_age_group"),
-        "comparison_statement": q.get("comparison_statement"),
+        "schema_version": "hci_narrative_context_v2",
+        "profile_synthesis": build_profile_synthesis_context(report_data),
+        "baseline_return": build_baseline_context(report_data),
     }
+
+
+def build_narrative_context(
+    report_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Alias for callers that use the shorter function name."""
+    return build_full_narrative_context(report_data)
+
+
+def assert_narrative_context_contract(context: Dict[str, Any]) -> None:
+    if not isinstance(context, dict):
+        raise ValueError("narrative context must be a dictionary")
+    if context.get("schema_version") != "hci_narrative_context_v2":
+        raise ValueError(
+            "Unexpected narrative context schema version"
+        )
+    for key in ("profile_synthesis", "baseline_return"):
+        if key not in context:
+            raise ValueError(
+                f"narrative context missing required package: {key}"
+            )
+
+    profile = context["profile_synthesis"]
+    baseline = context["baseline_return"]
+
+    if len(profile.get("defining_signals") or []) != 3:
+        raise ValueError(
+            "profile_synthesis must contain exactly 3 defining signals"
+        )
+    if not 5 <= len(profile.get("main_evidence") or []) <= 7:
+        raise ValueError(
+            "profile_synthesis must contain 5–7 evidence items"
+        )
+    if len(profile.get("human_capital_candidates") or []) != 3:
+        raise ValueError(
+            "profile_synthesis must contain exactly 3 Human Capital themes"
+        )
+    if len(baseline.get("comparison_priorities") or []) != 3:
+        raise ValueError(
+            "baseline_return must contain exactly 3 comparison priorities"
+        )
