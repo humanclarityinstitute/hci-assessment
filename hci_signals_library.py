@@ -254,6 +254,265 @@ Use this report to understand your pattern:
     }
 }
 
+
+# ========== PARTICIPANT-FACING REPORT-SAFE SIGNALS ==========
+#
+# The original SIGNALS dictionary above is retained unchanged as HCI's internal
+# research synthesis. It may contain exploratory hypotheses, shorthand and stronger
+# internal interpretations that should not be passed directly into participant-facing
+# reports.
+#
+# REPORT_SAFE_SIGNALS preserves the strongest supported descriptive evidence while
+# separating measured findings from interpretation and evidential limits.
+#
+# Only REPORT_SAFE_SIGNALS should be supplied to Claude or inserted into customer
+# reports. The existing keys are mirrored for straightforward downstream integration.
+# Trend entries also include an explicit "evidence_boundary" field so the context
+# builder can pass Claude the line it must not cross.
+
+REPORT_SAFE_SIGNALS = {
+
+    'dimensions': {
+
+        'reliance': {
+            'definition': 'How central AI is within your reported thinking and day-to-day functioning',
+            'high': 'At the higher end of reliance, you report that AI is deeply integrated into how you work and think. This is common among everyday users in HCI samples. It may provide efficiency and clarity in familiar tasks, while also making AI availability more relevant to how easily some tasks feel.',
+            'low': 'At the lower end of reliance, you report greater independence from AI systems. Within HCI samples, this pattern appears among both less frequent users and some frequent users who keep AI within narrower roles.',
+            'typical': 'In the middle range on reliance, you report using AI selectively without making it central to how you function. This sits near the centre of the HCI participant benchmark.',
+            'series': 'In the relevant HCI measure, average reliance increased from 1.1 among never-users to 4.4 among everyday users. This was one of the strongest frequency-related differences in the data and shows that reliance is closely associated with how embedded AI is in participants’ everyday workflows.',
+            'pressure_point': 'Verification effort, independent task practice, and clarity about decision boundaries'
+        },
+
+        'trust': {
+            'definition': 'How much confidence you report having in the accuracy of AI outputs',
+            'high': 'At the higher end of trust, you report greater confidence in AI accuracy. Everyday users in the relevant HCI comparison scored nearly 2.5 points higher than non-users. Your position may reflect experience with AI, the kinds of tasks you use it for, or how you approach checking its outputs.',
+            'low': 'At the lower end of trust, you report greater caution about AI outputs. Around 15% of participants remained cautious regardless of exposure in the relevant HCI analysis. This describes a more sceptical pattern, not whether that level of caution is right for every task.',
+            'typical': 'In the middle range on trust, you report balancing confidence with caution. This sits near the centre of the HCI participant benchmark.',
+            'series': 'Trust was substantially higher among everyday users than never-users in HCI samples. Older adults also reported more caution when uncertain. These are group-level differences rather than proof that frequency or age causes an individual’s trust level.',
+            'pressure_point': 'Calibration between confidence, task importance, and verification'
+        },
+
+        'verification': {
+            'definition': 'How often you report checking AI outputs before using them',
+            'high': 'At the higher end of verification, checking is one of the more consistent features of your reported AI use. Across HCI studies, 84–99% of participants reported verifying AI outputs in at least some circumstances, although the consistency and effort involved varied.',
+            'low': 'At the lower end of verification, you report using AI outputs with less extensive checking. This describes your current response pattern and should not be interpreted as laziness, negligence, or a fixed personal trait.',
+            'typical': 'In the middle range on verification, you report checking some outputs but not others. This is common across different AI-use frequencies in the HCI participant benchmark.',
+            'series': 'Verification differed less by AI-use frequency than most other dimensions in HCI samples. Age-group differences were more visible, with older adults generally reporting more consistent checking. At the same time, 43–54% of participants in relevant studies reported verification fatigue or exhaustion.',
+            'pressure_point': 'Verification effort, selective checking, and cognitive load'
+        },
+
+        'decision_delegation': {
+            'definition': 'How readily you report allowing AI recommendations to shape or determine decisions',
+            'high': 'At the higher end of decision delegation, you report acting on AI recommendations more readily and with less independent reconsideration. HCI samples show higher delegation among some younger and more frequent user groups. In one relevant study, 26% reported reduced oversight over time.',
+            'low': 'At the lower end of decision delegation, you report retaining more personal oversight over decisions. In one HCI study, 65% of participants aged over 65 reported making their own decision regardless of the AI recommendation.',
+            'typical': 'In the middle range on delegation, you report considering AI input while retaining a meaningful role in the final decision. This sits near the centre of the HCI participant benchmark.',
+            'series': 'Delegation was generally higher among more frequent users and younger age groups in HCI samples. Some participants also reported less oversight than they recalled having previously, but a one-time assessment cannot establish whether an individual’s oversight has changed.',
+            'pressure_point': 'Personal oversight, habitual acceptance, and clarity about responsibility'
+        },
+
+        'human_agency': {
+            'definition': 'How much control and authorship you report retaining over your decisions',
+            'high': 'At the higher end of agency, you report feeling self-directed and responsible for your thinking and decisions. Across relevant HCI studies, 91% retained personal responsibility even while 59% reported feeling subtly steered in some situations. High agency places authorship among the clearer features of your current pattern.',
+            'low': 'At the lower end of agency, you report less control or authorship in some decisions involving AI. This does not establish identity loss or reduced capability; it describes how control feels within your current response pattern.',
+            'typical': 'In the middle range on agency, you report being generally self-directed while also experiencing some influence from AI. This sits near the centre of the HCI participant benchmark.',
+            'series': 'Agency varied relatively little across AI-use frequencies in HCI samples, with a range of only 0.40 in the cited comparison. Everyday users reported slightly higher agency on average, while many participants still reported subtle AI influence. These findings show that agency and AI integration do not move in a simple one-directional relationship.',
+            'pressure_point': 'Attention, convenience, and alignment between intention and action'
+        },
+
+        'emotional_regulation': {
+            'definition': 'How often you report turning to AI for emotional support or regulation',
+            'high': 'At the higher end of emotional engagement, you report using AI for emotional support more often. In the relevant HCI comparison, everyday users scored 5.23 compared with 2.77 among rare users. Emotional use was also higher among participants reporting greater loneliness.',
+            'low': 'At the lower end of emotional engagement, you report keeping a clearer boundary between AI use and emotional support. Some participants use AI extensively for practical or cognitive tasks while reporting little emotional use.',
+            'typical': 'In the middle range, you report turning to AI for emotional support occasionally rather than making it a central source of support. This sits near the centre of the HCI participant benchmark.',
+            'series': 'Emotional engagement was strongly associated with AI-use frequency in HCI samples. A notable tension also appeared: 87% said only humans can truly meet emotional needs, while 27% reported receiving some emotional support from AI. This supports careful attention to the role AI currently plays without diagnosing substitution or dependency.',
+            'pressure_point': 'Balance with human support, emotional boundaries, and reliance on AI availability'
+        },
+
+        'disclosure': {
+            'definition': 'How much personal information you report sharing with AI',
+            'high': 'At the higher end of disclosure, you report sharing more personal information with AI. Disclosure showed a 3.25-point range between never-users and everyday users in the relevant HCI measure, one of the largest frequency-related differences among the dimensions.',
+            'low': 'At the lower end of disclosure, you report maintaining stronger privacy boundaries with AI. This may reflect the kinds of tasks you use AI for, your comfort with sharing, or deliberate limits.',
+            'typical': 'In the middle range, you report sharing some personal information while retaining boundaries around other areas. This sits near the centre of the HCI participant benchmark.',
+            'series': 'Disclosure showed one of the strongest associations with AI-use frequency in HCI samples and much less variation by age. This means frequent users tended to report more sharing, but it does not establish that disclosure inevitably increases for every individual.',
+            'pressure_point': 'Privacy boundaries, normalisation of sharing, and awareness of accumulated information'
+        },
+
+        'thought_partnership': {
+            'definition': 'How much you report using AI to develop, challenge, or refine your thinking',
+            'high': 'At the higher end of thought partnership, you report using AI extensively to develop ideas, challenge beliefs, and refine thinking. The relevant HCI measure showed a 3.26-point difference across frequency groups, the largest single-variable frequency effect cited in this library.',
+            'low': 'At the lower end of thought partnership, you report using AI less often for collaborative thinking. This may reflect limited exposure, the tasks you use AI for, or a preference to form ideas independently.',
+            'typical': 'In the middle range, you report using AI as a thinking partner in some situations without making it central to how you develop ideas. This sits near the centre of the HCI participant benchmark.',
+            'series': 'Thought partnership was strongly associated with AI-use frequency in HCI samples. Across related studies, 34–38% of participants questioned whether AI-assisted decisions felt fully their own, showing that collaborative thinking and authorship can coexist as an active tension.',
+            'pressure_point': 'Independent view formation, reliance on AI framing, and authorship questions'
+        },
+
+        'social_transparency': {
+            'definition': 'How openly you report discussing or acknowledging your AI use with other people',
+            'high': 'At the higher end of social transparency, you report being more open about your AI use. Participants aged 65 and over showed the highest reported comfort with transparency in the cited HCI comparison.',
+            'low': 'At the lower end of social transparency, you report concealing or downplaying some AI use. This pattern was more common among younger participants, particularly those aged 18–34, who showed the largest gap between reported use and disclosure.',
+            'typical': 'In the middle range, you report being open in some contexts and more selective in others. This sits near the centre of the HCI participant benchmark.',
+            'series': 'Social transparency showed little relationship with AI-use frequency but clear age-group differences in HCI samples. Social and professional context may help explain those differences, but the data does not establish a single cause.',
+            'pressure_point': 'Comfort with disclosure, context, and perceived social expectations'
+        }
+    },
+
+    'combinations': {
+        'high_thought_partnership_low_emotional_regulation': {
+            'rarity': 'Fewer than 5% of participants',
+            'why_unusual': 'Within the HCI participant benchmark, high Thought Partnership more often appears alongside higher Emotional Regulation scores. Your responses show a less common separation: extensive cognitive engagement with AI alongside low reported emotional use.',
+            'what_it_reveals': 'This combination suggests a clear current distinction between using AI as a thinking partner and using it for emotional support. The benchmark does not establish why that distinction exists, but it is one of the defining features of this profile.',
+            'research_signal': 'Within HCI samples, this combination can coexist with comparatively strong reported agency and decision authorship. It should not be treated as proof of stronger identity or better outcomes.'
+        },
+
+        'high_reliance_high_agency': {
+            'rarity': 'Fewer than 5% of participants',
+            'why_unusual': 'Higher reliance often appears alongside lower reported agency in the HCI participant benchmark, but the relationship is not automatic. Your responses show deep integration alongside a strong current sense of control and authorship.',
+            'what_it_reveals': 'This combination shows that relying heavily on AI and retaining a strong sense of authorship are distinct aspects of the relationship. It may reflect an integrated but still self-directed pattern, without proving how that pattern developed or how it will change.',
+            'research_signal': 'This combination is distinctive because it departs from the more common relationship between reliance and agency. The available evidence does not support claims that it produces better attention, values alignment, or life outcomes.'
+        },
+
+        'high_verification_high_frequency': {
+            'rarity': 'Approximately 20% of everyday users',
+            'why_unusual': 'Verification did not rise consistently with AI-use frequency in HCI samples. Your responses show frequent use alongside consistently high checking, a pattern seen in only about one fifth of everyday users.',
+            'what_it_reveals': 'This combination suggests that verification remains an active feature of your current AI use even where the technology is familiar and frequently used.',
+            'research_signal': 'Within HCI samples, frequent use can coexist with high reported verification and continued scepticism about outputs. The data does not establish that this makes a participant less susceptible to steering.'
+        },
+
+        'low_reliance_high_frequency': {
+            'rarity': 'Approximately 15% of frequent users',
+            'why_unusual': 'Frequent AI use is generally associated with higher reliance in the HCI participant benchmark. Your responses show frequent use without a correspondingly high reported dependence on AI for functioning.',
+            'what_it_reveals': 'This combination suggests a more instrumental or bounded current pattern of use. It may reflect deliberate limits, task-specific use, or another explanation not measured by the assessment.',
+            'research_signal': 'This combination demonstrates that frequency and reliance are related but not interchangeable. It does not prove lower drift, greater independence, or clearer decision authority.'
+        }
+    },
+
+    'cohorts': {
+        '18-24': {
+            'description': 'Daily AI Workers & Young Professionals',
+            'what_high': 'Highest reported reliance, emotional engagement and thought partnership, alongside the lowest verification consistency',
+            'what_pressured': 'Highest reported verification fatigue, concealment of AI use and inner conflict about AI influence',
+            'signal': 'Within HCI samples, this cohort combined the most extensive AI engagement with some of the highest reported cognitive and emotional pressure. This is a strong cohort-level pattern, not a judgement about capability or burden for every individual.',
+            'distinctive': 'This group showed the largest gap between reported AI use and disclosed AI use, indicating that concealment is especially relevant within the cohort. The data does not establish a single cause.'
+        },
+
+        '25-34': {
+            'description': 'Peak-Career Integrators',
+            'what_high': 'Highest reported inner conflict about AI influence, personal disclosure to AI and emotional engagement with AI',
+            'what_pressured': 'Authorship questions were most pronounced in this group, including whether AI-assisted decisions felt fully their own',
+            'signal': 'Within HCI samples, this cohort combined substantial AI integration with the highest reported uncertainty about authorship and influence. That distinction is evidence-based; claims about career demand causing the pattern would go beyond the available data.',
+            'distinctive': 'Participants in this group were more likely than other cohorts to report questions about ownership of AI-assisted decisions.'
+        },
+
+        '35-44': {
+            'description': 'Values-Clear Mid-Career Adults',
+            'what_high': 'Highest reported values clarity, work identity and control over AI use, alongside the lowest obsolescence worry and saturation',
+            'what_stable': 'Fastest reported attention recovery and comparatively high verification diligence',
+            'signal': 'Within HCI samples, this cohort reported the clearest alignment between values, work identity and current AI-use boundaries. The evidence supports that comparative description, but not a conclusion that the cohort is inherently more capable or resilient.',
+            'distinctive': 'This group combined the highest reported values clarity with comparatively strong verification and lower saturation.'
+        },
+
+        '45-54': {
+            'description': 'Highly Integrated Mid-Career Users',
+            'what_high': 'Highest reported AI integration, decision delegation and practical reliance, alongside the lowest reported independence without AI',
+            'what_pressured': 'Greatest reported dependence on AI systems remaining available within their work domain',
+            'signal': 'Within HCI samples, this cohort showed the deepest practical integration of AI into work and decisions. The evidence does not establish whether that integration arose from necessity, preference, career demands or gradual adoption.',
+            'distinctive': 'This group’s high reliance appears alongside extensive use in consequential work and decision contexts.'
+        },
+
+        '55-64': {
+            'description': 'Cautious Older AI Users',
+            'what_high': 'Highest reported verification diligence, self-directed decision-making, confidence without AI and scepticism about AI outputs',
+            'what_pressured': 'Lowest reported confidence in detecting AI-generated or unreliable material',
+            'signal': 'Within HCI samples, this cohort combined strong caution and personal oversight with lower confidence in identifying some AI-system cues. The evidence supports both sides of that pattern without implying superior judgement or incomplete defences.',
+            'distinctive': 'This group was the most likely to combine high verification with low decision delegation.'
+        },
+
+        '65+': {
+            'description': 'Transparent and Self-Directed Older Users',
+            'what_high': 'Highest reported social transparency, self-direction and self-trust, alongside the lowest concealment and agency pressure',
+            'what_stable': 'Highest reported comfort acknowledging AI use openly',
+            'signal': 'Within HCI samples, this cohort reported the strongest combination of personal authority and openness about technology use. These are comparative self-report findings, not fixed age-based traits or proof of a stronger identity.',
+            'distinctive': 'This group reported the least concealment of AI use among the age cohorts studied.'
+        }
+    },
+
+    'trends': {
+        'verification_paradox': {
+            'pattern': 'Across relevant HCI studies, 84–99% of participants reported verifying AI outputs in at least some circumstances. At the same time, 43–54% reported verification fatigue or exhaustion, and 54% reported verifying selectively.',
+            'trajectory': 'Across the cited datasets, verification appears first as widespread, then as effortful, and later as increasingly selective under cognitive pressure.',
+            'what_it_means': 'Verification remains one of the most widely reported safeguards in HCI research, but the effort involved appears to influence when and how consistently participants apply it.',
+            'research_signal': 'This is one of the clearest recurring patterns across the HCI dataset series.',
+            'evidence_boundary': 'The datasets show repeated cross-sectional and self-reported patterns. They do not prove that verification will weaken for an individual or that fatigue causes selective checking.'
+        },
+
+        'drift_mechanism': {
+            'pattern': 'Across HCI values and human-experience datasets, some participants report greater reliance, less reflection, or a gap between what matters to them and how they act in environments designed for speed and convenience.',
+            'mechanism': 'A plausible HCI interpretation is that small, repeated and convenience-driven changes may be less visible than deliberate decisions, allowing behavioural patterns to shift without a single clear turning point.',
+            'what_it_means': 'The concept of drift helps explain why intention and day-to-day behaviour may diverge gradually rather than through one conscious choice.',
+            'research_signal': 'Related signals recur across multiple HCI values and human-experience datasets.',
+            'evidence_boundary': 'Drift is an interpretive framework, not a demonstrated universal mechanism. The available data does not establish that frictionless environments cause change in every participant.'
+        },
+
+        'identity_vs_process': {
+            'pattern': 'Across HCI samples, 78–96% reported at least reasonable values clarity and 62–91% retained personal responsibility. At the same time, 65% reported attention disruption, 50–54% verification fatigue, and 35% a gap between values and follow-through.',
+            'mechanism': 'One interpretation is that knowing what matters and being able to act consistently on it are distinct. Attention and cognitive load may affect the ease of follow-through even when values remain clear.',
+            'what_it_means': 'The evidence suggests that clear values can coexist with practical difficulty enacting them. This distinction is more precise than claiming identity loss or an unmeasured decline in the processes supporting action.',
+            'research_signal': 'The separation between values clarity and day-to-day enactment appears across multiple HCI datasets.',
+            'evidence_boundary': 'The data does not establish that attention disruption causes reduced agency, that identity is objectively stable, or that capability has eroded.'
+        },
+
+        'rest_deficit': {
+            'pattern': 'Across six cited HCI datasets, 50% of participants reported feeling tired or exhausted after extended online activity, while 35–42% recorded very low rest or recovery scores.',
+            'mechanism': 'Rest and recovery may be relevant to sustained attention, reflection and decision-making, although the datasets do not establish the direction or cause of those relationships.',
+            'what_it_means': 'Digital fatigue is a recurring and substantial context for interpreting attention, verification and decision-related responses.',
+            'research_signal': 'Related findings appeared across DS01, DS02, DS03, DS04, DS12 and DS14.',
+            'evidence_boundary': 'These findings should not be generalised to all digitally engaged adults or presented as proof that low rest causes reduced human functioning.'
+        },
+
+        'reliance_dose_response': {
+            'pattern': 'In the relevant HCI measure, average reliance rose from 1.1 among never-users to 4.4 among everyday users. Similar frequency-related patterns appeared across seven cited datasets.',
+            'mechanism': 'The strength and consistency of this gradient suggest that reliance is closely connected with how embedded AI becomes in participants’ workflows.',
+            'what_it_means': 'Reliance is not a character judgement. It is an important behavioural dimension that tends to be higher among people who use AI more often and more centrally.',
+            'research_signal': 'The frequency–reliance association appeared across DS04, DS09, DS13, DS14, DS15, DS16 and DS17.',
+            'evidence_boundary': 'This is a strong association, not proof that frequent use inevitably causes reliance or that reliance has become clinical dependency.'
+        },
+
+        'values_clarity_resilience': {
+            'pattern': 'Across more than 14 HCI datasets, 78–96% of participants reported at least reasonable clarity about what matters to them.',
+            'mechanism': 'Values clarity may provide a reference point during pressure or change, but the evidence does not show that clarity alone guarantees consistent action.',
+            'what_it_means': 'Knowing what matters appears to be one of the most consistent human signals in the HCI research series, while acting consistently on those values remains a separate question.',
+            'research_signal': 'High reported values clarity recurred across more than 14 datasets.',
+            'evidence_boundary': 'The pattern supports a strong descriptive claim about reported values clarity, not proof of identity resilience, protection from pressure, or stable behaviour over time.'
+        },
+
+        'frequency_as_dominant_predictor': {
+            'pattern': 'Across the HCI benchmark dimensions, AI-use frequency showed stronger relationships with many behavioural differences than age, gender or country.',
+            'mechanism': 'Frequency may partly reflect how deeply AI is integrated into everyday activity, making it a useful comparison variable across reliance, trust, disclosure, emotional engagement and thought partnership.',
+            'what_it_means': 'Usage frequency is one of the most informative organising variables in the HCI benchmark. Demographic differences still add context, but often explain less variation.',
+            'research_signal': 'Frequency-related differences appeared across nearly all benchmark dimensions.',
+            'evidence_boundary': 'Frequency is associated with these patterns but should not be described as a causal predictor of an individual’s thinking, emotions, decisions or identity.'
+        },
+
+        'emotional_support_expansion': {
+            'pattern': 'Across relevant HCI studies, 87% said only humans can truly meet emotional needs, while 18% reported emotional support as a primary AI use and 27% reported receiving some emotional support from AI. Emotional-support scores also rose from 1.49 to 3.15 across the cited loneliness comparison.',
+            'mechanism': 'Availability, privacy and ease of access may help explain why some participants turn to AI for emotional support, but the available data does not establish a single reason.',
+            'what_it_means': 'Emotional use is a significant and emerging part of the human–AI relationship, with a clear tension between receiving support from AI and viewing human connection as distinct.',
+            'research_signal': 'Related patterns appeared across DS10, DS11 and cross-cohort analyses.',
+            'evidence_boundary': 'The evidence does not establish emotional substitution, dependency, reduced human connection, or growth over time for an individual.'
+        }
+    },
+
+    'opening': {
+        'prewritten_statement': """Your profile reflects how you currently report engaging with AI, compared with the HCI participant benchmark. The benchmark is informed by more than 10,000 participant responses across 21 HCI studies.
+
+Use this report to understand your current pattern:
+• See what is distinctive about your responses
+• Notice where you are broadly typical and where you differ
+• Explore the human capabilities connected with your current pattern
+• Establish a reference point that can be compared with a later measurement"""
+    }
+}
+
 # ========== DIMENSION SIGNALS FOR REPORT LANGUAGE ==========
 # Used in various sections for research grounding
 
