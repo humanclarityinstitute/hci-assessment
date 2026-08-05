@@ -52,6 +52,19 @@ DIMENSION_ACCENTS = {
 }
 
 
+BENCHMARK_LABEL = "HCI participant benchmark"
+BENCHMARK_FOUNDATION = "10,000+ participant responses across 21 HCI studies"
+
+FULL_PERSONAL_INSIGHT_DISCLAIMER = (
+    "This assessment is for personal insight only. It is not a psychological, "
+    "medical or mental health assessment, diagnosis or advice, and it is not a "
+    "clinical instrument. Do not rely on it for any decision that needs professional "
+    "advice. If you have concerns about your wellbeing, please talk to a qualified professional."
+)
+
+SHORT_PERSONAL_INSIGHT_DISCLAIMER = "This assessment is for personal insight only."
+
+
 # -----------------------------------------------------------------------------
 # Basic helpers
 # -----------------------------------------------------------------------------
@@ -340,17 +353,18 @@ def dim_accent(key_or_label):
     return DIMENSION_ACCENTS.get(dim_key(key_or_label), "#174EA6")
 
 
+
 def rarity_label(percentile):
-    """Return a restrained rarity label based on distance from population centre."""
+    """Return a restrained distinctiveness label from benchmark position."""
     p = pct(percentile)
     distance = abs(p - 50)
     if distance >= 45:
-        return "Very rare"
+        return "Highly distinctive"
     if distance >= 35:
-        return "Rare"
+        return "Distinctive"
     if distance >= 25:
-        return "Uncommon"
-    return "Common"
+        return "Less common"
+    return "Within range"
 
 
 def question_identifier(group_key, index):
@@ -358,7 +372,16 @@ def question_identifier(group_key, index):
     return f"{code}{index}" if code else str(index)
 
 
+
 def mini_percentile_row(label, value):
+    if value in (None, ""):
+        return f"""
+          <div class="mini-position-row unavailable">
+            <span>{esc(label)}</span>
+            <div class="mini-track" aria-label="{esc(label)} comparison unavailable"></div>
+            <strong>N/A</strong>
+          </div>"""
+
     p = pct(value)
     return f"""
       <div class="mini-position-row">
@@ -366,8 +389,10 @@ def mini_percentile_row(label, value):
         <div class="mini-track" style="--mini-fill:{p}%" aria-label="{esc(label)} percentile {p}">
           <i style="left:{p}%"></i>
         </div>
-        <strong>{p} / 100</strong>
+        <strong>{esc(safe_ordinal(p))}</strong>
       </div>"""
+
+
 
 
 DASHBOARD_QUESTION_COUNTS = {
@@ -382,17 +407,22 @@ DASHBOARD_QUESTION_COUNTS = {
     "social_transparency": 4,
 }
 
-
 def dashboard_count_label(card):
     key = dim_key(card.get("dimension") or card.get("key") or card.get("label"))
-    count = card.get("question_count") or card.get("item_count") or card.get("response_count") or DASHBOARD_QUESTION_COUNTS.get(key)
+    count = (
+        card.get("question_count")
+        or card.get("item_count")
+        or card.get("response_count")
+        or DASHBOARD_QUESTION_COUNTS.get(key)
+    )
     try:
         count = int(count)
     except Exception:
         count = None
+
     if not count:
-        return "Constructed from behavioural indicators"
-    return f"Constructed from {count} behavioural indicators"
+        return "Constructed from self-reported assessment items"
+    return f"Constructed from {count} self-reported assessment items"
 
 
 def dashboard_comparisons(card):
@@ -400,60 +430,67 @@ def dashboard_comparisons(card):
     return []
 
 
+
 def dashboard_insight(card):
-    """Concise, participant-facing dashboard interpretation. No research trivia or hard-to-interpret stats."""
+    """Concise interpretation grounded in reported responses and benchmark position."""
     key = dim_key(card.get("dimension") or card.get("key") or card.get("label"))
     p = pct(card.get("percentile"))
     band = "high" if p >= 71 else "low" if p <= 40 else "middle"
 
     copy = {
         "reliance": {
-            "high": "Your reliance on AI is higher than most participants. This suggests AI has become embedded in your normal thinking workflow, bringing efficiency while increasing the chance that some tasks feel harder when AI is unavailable.",
-            "middle": "Your reliance sits close to the benchmark range. AI appears useful in your workflow, but not so central that it dominates how you think, decide, or function day to day.",
-            "low": "Your reliance on AI is lower than most participants. AI may still be useful, but your responses suggest you retain a relatively independent working rhythm when tools are unavailable.",
+            "high": "Your reported reliance is elevated within the HCI participant benchmark. AI appears central in your current self-reported workflow, but this result does not establish dependency or reduced ability without AI.",
+            "middle": "Your reported reliance sits within the central benchmark range. AI appears useful in your current workflow without standing out as unusually central or unusually limited.",
+            "low": "Your reported reliance is lower within the HCI participant benchmark. Your responses indicate less reliance on AI across the assessed situations, without establishing why that pattern exists.",
         },
         "trust": {
-            "high": "Your trust in AI outputs is higher than most participants. This suggests you have developed working confidence in AI, which can make collaboration smoother but also makes your verification rhythm more important.",
-            "middle": "Your trust sits close to the benchmark range. You appear to use AI with a balanced level of confidence, neither rejecting its outputs quickly nor accepting them without some internal judgement.",
-            "low": "Your trust in AI outputs is lower than most participants. This suggests you keep more distance from AI recommendations, which can protect judgement but may also limit how readily you use AI as a collaborator.",
+            "high": "Your reported trust is elevated within the HCI participant benchmark. This reflects greater confidence in AI outputs, but it does not establish whether that trust is well calibrated for every task.",
+            "middle": "Your reported trust sits within the central benchmark range. Your responses show neither unusually high nor unusually low confidence in AI outputs.",
+            "low": "Your reported trust is lower within the HCI participant benchmark. This reflects greater caution in the assessed situations, without establishing whether that caution is beneficial or excessive.",
         },
         "verification": {
-            "high": "Your verification behaviour is stronger than most participants. This suggests you place value on checking AI outputs before using them, which can protect accuracy while adding more cognitive effort to the process.",
-            "middle": "Your verification sits close to the benchmark range. You appear to check AI outputs selectively, using scrutiny when it feels warranted rather than treating every answer the same way.",
-            "low": "Your verification behaviour is lower than most participants. This suggests AI outputs may move into use with relatively little checking, making trust, context, and stakes especially important in how you work with AI.",
+            "high": "Your reported verification is elevated within the HCI participant benchmark. Checking is a prominent part of your current pattern, though the assessment does not independently verify how checking is applied in practice.",
+            "middle": "Your reported verification sits within the central benchmark range. Your responses indicate a broadly typical level of checking across the assessed situations.",
+            "low": "Your reported verification is lower within the HCI participant benchmark. This indicates less frequent checking in the assessed situations, not a fixed trait or proof that outputs are accepted uncritically.",
         },
         "decision_delegation": {
-            "high": "Your decision delegation is higher than most participants. This suggests AI has become involved not only in information gathering, but in shaping choices and recommendations that you are willing to act on.",
-            "middle": "Your decision delegation sits close to the benchmark range. AI appears to support some choices without fully taking over the decision process, leaving room for situational judgement.",
-            "low": "Your decision delegation is lower than most participants. This suggests you may use AI for input while keeping final authority firmly with yourself, especially when decisions carry personal or practical weight.",
+            "high": "Your reported Decision Delegation is elevated within the HCI participant benchmark. AI appears to play a larger role in recommendations and choices, while final authority must still be interpreted from your specific responses.",
+            "middle": "Your reported Decision Delegation sits within the central benchmark range. AI appears to support some decisions without the overall pattern standing out as unusually high or low.",
+            "low": "Your reported Decision Delegation is lower within the HCI participant benchmark. Your responses indicate that AI plays a more limited role in final choices across the assessed situations.",
         },
         "human_agency": {
-            "high": "Your sense of agency is stronger than most participants. This suggests you experience AI as something you direct, rather than something that quietly takes over your decisions or sense of authorship.",
-            "middle": "Your agency sits close to the benchmark range. You appear to retain a reasonable sense of control while still allowing AI to shape parts of your thinking and decision process.",
-            "low": "Your sense of agency is lower than most participants. This does not mean loss of identity; it suggests the process of deciding may feel more influenced by AI systems than fully self-directed.",
+            "high": "Your reported sense of Human Agency is elevated within the HCI participant benchmark. Control and authorship are prominent in your current responses, but this is not an objective measurement of capability or long-term stability.",
+            "middle": "Your reported sense of Human Agency sits within the central benchmark range. Your responses indicate a broadly typical current sense of control and authorship when AI is involved.",
+            "low": "Your reported sense of Human Agency is lower within the HCI participant benchmark. This reflects your current self-report and does not establish loss of identity, capability or decision-making capacity.",
         },
         "emotional_regulation": {
-            "high": "Your emotional use of AI is higher than most participants. This suggests AI may play a role in processing stress, uncertainty, or emotional load, making the boundary between support and substitution worth noticing.",
-            "middle": "Your emotional use of AI sits close to the benchmark range. AI may offer some support or relief, but your responses do not suggest it has become the primary place you turn emotionally.",
-            "low": "Your emotional use of AI is lower than most participants. This suggests you keep AI more functionally or intellectually bounded, with emotional processing likely remaining outside the AI relationship.",
+            "high": "Your reported emotional use of AI is elevated within the HCI participant benchmark. AI plays a more prominent role in emotional support within your responses, without establishing substitution, dependency or reduced human connection.",
+            "middle": "Your reported emotional use of AI sits within the central benchmark range. AI appears to play some role in emotional support without standing out as unusually central or unusually limited.",
+            "low": "Your reported emotional use of AI is lower within the HCI participant benchmark. Your responses indicate a comparatively limited emotional role for AI, without establishing where emotional support comes from instead.",
         },
         "disclosure": {
-            "high": "Your disclosure to AI is higher than most participants. This suggests you are relatively open with AI about personal thoughts or experiences, which can deepen usefulness while changing the boundary around what feels private.",
-            "middle": "Your disclosure sits close to the benchmark range. You appear to share some personal material with AI while still keeping clear limits around what belongs in that interaction.",
-            "low": "Your disclosure to AI is lower than most participants. This suggests you keep AI in a more bounded role, using it without making it a central space for personal or private expression.",
+            "high": "Your reported disclosure to AI is elevated within the HCI participant benchmark. Personal sharing is more prominent in your current responses, without establishing privacy erosion or loss of boundaries.",
+            "middle": "Your reported disclosure sits within the central benchmark range. Your responses indicate some personal sharing alongside retained limits.",
+            "low": "Your reported disclosure to AI is lower within the HCI participant benchmark. Personal sharing is less prominent in the assessed situations, without establishing whether those boundaries are deliberate or stable.",
         },
         "thought_partnership": {
-            "high": "Your thought partnership with AI is higher than most participants. This suggests you use AI as an active thinking partner, developing ideas through interaction rather than only asking for finished answers.",
-            "middle": "Your thought partnership sits close to the benchmark range. AI appears to support parts of your thinking, but not so strongly that it becomes the main structure for how ideas develop.",
-            "low": "Your thought partnership with AI is lower than most participants. This suggests you may use AI more for answers, tasks, or assistance than as a sustained space for developing your own thinking.",
+            "high": "Your reported Thought Partnership is elevated within the HCI participant benchmark. AI is a prominent part of how you report developing or testing ideas, without establishing loss of independent reasoning or authorship.",
+            "middle": "Your reported Thought Partnership sits within the central benchmark range. AI appears to support parts of your thinking without standing out as unusually central or unusually limited.",
+            "low": "Your reported Thought Partnership is lower within the HCI participant benchmark. Your responses indicate less use of AI for developing ideas, without establishing how you think or work outside the assessed situations.",
         },
         "social_transparency": {
-            "high": "Your social transparency is higher than most participants. This suggests you are relatively open about how AI contributes to your work or thinking, reducing the gap between actual use and what others see.",
-            "middle": "Your social transparency sits close to the benchmark range. You appear neither highly private nor unusually open about AI use, with disclosure likely depending on context and audience.",
-            "low": "Your social transparency is lower than most participants. This suggests your AI use may be more private or context-dependent, with a wider gap between how much you use AI and how visible that use is to others.",
+            "high": "Your reported Social Transparency is elevated within the HCI participant benchmark. You report greater openness about AI use, without implying that lower openness would be dishonest.",
+            "middle": "Your reported Social Transparency sits within the central benchmark range. Openness about AI use appears to vary by context rather than standing out strongly in either direction.",
+            "low": "Your reported Social Transparency is lower within the HCI participant benchmark. AI use appears more private or context-dependent in your responses, without establishing the cause.",
         },
     }
-    return (copy.get(key) or {}).get(band) or (card.get("research_insight") or card.get("insight") or "")
+
+    return (
+        (copy.get(key) or {}).get(band)
+        or card.get("research_insight")
+        or card.get("insight")
+        or ""
+    )
 
 
 def position_without_percentile(item):
@@ -463,6 +500,7 @@ def position_without_percentile(item):
 # -----------------------------------------------------------------------------
 # Main renderer
 # -----------------------------------------------------------------------------
+
 
 def render_report(report_data):
     assert_report_data_contract(report_data)
@@ -474,12 +512,12 @@ def render_report(report_data):
     date = format_report_date(report_data.get("created_at"))
     deep = s.get("deep_dive") or s.get("section_12_deep_dive")
 
-    return f'''<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Identity & Behaviour Report — Human Clarity Institute</title>
+<title>AI Identity &amp; Behaviour Report — Human Clarity Institute</title>
 {styles()}
 </head>
 <body>
@@ -498,31 +536,32 @@ def render_report(report_data):
   {render_trajectory(s.get('trajectory') or s.get('section_11_trajectory') or {})}
   {render_looking_forward(s.get('looking_forward') or s.get('section_12_looking_forward') or {})}
   {render_closing_reflection(s.get('closing_reflection') or s.get('section_13_closing_reflection') or {})}
-  
 
   <footer class="report-footer">
     <strong>Human Clarity Institute</strong>
-    <p>This report is intended for reflection, benchmarking and self-understanding. It is not medical, psychological, legal or financial advice.</p>
+    <p>{esc(SHORT_PERSONAL_INSIGHT_DISCLAIMER)}</p>
   </footer>
 </main>
 </body>
-</html>'''
+</html>"""
 
 
-# -----------------------------------------------------------------------------
-# Sections
-# -----------------------------------------------------------------------------
 
 def render_opening(x, report_data=None, age="", country="", date=""):
     report_data = report_data or {}
     statement = x.get("statement") or (
-        "Your relationship with AI is beginning to form a behavioural pattern.\n\n"
-        "This report compares that pattern with more than 10,500 participants across 21 Human Clarity Institute research studies, helping identify where your AI use is typical, where it is distinctive, and which aspects of your relationship with AI are changing most rapidly.\n\n"
-        "Rather than judging behaviour as good or bad, this report maps how you currently work with AI and provides evidence you can use to make more informed decisions as that relationship evolves."
+        "Your responses form a current pattern across nine aspects of how you report using AI.\n\n"
+        f"This report compares that pattern with the {BENCHMARK_LABEL}, informed by "
+        f"{BENCHMARK_FOUNDATION}. It shows where your responses are broadly typical, "
+        "where they differ, and which combinations contribute most to the overall shape "
+        "of your profile.\n\n"
+        "The report does not judge the pattern as good or bad. It provides a structured "
+        "reference point for understanding your current responses and for comparison if "
+        "you complete the assessment again later."
     )
     findings = x.get("findings") or ""
 
-    return f'''
+    return f"""
     <section class="page-section opening-section report-opening">
       <div class="brand-row opening-brand">
         <div class="brand-mark">HCI</div>
@@ -544,13 +583,20 @@ def render_opening(x, report_data=None, age="", country="", date=""):
         {paras(statement)}
       </div>
 
+      <aside class="assessment-disclaimer" role="note" aria-label="Important assessment information">
+        <strong>Important assessment information</strong>
+        <p>{esc(FULL_PERSONAL_INSIGHT_DISCLAIMER)}</p>
+      </aside>
+
       <div class="opening-analysis">
         {section_kicker('Initial analysis')}
         <h2>What stands out immediately</h2>
         {opening_synthesis_html(findings)}
-        <p class="opening-transition">Together, these patterns provide the context for the rest of the report. The next section shows how the same profile appears across the nine HCI behavioural dimensions, before later sections unpack the question-level evidence behind it.</p>
+        <p class="opening-transition">Together, these responses provide the context for the rest of the report. The next section shows the same profile across the nine HCI assessment dimensions, before later sections examine the question-level responses behind it.</p>
       </div>
-    </section>'''
+    </section>"""
+
+
 
 def render_dashboard(x):
     cards = ""
@@ -562,12 +608,16 @@ def render_dashboard(x):
             f'<div class="comparison"><span>{esc(r.get("label"))}</span><strong>{esc(r.get("percentile_label") or safe_ordinal(r.get("percentile")))} percentile</strong></div>'
             for r in dashboard_comparisons(c)
         )
+        percentile_context = (
+            c.get("plain_score")
+            or f"{safe_ordinal(percentile)} percentile within the {BENCHMARK_LABEL}"
+        )
         cards += f"""
         <article class="dimension-card" style="--dim-accent:{esc(accent)};">
           <div class="card-topline">{esc(c.get('label')).upper()}</div>
           <p class="dimension-definition">{esc(c.get('definition'))}</p>
           <h3>{esc(safe_ordinal(percentile))} percentile</h3>
-          <p class="percentile-context">Higher than {percentile} out of 100 people</p>
+          <p class="percentile-context">{esc(percentile_context)}</p>
           {percentile_bar(percentile)}
           <div class="comparison-list">{comps}</div>
           <p class="insight">{esc(dashboard_insight(c))}</p>
@@ -577,27 +627,29 @@ def render_dashboard(x):
     return f"""
     <section class="page-section dashboard-section">
       {section_kicker('Benchmark overview')}
-      <h2>{esc(x.get('title') or 'Your AI Behaviour Pattern')}</h2>
-      <p class="section-intro">{esc(x.get('subtitle') or 'How your profile compares across the core HCI dimensions.')}</p>
+      <h2>{esc(x.get('title') or 'Your Reported AI Behaviour Pattern')}</h2>
+      <p class="section-intro">{esc(x.get('subtitle') or f'How your responses compare across the core HCI dimensions within the {BENCHMARK_LABEL}.')}</p>
       <div class="dimension-grid">{cards or render_empty('No dimension cards were available.')}</div>
     </section>"""
 
 
+
 def render_typicality(x):
-    distinctive = list(x.get('distinctive', []) or [])
-    benchmark_range = list(x.get('benchmark_range', []) or [])
+    distinctive = list(x.get("distinctive", []) or [])
+    benchmark_range = list(x.get("benchmark_range", []) or [])
     if not benchmark_range:
-        benchmark_range = list(x.get('typical', []) or []) + list(x.get('moderate', []) or [])
+        benchmark_range = list(x.get("typical", []) or []) + list(x.get("moderate", []) or [])
 
     section_intro = (
-        "Looking across all nine behavioural dimensions reveals the overall shape of your relationship with AI. "
-        "Individual dimensions describe specific aspects of your behaviour, but the way those dimensions cluster together often provides the clearest picture of how AI currently fits into your life."
+        "Looking across all nine assessment dimensions shows the overall shape of your "
+        "current self-reported relationship with AI. Individual dimensions describe "
+        "specific parts of the pattern, while their combination provides additional context."
     )
 
     def signal_items(items, empty, show_position=True):
         if not items:
             return f'<p class="muted">{esc(empty)}</p>'
-        html = ''
+        html = ""
         for i in items:
             key = i.get("dimension") or i.get("key") or i.get("label")
             p = pct(i.get("percentile"))
@@ -613,8 +665,16 @@ def render_typicality(x):
               </div>"""
         return html
 
-    distinctive_rows = signal_items(distinctive, "No dimensions fall cleanly into a strongly distinctive range.", True)
-    benchmark_rows = signal_items(benchmark_range, "No dimensions sit close to the benchmark range.", False)
+    distinctive_rows = signal_items(
+        distinctive,
+        "No dimensions fall cleanly into a strongly distinctive range.",
+        True,
+    )
+    benchmark_rows = signal_items(
+        benchmark_range,
+        "No dimensions sit close to the central benchmark range.",
+        False,
+    )
 
     return f"""
     <section class="page-section standing-section profile-shape-section">
@@ -624,24 +684,25 @@ def render_typicality(x):
 
       <div class="profile-shape-layout">
         <article class="shape-panel shape-panel-primary">
-          <h3>Defining Behavioural Signals</h3>
-          <p class="shape-panel-note">These dimensions contribute most strongly to the overall shape of your relationship with AI.</p>
+          <h3>Defining Profile Signals</h3>
+          <p class="shape-panel-note">These dimensions contribute most strongly to the current shape of your reported profile.</p>
           <div class="shape-signal-list">{distinctive_rows}</div>
         </article>
 
         <article class="shape-panel">
-          <h3>Supporting Behavioural Signals</h3>
-          <p class="shape-panel-note">These dimensions remain closer to the benchmark and provide important context to your overall profile.</p>
+          <h3>Supporting Profile Signals</h3>
+          <p class="shape-panel-note">These dimensions remain closer to the central range of the HCI participant benchmark.</p>
           <div class="shape-signal-list compact">{benchmark_rows}</div>
         </article>
       </div>
 
       <article class="profile-shape-summary">
-        <h3>How these dimensions work together</h3>
+        <h3>How these dimensions appear together</h3>
         {paras(x.get('profile_shape_summary')) or render_empty('No profile shape summary was available.')}
       </article>
-      <p class="profile-shape-transition">The next section explores why these dimensions appear together and what they reveal about your relationship with AI.</p>
+      <p class="profile-shape-transition">The next section examines the combinations within this profile and what they may indicate, without assuming that one dimension causes another.</p>
     </section>"""
+
 
 def render_rare(x):
     combos = x.get("combinations") or []
@@ -671,14 +732,22 @@ def render_story(x):
     return f'<section class="page-section story-section">{section_kicker("Interpretation")}<h2>{esc(x.get("title") or "Your Behaviour Story")}</h2><div class="narrative narrow">{paras(x.get("body")) or render_empty("No behaviour story was available.")}</div></section>'
 
 
+
 def render_questions(x, demo):
-    freq = demo.get("_frequency_benchmark") or demo.get("ai_tool_use_frequency") or demo.get("frequency") or "your AI-use frequency"
+    freq = (
+        demo.get("_frequency_benchmark")
+        or demo.get("ai_tool_use_frequency")
+        or demo.get("frequency")
+        or "your AI-use frequency"
+    )
     groups = ""
+
     for g in x.get("groups", []):
         group_label = g.get("label") or ""
         group_key = g.get("key") or g.get("dimension") or group_label
         accent = dim_accent(group_key)
         cards = ""
+
         for idx, q in enumerate(g.get("questions", []), 1):
             answer = q.get("answer")
             try:
@@ -697,20 +766,19 @@ def render_questions(x, demo):
                 or q.get("frequency_percentile")
                 or q.get("percentile_ai_tool_use_frequency")
             )
-            if freq_pct in (None, ""):
-                freq_pct = overall_pct
 
             qid = q.get("id") or q.get("question_id") or question_identifier(group_key, idx)
-            rare = q.get("rarity_label") or rarity_label(overall_pct)
+            distinctive_label = q.get("rarity_label") or rarity_label(overall_pct)
             scale = "".join(
                 f'<span class="{"selected" if ans_int == i else ""}">{i}</span>'
                 for i in range(1, 8)
             )
+
             cards += f"""
             <article class="question-card" style="--q-accent:{esc(accent)};">
               <div class="question-card-head">
                 <span class="question-id">{esc(qid)}</span>
-                <span class="rarity-pill">{esc(rare)}</span>
+                <span class="rarity-pill">{esc(distinctive_label)}</span>
               </div>
 
               <h4>“{esc(q.get('question_text'))}”</h4>
@@ -723,16 +791,17 @@ def render_questions(x, demo):
 
               <div class="question-divider"></div>
 
-              <h5>Everyone distribution</h5>
+              <h5>HCI participant benchmark distribution</h5>
               {dist(q.get('distribution_everyone'), answer)}
 
               <div class="position-rows">
-                {mini_percentile_row("Everyone", overall_pct)}
+                {mini_percentile_row("HCI benchmark", overall_pct)}
                 {mini_percentile_row(f"Similar AI use ({freq})", freq_pct)}
               </div>
 
               <p class="comparison-note">{esc(q.get('comparison_statement'))}</p>
             </article>"""
+
         groups += f"""
           <div class="question-group" style="--q-accent:{esc(accent)};">
             <h3>{esc(group_label).upper()}</h3>
@@ -744,17 +813,23 @@ def render_questions(x, demo):
     <section class="page-section questions-section">
       {section_kicker('Question-level evidence')}
       <h2>{esc(x.get('title') or 'Your Question-Level Profile')}</h2>
-      <p class="section-intro">{esc(x.get('subtitle') or 'How your individual responses compare with benchmark distributions.')}</p>
-      <p class="section-intro compact question-level-explainer">These question-level results show the individual responses that contributed most to your benchmark profile. Comparing them with both the overall population and people who use AI as frequently as you provides additional context for understanding which responses are most distinctive.</p>
+      <p class="section-intro">{esc(x.get('subtitle') or f'How your individual responses compare within the {BENCHMARK_LABEL}.')}</p>
+      <p class="section-intro compact question-level-explainer">These results show the self-reported responses contributing to your benchmark profile. Comparisons are made with the HCI participant benchmark and, where sufficient data is available, with participants who report using AI about as frequently as you.</p>
       {groups or render_empty('No question-level profile was available.')}
     </section>"""
+
 
 
 def render_distinctive(x):
     cards = ""
     for q in x.get("responses", []):
-        percentile = q.get('percentile')
-        accent = dim_accent(q.get('dimension') or q.get('dimension_label'))
+        percentile = q.get("percentile")
+        accent = dim_accent(q.get("dimension") or q.get("dimension_label"))
+        percentile_text = (
+            f"{safe_ordinal(percentile)} percentile within the {BENCHMARK_LABEL}"
+            if percentile not in (None, "")
+            else "Benchmark comparison unavailable"
+        )
         cards += f"""
         <article class="evidence-card distinctive-card" style="--evidence-accent:{esc(accent)};">
           <div class="card-topline">{esc(q.get('dimension_label'))}</div>
@@ -765,53 +840,71 @@ def render_distinctive(x):
             <strong>{esc(q.get('answer_display'))}</strong>
           </div>
           <div class="benchmark-metric">
-            <span>Higher than</span>
-            <strong>{pct(percentile)} of 100 participants</strong>
+            <span>Benchmark position</span>
+            <strong>{esc(percentile_text)}</strong>
           </div>
         </article>"""
-    return f'<section class="page-section distinctive-section">{section_kicker("Distinctive responses")}<h2>{esc(x.get("title") or "Your Most Distinctive Responses")}</h2><p class="section-intro compact distinctive-explainer">{esc(x.get("intro") or "The responses below contributed most strongly to the overall shape of your benchmark profile. Together they provide the clearest evidence supporting the conclusions described throughout the earlier sections of this report.")}</p><div class="evidence-grid distinctive-grid">{cards or render_empty("No distinctive responses were available.")}</div><div class="narrative narrow distinctive-narrative">{paras(x.get("narrative"))}</div></section>'
+
+    return (
+        f'<section class="page-section distinctive-section">'
+        f'{section_kicker("Distinctive responses")}'
+        f'<h2>{esc(x.get("title") or "Your Most Distinctive Responses")}</h2>'
+        f'<p class="section-intro compact distinctive-explainer">{esc(x.get("intro") or "These self-reported responses sit furthest from the centre of the HCI participant benchmark and contribute strongly to the current shape of your profile.")}</p>'
+        f'<div class="evidence-grid distinctive-grid">{cards or render_empty("No distinctive responses were available.")}</div>'
+        f'<div class="narrative narrow distinctive-narrative">{paras(x.get("narrative"))}</div>'
+        f'</section>'
+    )
+
+
 
 def render_perception(x):
-    def measured_label(item):
-        p = pct(item.get('actual_percentile'))
+    def assessment_position_label(item):
+        p = pct(item.get("actual_percentile"))
         if p >= 71:
-            return 'Higher than most people'
+            return "Higher position within the HCI participant benchmark"
         if p <= 40:
-            return 'Lower than most people'
-        return 'Near the population centre'
+            return "Lower position within the HCI participant benchmark"
+        return "Central range of the HCI participant benchmark"
 
     def perception_scale(item):
-        p = pct(item.get('actual_percentile'))
-        return (f'<div class="perception-scale" style="--perception-position:{p}%">'
-                f'<div class="perception-scale-label perception-scale-label-you">You<br><strong>{esc(safe_ordinal(p))} percentile</strong></div>'
-                f'<div class="perception-scale-track"><i></i></div>'
-                '<div class="perception-scale-captions"><span>Lower<br>than most people</span><span>About average</span><span>Higher<br>than most people</span></div></div>')
+        p = pct(item.get("actual_percentile"))
+        return (
+            f'<div class="perception-scale" style="--perception-position:{p}%">'
+            f'<div class="perception-scale-label perception-scale-label-you">You<br><strong>{esc(safe_ordinal(p))} percentile</strong></div>'
+            f'<div class="perception-scale-track"><i></i></div>'
+            '<div class="perception-scale-captions">'
+            '<span>Lower benchmark position</span>'
+            '<span>Central benchmark range</span>'
+            '<span>Higher benchmark position</span>'
+            '</div></div>'
+        )
 
     cards = []
-    for i in x.get('self_perception', []):
-        html = ''
+    for i in x.get("self_perception", []):
+        html = ""
         html += '<article class="perception-card">'
         html += '<div class="perception-card-head">'
         html += f'<span class="perception-number">{esc(i.get("index"))}</span><div>'
         html += f'<h3>{esc(i.get("area") or "AI pattern")}</h3><p>“{esc(i.get("question"))}”</p></div></div>'
         html += '<div class="perception-divider"></div>'
-        html += f'<div class="perception-block perception-self-view"><span>Your perception</span><strong>{esc(i.get("answer"))}</strong></div>'
-        html += '<div class="perception-block perception-measured-view"><span>Your measured pattern</span>'
-        html += f'<p>{esc(i.get("measured_copy") or "Based on your responses across the assessment.")}</p>{perception_scale(i)}<strong>{esc(measured_label(i))}</strong></div>'
-        html += f'<div class="perception-interpretation"><span>Interpretation</span><p>{esc(i.get("interpretation"))}</p></div>'
+        html += f'<div class="perception-block perception-self-view"><span>Your direct self-estimate</span><strong>{esc(i.get("answer"))}</strong></div>'
+        html += '<div class="perception-block perception-measured-view"><span>Your assessment-based position</span>'
+        html += f'<p>{esc(i.get("measured_copy") or "Based on your self-reported responses across the assessment.")}</p>{perception_scale(i)}<strong>{esc(assessment_position_label(i))}</strong></div>'
+        html += f'<div class="perception-interpretation"><span>What the comparison may indicate</span><p>{esc(i.get("interpretation"))}</p></div>'
         html += '</article>'
         cards.append(html)
-    cards = ''.join(cards)
-    return f'''
+
+    cards = "".join(cards)
+    return f"""
     <section class="page-section perception-section">
       {section_kicker('Self-perception')}
       <h2>{esc(x.get('title') or 'How You See Yourself')}</h2>
-      <p class="section-intro compact">{esc(x.get('subtitle') or 'Comparing your self-perception with your measured AI behaviour.')}</p>
-      <p class="section-intro compact perception-explainer">{esc(x.get('intro') or 'This section compares what you said about yourself with the behavioural pattern created by your assessment responses.')}</p>
+      <p class="section-intro compact">{esc(x.get('subtitle') or 'Comparing your direct self-estimate with your assessment-based benchmark position.')}</p>
+      <p class="section-intro compact perception-explainer">{esc(x.get('intro') or 'This section compares two forms of self-report: your direct estimate and the position derived from your other assessment responses.')}</p>
       <div class="perception-grid">{cards or render_empty('No self-perception answers were available.')}</div>
-      <p class="perception-footnote">Your measured pattern is derived from the assessment as a whole. It reflects observable behaviour mapped to each area, not just how you feel about it from the inside.</p>
-      <div class="perception-narrative-block"><h3>{esc(x.get('narrative_heading') or 'What this comparison suggests')}</h3><div class="narrative narrow">{paras(x.get('narrative'))}</div></div>
-    </section>'''
+      <p class="perception-footnote">Your assessment-based position is derived from your self-reported responses across the assessment and compared with the HCI participant benchmark. It is not an independent observation of your behaviour.</p>
+      <div class="perception-narrative-block"><h3>{esc(x.get('narrative_heading') or 'What this comparison may indicate')}</h3><div class="narrative narrow">{paras(x.get('narrative'))}</div></div>
+    </section>"""
 
 
 def human_capital_text(item, *keys):
@@ -846,13 +939,28 @@ def render_human_capital_group(title, intro, items, class_name=""):
       </div>'''
 
 
+
 def render_human_capital(x):
     """Render Section 10: Your Human Capital."""
     x = x if isinstance(x, dict) else {}
 
-    developing_intro = "Based on your current benchmark profile, these capabilities appear to be most actively developing through your relationship with AI today."
-    protecting_intro = "Some capabilities appear particularly important to the way you currently work with AI. These are not necessarily your highest benchmark scores. They are the qualities that seem most valuable to preserve as your relationship with AI continues evolving."
-    watching_intro = "Every relationship with AI evolves gradually. These are not problems to solve. They are simply the capabilities that people with similar profiles often find most useful to keep an eye on as their relationship with AI develops."
+    developing_title = x.get("capabilities_developing_label") or "Capabilities active in your current pattern"
+    protecting_title = x.get("worth_protecting_label") or "Capabilities that appear important within this pattern"
+    watching_title = x.get("worth_watching_label") or "Capabilities useful to compare at a later measurement"
+    priorities_title = x.get("human_capital_priorities_label") or "Current capability-related themes"
+
+    developing_intro = (
+        "These capability-related themes are especially visible in your current "
+        "self-reported pattern. This does not establish that they are objectively developing."
+    )
+    protecting_intro = (
+        "These capabilities appear especially relevant to the way your current responses "
+        "fit together. The assessment does not establish that they are fixed or protected from change."
+    )
+    watching_intro = (
+        "These capability-related areas may be useful to compare if you complete the "
+        "assessment again later. They are not problems, predictions or measured weaknesses."
+    )
 
     priorities = ""
     for idx, item in enumerate(x.get("human_capital_priorities") or [], 1):
@@ -860,48 +968,46 @@ def render_human_capital(x):
         body = human_capital_text(item, "explanation", "description", "body", "text", "summary")
         if not title and not body:
             continue
-        priorities += f'''
+        priorities += f"""
         <article class="human-capital-priority">
           <span>{idx}</span>
           <div>
             <h4>{esc(title)}</h4>
             <p>{esc(body)}</p>
           </div>
-        </article>'''
+        </article>"""
 
-    return f'''
+    return f"""
     <section class="page-section human-capital-section">
       {section_kicker('Human capital')}
       <h2>{esc(x.get('title') or 'Your Human Capital')}</h2>
-      <p class="section-intro compact">{esc(x.get('subtitle') or 'Translating your behavioural benchmark into the human capabilities your current relationship with AI appears to be strengthening, preserving, or placing under gradual pressure.')}</p>
+      <p class="section-intro compact">{esc(x.get('subtitle') or 'A reflection on human capabilities that may be relevant to, or actively exercised within, your current reported pattern.')}</p>
 
       <article class="human-capital-introduction">
         {paras(x.get('introduction'))}
       </article>
 
-      {render_human_capital_group('Capabilities Currently Developing', developing_intro, x.get('capabilities_developing'), 'developing')}
-      {render_human_capital_group('Worth Protecting', protecting_intro, x.get('worth_protecting'), 'protecting')}
-      {render_human_capital_group('Worth Watching', watching_intro, x.get('worth_watching'), 'watching')}
+      {render_human_capital_group(developing_title, developing_intro, x.get('capabilities_developing'), 'developing')}
+      {render_human_capital_group(protecting_title, protecting_intro, x.get('worth_protecting'), 'protecting')}
+      {render_human_capital_group(watching_title, watching_intro, x.get('worth_watching'), 'watching')}
 
       <div class="human-capital-priorities-block">
-        <h3>Human Capital Priorities</h3>
-        <p class="human-capital-group-intro">If there are three capabilities that best capture your Human Capital today, they are these:</p>
-        <div class="human-capital-priority-grid">{priorities or render_empty('No Human Capital priorities were available.')}</div>
+        <h3>{esc(priorities_title)}</h3>
+        <p class="human-capital-group-intro">These themes most clearly summarise the capability-related interpretation of your current self-reported pattern.</p>
+        <div class="human-capital-priority-grid">{priorities or render_empty('No Human Capital themes were available.')}</div>
       </div>
 
       <article class="human-capital-closing">
         {paras(x.get('closing')) or render_empty('No Human Capital closing reflection was available.')}
       </article>
-    </section>'''
+    </section>"""
+
 
 
 def render_looking_forward(x):
-    """Render Looking Forward using the Human Skills / What To Protect card structure.
-
-    This section is observational only: no advice, no prediction, no Claude call.
-    """
+    """Render participant-safe later-comparison reference cards."""
     x = x if isinstance(x, dict) else {}
-    supplied = x.get("items", []) if isinstance(x, dict) else []
+    supplied = x.get("items", [])
 
     def render_item(i):
         watch = "".join(
@@ -909,66 +1015,68 @@ def render_looking_forward(x):
             for w in i.get("watch", [])
         )
         percentile = i.get("percentile")
-        pct_label = f"{esc(safe_ordinal(percentile))} percentile" if percentile not in (None, "") else ""
+        pct_label = (
+            f"{esc(safe_ordinal(percentile))} percentile"
+            if percentile not in (None, "")
+            else ""
+        )
         badge = protect_badge_label(i.get("position_badge") or i.get("positioning"))
-        title = str(i.get("title") or "")
-        title = title.replace("What to Notice:", "").replace("WHAT TO NOTICE:", "").strip()
-        capacity = i.get("capacity") or i.get("label") or "Capacity"
+        title = str(i.get("title") or "").replace("What to Notice:", "").replace("WHAT TO NOTICE:", "").strip()
+        capacity = i.get("capacity") or i.get("label") or "Assessment dimension"
 
-        return f'''
+        return f"""
         <article class="protect-card premium-protect-card looking-forward-card">
-          <div class="card-topline">What people often notice first</div>
+          <div class="card-topline">Later comparison point</div>
           <h3>{esc(title)}</h3>
 
           <div class="protect-capacity">
-            <span>Human skill</span>
+            <span>Assessment dimension</span>
             <strong>{esc(capacity)}</strong>
           </div>
 
           <div class="protect-position-badge">
-            <span>Your current position</span>
+            <span>Your current benchmark position</span>
             <strong>{esc(badge)}</strong>
             {f'<em>{pct_label}</em>' if pct_label else ''}
           </div>
 
           <div class="protect-divider"></div>
-
           <p class="protect-intro">{esc(i.get("intro"))}</p>
-
           <div class="protect-divider"></div>
 
           <div class="protect-watch looking-forward-watch">
-            <h4>A common pattern to notice</h4>
+            <h4>What could be compared later</h4>
             <ul>{watch}</ul>
           </div>
 
           <div class="protect-research-callout">
-            <h4>Research insight</h4>
+            <h4>Research context</h4>
             <p>{esc(i.get("research"))}</p>
           </div>
 
           <div class="protect-closing">
             <p>{esc(i.get("closing"))}</p>
           </div>
-        </article>'''
+        </article>"""
 
     items = "".join(render_item(i) for i in supplied)
     closing = x.get("closing") or (
-        "These observations are not a checklist and they are not expectations. They simply highlight the kinds "
-        "of subtle shifts that often emerge gradually rather than suddenly. Whether they appear in your own "
-        "experience is something only you can observe over time—which is why measuring again in the future can be valuable."
+        "These observations do not predict what will change. They identify parts "
+        "of the current profile that may be informative to compare later."
     )
-    final_line = x.get("final_line") or "You decide."
+    final_line = x.get("final_line") or "Your current profile is the reference point."
 
-    return f'''<section class="page-section protect-section looking-forward-section">{section_kicker("Looking forward")}
+    return f"""<section class="page-section protect-section looking-forward-section">
+      {section_kicker("Looking forward")}
       <h2>{esc(x.get("title") or "Looking Forward")}</h2>
-      <p class="section-intro">{esc(x.get("subtitle") or "Your relationship with AI will continue evolving, but not all changes happen at once. The observations below are not predictions. They are patterns that people with similar profiles often become aware of first. Whether they happen—and whether they matter—is something only you can observe over time.")}</p>
+      <p class="section-intro">{esc(x.get("subtitle") or "Current signals that may provide useful reference points if you repeat the assessment later.")}</p>
       <div class="protect-grid four">{items or render_empty("No Looking Forward observations were available.")}</div>
       <article class="looking-forward-closing">
         <p>{esc(closing)}</p>
         <strong>{esc(final_line)}</strong>
       </article>
-    </section>'''
+    </section>"""
+
 
 def protect_badge_label(value):
     text = str(value or "").upper()
@@ -981,149 +1089,18 @@ def protect_badge_label(value):
     return "CURRENT"
 
 
+
 def render_protect(x, report_data=None):
-    """Render locked What to Protect section.
-
-    The product spec requires four capacity sections every time:
-    Verification, Human Agency, Emotional Boundaries, and Thought Partnership.
-    This renderer presents them as four premium briefing cards in a balanced 2 x 2 grid.
     """
-    supplied = x.get("items", []) if isinstance(x, dict) else []
+    Backwards-compatible renderer for previously supplied safe observation cards.
 
-    def render_item(i):
-        watch = "".join(
-            f'<li><span>✓</span><strong>{esc(w)}</strong></li>'
-            for w in i.get("watch", [])
-        )
-        percentile = i.get("percentile")
-        pct_label = f"{esc(safe_ordinal(percentile))} percentile" if percentile not in (None, "") else ""
-        badge = protect_badge_label(i.get("position_badge") or i.get("positioning"))
-        title = str(i.get("title") or "")
-        title = title.replace("What to Notice:", "").replace("WHAT TO NOTICE:", "").strip()
-        capacity = i.get("capacity") or i.get("label") or "Capacity"
-
-        return f'''
-        <article class="protect-card premium-protect-card">
-          <div class="card-topline">What to notice</div>
-          <h3>{esc(title)}</h3>
-
-          <div class="protect-capacity">
-            <span>Capacity</span>
-            <strong>{esc(capacity)}</strong>
-          </div>
-
-          <div class="protect-position-badge">
-            <span>Your current position</span>
-            <strong>{esc(badge)}</strong>
-            {f'<em>{pct_label}</em>' if pct_label else ''}
-          </div>
-
-          <div class="protect-divider"></div>
-
-          <p class="protect-intro">{esc(i.get("intro"))}</p>
-
-          <div class="protect-divider"></div>
-
-          <div class="protect-watch">
-            <h4>Early signs to notice</h4>
-            <ul>{watch}</ul>
-          </div>
-
-          <div class="protect-research-callout">
-            <h4>Research insight</h4>
-            <p>{esc(i.get("research"))}</p>
-          </div>
-
-          <div class="protect-closing">
-            <p>{esc(i.get("closing"))}</p>
-          </div>
-        </article>'''
-
-    if supplied:
-        items = "".join(render_item(i) for i in supplied)
-        return f'''<section class="page-section protect-section">{section_kicker("Human skills")}
-          <h2>{esc(x.get("title") or "What To Protect")}</h2>
-          <p class="section-intro">{esc(x.get("subtitle") or "Four capacities worth staying aware of as your AI use evolves.")}</p>
-          <div class="protect-grid four">{items}</div>
-        </section>'''
-
-    dims = extract_dimension_percentiles(report_data or {})
-    templates = [
-        {
-            "key": "verification",
-            "title": "When verification becomes tiring",
-            "capacity": "Verification",
-            "intro": "Most people verify AI outputs before acting. Over time, however, checking can become mentally demanding, leading many people to verify only what feels important or high-risk.",
-            "research": "Verification fatigue is real and common. It is not laziness — it is the cost of constant cognitive effort. The question worth noticing is whether your verification rhythm still serves your needs.",
-            "watch": [
-                "Noticing yourself checking less than usual",
-                "Feeling relief or efficiency when you skip verification",
-                "Finding it hard to care whether an output is accurate",
-                "Selective checking becoming automatic",
-            ],
-            "closing": "You decide what level of verification matters to you.",
-        },
-        {
-            "key": "human_agency",
-            "title": "When drift happens without you choosing it",
-            "capacity": "Human Agency",
-            "intro": "Agency usually remains strong at the identity level, but the process can still drift. Small suggestions, defaults, and framings can quietly shape decisions before you fully notice.",
-            "research": "Drift happens through convenience, not collapse. You are not losing agency overnight; the shift happens through small moments where the path of least resistance aligns with what AI suggests.",
-            "watch": [
-                "Accepting AI suggestions without thinking them through first",
-                "Using AI defaults instead of customizing your approach",
-                "Realizing AI's framing has become your first instinct",
-                "Finding it harder to develop your own position before consulting AI",
-            ],
-            "closing": "You decide if this matters to you.",
-        },
-        {
-            "key": "emotional_regulation",
-            "title": "If emotional reliance becomes substitution",
-            "capacity": "Emotional Regulation",
-            "intro": "AI can offer a useful space for relief, support, or reflection. The key distinction is whether it supplements human connection or gradually begins to replace it.",
-            "research": "This is not inherently a problem. For some people, AI offers a genuinely safe space that human relationships do not. The important distinction is whether AI is supplementing connection or replacing it.",
-            "watch": [
-                "Turning to AI before turning to people when you are struggling",
-                "Preferring AI conversations to human ones for difficult feelings",
-                "Finding it harder to sit with discomfort without AI input",
-                "Feeling more emotionally open with AI than with people you trust",
-            ],
-            "closing": "You decide if emotional support from AI is right for you.",
-        },
-        {
-            "key": "thought_partnership",
-            "title": "When thinking with AI becomes thinking for you",
-            "capacity": "Thought Partnership",
-            "intro": "AI works best as a thinking partner: something to develop ideas with, not instead of your own thinking. The important question is whether it is challenging your thought or quietly replacing it.",
-            "research": "Genuine partnership requires you to retain authorship. The clearest patterns use AI to challenge and develop thinking, not replace it. Values clarity keeps that distinction alive.",
-            "watch": [
-                "Defaulting to AI's framing instead of developing your own position first",
-                "Struggling to think independently when AI is not available",
-                "Finding it hard to disagree with AI once it has stated a position",
-                "Using AI to avoid the discomfort of thinking through hard problems alone",
-            ],
-            "closing": "You decide if this matters to you.",
-        },
-    ]
-
-    items = ""
-    for t in templates:
-        percentile = dims.get(t["key"])
-        pos = position_band(percentile)
-        t = dict(t)
-        t["percentile"] = percentile
-        t["positioning"] = pos
-        t["position_badge"] = protect_badge_label(pos)
-        items += render_item(t)
-
-    section_title = x.get("title") if isinstance(x, dict) else ""
-    section_subtitle = x.get("subtitle") if isinstance(x, dict) else ""
-    return f'''<section class="page-section protect-section">{section_kicker("Human skills")}
-      <h2>{esc(section_title or "What To Protect")}</h2>
-      <p class="section-intro">{esc(section_subtitle or "Four capacities worth staying aware of as your AI use evolves. This section is about awareness and choice, not danger or diagnosis.")}</p>
-      <div class="protect-grid four">{items}</div>
-    </section>'''
+    The unsafe built-in fallback copy has been removed. If no approved items are
+    supplied, the legacy section is omitted rather than inventing predictive content.
+    """
+    x = x if isinstance(x, dict) else {}
+    if not x.get("items"):
+        return ""
+    return render_looking_forward(x)
 
 
 def trajectory_card_percentile(item):
@@ -1133,24 +1110,27 @@ def trajectory_card_percentile(item):
     return f"{esc(safe_ordinal(value))} percentile"
 
 
+
 def looking_ahead_signal_card(item, mode="hold"):
     label = item.get("label") or labelize(item.get("dimension") or item.get("key"))
     text = item.get("hold_copy") if mode == "hold" else item.get("sensitive_copy")
     if not text:
         text = (
-            "This signal appears to be one of the more established features of the current profile."
+            "This is one of the more prominent signals in the current profile and may provide a useful later comparison point."
             if mode == "hold"
-            else "This signal is worth comparing at the next measurement because it can shift gradually with repeated AI use."
+            else "This area may provide useful context at a later measurement without implying that change will occur."
         )
+
     percentile = trajectory_card_percentile(item)
     key = item.get("dimension") or item.get("key") or label
-    percentile_html = f'<p class="trajectory-percentile">{percentile}</p>' if percentile else ''
-    return f'''
+    percentile_html = f'<p class="trajectory-percentile">{percentile}</p>' if percentile else ""
+
+    return f"""
       <article class="looking-ahead-card" style="--look-accent:{esc(dim_accent(key))};">
         <h3>{esc(label)}</h3>
         {percentile_html}
         <p>{esc(text)}</p>
-      </article>'''
+      </article>"""
 
 
 def render_tipping_points(text):
@@ -1182,6 +1162,7 @@ def render_measurement_questions(text):
     return '<ol class="measurement-question-list">' + ''.join(f'<li>{inline_text(q)}</li>' for q in lines[:6]) + '</ol>'
 
 
+
 def render_trajectory(x):
     hold_cards = "".join(
         looking_ahead_signal_card(d, "hold")
@@ -1192,40 +1173,44 @@ def render_trajectory(x):
         for d in x.get("signals_most_sensitive_to_change", [])
     )
 
-    return f'''
+    current_label = x.get("signals_likely_to_hold_label") or "Current high signals"
+    comparison_label = x.get("signals_most_sensitive_to_change_label") or "Areas for later comparison"
+
+    return f"""
     <section class="page-section trajectory-section looking-ahead-section">
-      {section_kicker('Looking ahead')}
-      <h2>{esc(x.get('title') or 'What Will Be Most Interesting to Measure Next Time')}</h2>
-      <p class="section-intro compact">{esc(x.get('subtitle') or 'The signals that may tell the clearest story as your relationship with AI continues evolving.')}</p>
+      {section_kicker('Later comparison')}
+      <h2>{esc(x.get('title') or 'What Will Be Useful to Compare Next Time')}</h2>
+      <p class="section-intro compact">{esc(x.get('subtitle') or 'Current reference signals that may make a later measurement more informative.')}</p>
 
       <article class="looking-ahead-intro narrative narrow">
-        {paras(x.get('intro')) or render_empty('No looking-ahead introduction was available.')}
+        {paras(x.get('intro')) or render_empty('No later-comparison introduction was available.')}
       </article>
 
       <div class="trajectory-subsection looking-ahead-subsection">
-        <h3>Signals Likely to Hold</h3>
-        <p class="trajectory-note">These dimensions appear to reflect relatively established aspects of the current AI relationship. They may still evolve, but they are less likely to be the first signals to move quickly.</p>
-        <div class="looking-ahead-grid">{hold_cards or render_empty('No hold signals were available for this section.')}</div>
+        <h3>{esc(current_label)}</h3>
+        <p class="trajectory-note">These are prominent signals in the current profile. Their present position does not establish that they are stable or likely to remain unchanged.</p>
+        <div class="looking-ahead-grid">{hold_cards or render_empty('No current high signals were available for this section.')}</div>
       </div>
 
       <div class="trajectory-subsection looking-ahead-subsection">
-        <h3>Signals Most Sensitive to Change</h3>
-        <p class="trajectory-note">These dimensions often become informative as AI use becomes more familiar, embedded, or automatic. They are not warnings; they are the places where gradual change is most worth noticing.</p>
-        <div class="looking-ahead-grid">{sensitive_cards or render_empty('No sensitive signals were available for this section.')}</div>
+        <h3>{esc(comparison_label)}</h3>
+        <p class="trajectory-note">These areas may provide useful context at a later measurement. They are not predictions that change will occur.</p>
+        <div class="looking-ahead-grid">{sensitive_cards or render_empty('No later-comparison signals were available for this section.')}</div>
       </div>
 
       <div class="trajectory-subsection looking-ahead-subsection">
-        <h3>Behavioural Tipping Points</h3>
-        <p class="trajectory-note">Relationships with AI rarely change through one large event. More often, small shifts accumulate until the overall pattern begins to take a different shape.</p>
+        <h3>Patterns to Compare Later</h3>
+        <p class="trajectory-note">A later assessment can compare where thinking begins, how verification is applied, and which roles AI occupies. A single assessment cannot establish individual change.</p>
         {render_tipping_points(x.get('tipping_points'))}
       </div>
 
       <div class="trajectory-subsection looking-ahead-subsection questions-next">
-        <h3>Questions for Your Next Measurement</h3>
-        <p class="trajectory-note">The most useful comparison next time may not be the numbers alone, but the habits sitting behind those numbers.</p>
+        <h3>Questions for a Later Measurement</h3>
+        <p class="trajectory-note">The useful comparison may include both the benchmark positions and the self-reported situations behind them.</p>
         {render_measurement_questions(x.get('measurement_questions'))}
       </div>
-    </section>'''
+    </section>"""
+
 
 
 def render_closing_reflection(x):
@@ -1233,18 +1218,38 @@ def render_closing_reflection(x):
     x = x if isinstance(x, dict) else {}
 
     intro = x.get("introduction") or (
-        "Every benchmark profile answers many questions—but it also leaves one unanswered.\n\n"
-        "Rather than ending with another recommendation, this report finishes with one question that appears most relevant to your current relationship with AI.\n\n"
-        "There isn't a right answer today.\n\n"
-        "The value comes from noticing how your answer evolves over time."
+        "Every benchmark profile answers some questions and leaves others open.\n\n"
+        "Rather than ending with a recommendation, this report finishes with one "
+        "question that may be useful to carry forward from your current responses.\n\n"
+        "There is no required answer. Its value lies in providing a reference point "
+        "that may become more meaningful if you complete the assessment again later."
     )
-    one_question = x.get("one_question") or "What will become most important to notice as your relationship with AI continues evolving?"
-    why_matters = x.get("why_this_question_matters") or "This question is designed to hold the main tension, opportunity, or curiosity that emerges from your benchmark profile. It is not something that needs to be answered immediately. Its value comes from giving you a lens for understanding how your relationship with AI continues to develop."
-    next_time = x.get("what_next_time") or x.get("what_will_be_interesting_next_time") or "The most useful future comparison may not be whether your score changes. It may be whether your answer to this question changes. If your relationship with AI continues evolving, returning to this assessment in around six months can help you notice what has shifted gradually rather than suddenly."
-    closing = x.get("closing_reflection") or "You have now seen where your relationship with AI sits today, what makes it distinctive, which human capabilities appear most important, and what is worth paying attention to as that relationship continues evolving. This report is not the end of that process. It is your first benchmark."
-    final_sentence = x.get("final_sentence") or "The technology will continue changing. Understanding your relationship with it may become one of the most valuable things you continue measuring."
+    one_question = (
+        x.get("one_question")
+        or "What part of your current relationship with AI would be most useful to compare later?"
+    )
+    why_matters = (
+        x.get("why_this_question_matters")
+        or "This question reflects one of the most informative themes in the current profile. "
+        "It is a prompt for reflection, not a prediction or recommendation."
+    )
+    next_time = (
+        x.get("what_next_time")
+        or x.get("what_will_be_interesting_next_time")
+        or "A later assessment may show whether the reported pattern occupies a similar "
+        "benchmark position or differs. One assessment cannot establish direction or change."
+    )
+    closing = (
+        x.get("closing_reflection")
+        or "This report provides a current benchmark reference point based on your self-reported responses. "
+        "Its value lies in helping you understand the present pattern without treating it as a fixed description of who you are."
+    )
+    final_sentence = (
+        x.get("final_sentence")
+        or "Your current responses are the reference point; any later difference would need to be measured rather than assumed."
+    )
 
-    return f'''
+    return f"""
     <section class="page-section closing-reflection-section">
       {section_kicker('Closing reflection')}
       <h2>{esc(x.get('title') or 'Closing Reflection')}</h2>
@@ -1265,7 +1270,7 @@ def render_closing_reflection(x):
         </article>
 
         <article class="closing-reflection-card">
-          <h3>What Will Be Interesting Next Time</h3>
+          <h3>What May Be Useful to Compare Later</h3>
           {paras(next_time)}
         </article>
       </div>
@@ -1279,7 +1284,7 @@ def render_closing_reflection(x):
         </div>
         <p class="closing-final-sentence">{esc(final_sentence)}</p>
       </article>
-    </section>'''
+    </section>"""
 
 
 def dimension_reference_body(text):
@@ -1439,7 +1444,7 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 .looking-forward-closing p{font-size:15px;line-height:1.6;color:#344054;margin:0 0 10px}
 .looking-forward-closing strong{display:block;font-size:15px;color:#111827}
 
-/* Section 10: If Nothing Changes */
+/* Section 10: Later comparison */
 .trajectory-section .section-intro.compact{font-size:16px;line-height:1.5;margin-bottom:20px}
 .trajectory-summary{max-width:960px;background:#fff;border:1px solid var(--line);padding:22px 24px;margin:24px 0 34px}
 .trajectory-summary h3{margin:0 0 14px;font-size:18px}
@@ -1653,6 +1658,11 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
   padding-top:22px;
   color:#98A2B3;
 }
+.hci-report .report-footer p{
+  margin:6px 0 0;
+  font-size:12px;
+  line-height:1.4;
+}
 
 
 
@@ -1727,6 +1737,28 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 }
 .hci-report .opening-analysis{
   max-width:900px;
+}
+.hci-report .assessment-disclaimer{
+  max-width:900px;
+  margin:0 0 34px;
+  padding:18px 20px;
+  background:#f8fafc;
+  border:1px solid var(--line);
+  border-left:4px solid var(--accent-dark);
+  color:#344054;
+}
+.hci-report .assessment-disclaimer strong{
+  display:block;
+  margin-bottom:6px;
+  color:#101828;
+  font-size:12px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.hci-report .assessment-disclaimer p{
+  margin:0;
+  font-size:13px;
+  line-height:1.55;
 }
 .hci-report .opening-analysis h2{
   margin-bottom:16px;
@@ -1976,7 +2008,7 @@ p{margin:0 0 14px}.lede{font-size:21px;line-height:1.55;color:#344054;max-width:
 
 
 
-/* Section 8 — Perception Gap rebuilt: perception vs measured pattern */
+/* Section 8 — Perception Gap: direct self-estimate vs assessment-based position */
 .hci-report .perception-section{padding-top:72px}.hci-report .perception-explainer{max-width:860px;margin-top:18px;color:#253044}.hci-report .perception-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;max-width:1160px;margin-top:34px}.hci-report .perception-card{background:#fff;border:1px solid var(--line);box-shadow:0 12px 30px rgba(16,24,40,.04);padding:28px 28px 30px;min-height:520px;display:flex;flex-direction:column}.hci-report .perception-card-head{display:flex;gap:16px;align-items:flex-start}.hci-report .perception-number{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:800;font-size:15px;box-shadow:0 8px 18px rgba(0,94,112,.18)}.hci-report .perception-card-head h3{margin:2px 0 7px;font-size:22px;color:#101828;letter-spacing:-.01em}.hci-report .perception-card-head p{margin:0;font-size:15px;line-height:1.45;color:#253044}.hci-report .perception-divider{height:1px;background:var(--line);margin:24px 0 22px}.hci-report .perception-block{padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid rgba(208,213,221,.75)}.hci-report .perception-block span,.hci-report .perception-interpretation span{display:block;font-size:11px;line-height:1.2;letter-spacing:.13em;text-transform:uppercase;color:#005e70;font-weight:900;margin-bottom:10px}.hci-report .perception-self-view strong{display:block;background:#fbfaf7;border:1px solid var(--line);border-radius:8px;padding:15px 16px;font-size:16px;line-height:1.35;color:#101828}.hci-report .perception-measured-view p{margin:0 0 18px;font-size:14px;line-height:1.55;color:#253044}.hci-report .perception-measured-view > strong{display:block;margin-top:16px;font-size:16px;color:#101828}.hci-report .perception-scale{position:relative;padding-top:32px;margin-top:4px}.hci-report .perception-scale-label-you{position:absolute;left:var(--perception-position);top:0;transform:translateX(-50%);font-size:12px;line-height:1.15;color:#005e70;text-align:center;font-weight:800;white-space:nowrap}.hci-report .perception-scale-label-you strong{font-size:12px;color:#253044;font-weight:700}.hci-report .perception-scale-track{position:relative;display:flex;align-items:center;justify-content:space-between;height:28px}.hci-report .perception-scale-track:before{content:"";position:absolute;left:0;right:0;top:50%;height:3px;background:#d0d5dd;border-radius:999px;transform:translateY(-50%)}.hci-report .perception-scale-track span{display:none}.hci-report .perception-scale-track span.active{display:none}.hci-report .perception-scale-track i{position:absolute;z-index:3;left:var(--perception-position);top:50%;width:24px;height:24px;border-radius:50%;background:#0f7d87;border:3px solid #fff;box-shadow:0 4px 14px rgba(0,94,112,.28);transform:translate(-50%,-50%)}.hci-report .perception-scale-captions{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:12px;line-height:1.35;color:#475467}.hci-report .perception-scale-captions span:nth-child(2){text-align:center}.hci-report .perception-scale-captions span:nth-child(3){text-align:right}.hci-report .perception-interpretation{margin-top:auto;padding-top:4px}.hci-report .perception-interpretation p{margin:0;font-size:15px;line-height:1.55;color:#101828}.hci-report .perception-footnote{max-width:980px;margin:24px 0 0;padding-left:22px;border-left:3px solid rgba(0,94,112,.28);font-size:13px;line-height:1.55;color:#667085}.hci-report .perception-narrative-block{margin-top:58px}.hci-report .perception-narrative-block h3{margin:0 0 18px;font-size:22px;color:#101828}@media(max-width:1000px){.hci-report .perception-grid{grid-template-columns:1fr}.hci-report .perception-card{min-height:0}}
 
 /* Distinctive responses V2 */
