@@ -19,7 +19,11 @@ import traceback
 import urllib.request
 import urllib.error
 
-from narrative_context_builder import build_context_for_claude_section
+from narrative_context_builder import (
+    build_context_for_claude_section,
+    build_v2_narrative_context,
+    assert_v2_narrative_context_contract,
+)
 
 
 CLAUDE_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
@@ -56,7 +60,29 @@ Evidence boundary:
 """
 
 
-def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = None) -> Dict[str, Any]:
+def add_claude_narratives(
+    report_data: Dict[str, Any],
+    api_key: str | None = None,
+) -> Dict[str, Any]:
+    """
+    Public narrative entry point retained for API compatibility.
+
+    - Stored V1 report objects continue through the original six-call workflow.
+    - V2 report objects use the locked two-call workflow.
+
+    This version routing protects existing report_data and recovery paths while
+    new assessments transition to the V2 report contract.
+    """
+    if not isinstance(report_data, dict):
+        raise ValueError("report_data must be a dictionary")
+
+    if report_data.get("schema_version") == "hci_report_data_v2":
+        return _add_v2_claude_narratives(report_data, api_key)
+
+    return _add_legacy_claude_narratives(report_data, api_key)
+
+
+def _add_legacy_claude_narratives(report_data: Dict[str, Any], api_key: str | None = None) -> Dict[str, Any]:
     """
     Fill report_data["narrative_blocks"] with HCI-grounded Claude output.
 
@@ -151,6 +177,602 @@ def add_claude_narratives(report_data: Dict[str, Any], api_key: str | None = Non
     report_data["narrative_generation"] = status
     return report_data
 
+
+
+# =====================================================================
+# REPORT V2 — TWO STRUCTURED CALLS
+# =====================================================================
+
+V2_PROFILE_OUTPUT_FIELDS = {
+    "signature_sentence",
+    "combination_narrative",
+    "pattern_narrative",
+    "human_capital_lens",
+}
+V2_BASELINE_OUTPUT_FIELDS = {
+    "return_question",
+    "baseline_closing",
+}
+
+
+def _add_v2_claude_narratives(
+    report_data: Dict[str, Any],
+    api_key: str | None = None,
+) -> Dict[str, Any]:
+    """Add only the six narrative outputs permitted by REPORT_V2_SPEC.md."""
+    result = deepcopy(report_data)
+    result.setdefault("narrative_blocks", {})
+    result.setdefault("narrative_generation", {})
+    result.setdefault("signature", {})
+    result.setdefault("distinctive_pattern", {})
+    result.setdefault("pattern_synthesis", {})
+    result.setdefault("human_capital_lens", [])
+    result.setdefault("baseline", {})
+
+    context = build_v2_narrative_context(result)
+    assert_v2_narrative_context_contract(context)
+
+    # Install complete deterministic content before any network request. A
+    # failed or unavailable Claude call cannot leave the V2 report unrenderable.
+    _apply_v2_profile_output(
+        result,
+        _v2_profile_fallback(context["profile_synthesis"]),
+    )
+    _apply_v2_baseline_output(
+        result,
+        _v2_baseline_fallback(context["baseline_return"]),
+    )
+
+    api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+    status = {
+        "status": "started" if api_key else "skipped_no_api_key",
+        "workflow": "hci_report_v2_two_call",
+        "model": CLAUDE_MODEL,
+        "expected_calls": 2,
+        "attempted_calls": 0,
+        "successful_calls": 0,
+        "calls": {},
+    }
+
+    if not api_key:
+        result["narrative_generation"] = status
+        return result
+
+    status["attempted_calls"] += 1
+    try:
+        profile = generate_v2_profile_synthesis(
+            context["profile_synthesis"],
+            api_key,
+        )
+        _validate_v2_profile_output(profile, context["profile_synthesis"])
+        _apply_v2_profile_output(result, profile)
+        status["successful_calls"] += 1
+        status["calls"]["profile_synthesis"] = "success"
+    except Exception as exc:
+        print(f"[CLAUDE] V2 profile_synthesis failed: {exc}")
+        traceback.print_exc()
+        status["calls"]["profile_synthesis"] = f"failed: {str(exc)}"
+
+    status["attempted_calls"] += 1
+    try:
+        baseline = generate_v2_baseline_return(
+            context["baseline_return"],
+            api_key,
+        )
+        _validate_v2_baseline_output(baseline)
+        _apply_v2_baseline_output(result, baseline)
+        status["successful_calls"] += 1
+        status["calls"]["baseline_return"] = "success"
+    except Exception as exc:
+        print(f"[CLAUDE] V2 baseline_return failed: {exc}")
+        traceback.print_exc()
+        status["calls"]["baseline_return"] = f"failed: {str(exc)}"
+
+    if status["successful_calls"] == 2:
+        status["status"] = "complete"
+    elif status["successful_calls"] == 1:
+        status["status"] = "partial_using_fallbacks"
+    else:
+        status["status"] = "failed_using_fallbacks"
+
+    result["narrative_generation"] = status
+    return result
+
+
+def generate_v2_profile_synthesis(
+    context: Dict[str, Any],
+    api_key: str,
+) -> Dict[str, Any]:
+    """V2 call 1: signature, combination, pattern and Human Capital Lens."""
+    print("[CLAUDE] Starting V2 profile_synthesis...")
+    start = time.time()
+
+    prompt = f"""
+Write four narrative outputs for the Human Clarity Institute AI Identity &
+Behaviour Report V2.
+
+{REPORT_CLAIM_GUARDRAILS}
+
+Core product rule:
+Reveal more. Explain only what improves clarity.
+
+Use only the supplied context. Claude does not select, calculate or alter any
+score, percentile, cohort comparison, rarity, defining signal or evidence item.
+
+Return exactly these fields:
+
+1. signature_sentence
+- Exactly one sentence, approximately 18–35 words.
+- Describe the participant's current response pattern in a memorable but
+  restrained way.
+- Begin from the relationship among the defining signals rather than from a
+  percentile.
+- Do not create a type, persona, diagnosis, identity label or permanent trait.
+
+2. combination_narrative
+- Two concise paragraphs, approximately 130–210 words total.
+- First explain what the supplied strongest combination or coherent pattern
+  shows.
+- Then explain what that pattern may suggest about the participant's current
+  relationship with AI.
+- If rarity_percent is absent, do not describe the pattern as rare or imply a
+  prevalence value.
+- Do not redefine every dimension and do not introduce advice.
+
+3. pattern_narrative
+- Approximately 250–350 words in three or four flowing paragraphs.
+- Explain the organising feature of the profile and how the defining signals,
+  selected evidence and self-perception comparison fit together.
+- Use numbers selectively. Do not repeat every score.
+- End with one clear synthesis of the current response pattern.
+- Do not discuss future trajectory, recommendations or capability change.
+
+4. human_capital_lens
+- Exactly three objects with title and body.
+- Use exactly the three supplied titles, unchanged.
+- Each body is one concise sentence, approximately 18–38 words.
+- Explain why that human capability is relevant to the current response
+  pattern.
+- Do not claim that the capability is strong, weak, developing, declining,
+  protected, lost or objectively measured.
+- Do not include scores or percentile language.
+
+General writing rules:
+- Direct to "you".
+- Plain English, calm, precise and premium.
+- Describe self-reported patterns, not observed behaviour.
+- State supplied evidence clearly; qualify interpretation rather than weakening
+  the evidence.
+- No Markdown, headings, bullets, coaching, diagnosis, causation, prediction,
+  general-population claims or raw variable IDs.
+
+Context:
+{compact_context(context, max_chars=22000)}
+"""
+
+    capability_schema = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "body": {"type": "string"},
+        },
+        "required": ["title", "body"],
+        "additionalProperties": False,
+    }
+    schema = {
+        "signature_sentence": {
+            "type": "string",
+            "description": "One evidence-led sentence describing the current response pattern.",
+        },
+        "combination_narrative": {
+            "type": "string",
+            "description": "Two concise paragraphs explaining the strongest combination or coherent pattern.",
+        },
+        "pattern_narrative": {
+            "type": "string",
+            "description": "250–350 word synthesis of the defining signals, evidence and perception comparison.",
+        },
+        "human_capital_lens": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": capability_schema,
+        },
+    }
+
+    blocks = call_claude_structured(api_key, prompt, schema)
+    print(
+        f"[CLAUDE] V2 profile_synthesis completed in "
+        f"{time.time() - start:.1f}s"
+    )
+    return blocks
+
+
+def generate_v2_baseline_return(
+    context: Dict[str, Any],
+    api_key: str,
+) -> Dict[str, str]:
+    """V2 call 2: personalised return question and baseline closing."""
+    print("[CLAUDE] Starting V2 baseline_return...")
+    start = time.time()
+
+    prompt = f"""
+Write the two generated fields for the Baseline and Closing pages of the Human
+Clarity Institute AI Identity & Behaviour Report V2.
+
+{REPORT_CLAIM_GUARDRAILS}
+
+Return exactly these fields:
+
+1. return_question
+- Exactly one question, approximately 18–36 words.
+- It must be answerable only by comparing a later assessment with this dated
+  baseline.
+- Base it on the supplied comparison priorities or strongest pattern.
+- Do not predict a direction of change.
+- Do not instruct the participant to improve, reduce, protect, increase or
+  monitor anything.
+- Do not use "should".
+
+2. baseline_closing
+- Exactly one sentence, approximately 18–32 words.
+- Explain that this report establishes a dated reference point for later
+  comparison.
+- Do not sell another report, promote HCI or introduce new interpretation.
+
+Use only the supplied context. No Markdown, advice, prediction, diagnosis,
+causal claim, general-population language or raw variable IDs.
+
+Context:
+{compact_context(context, max_chars=12000)}
+"""
+
+    schema = {
+        "return_question": {
+            "type": "string",
+            "description": "One personalised question for a future comparison.",
+        },
+        "baseline_closing": {
+            "type": "string",
+            "description": "One sentence describing the value of the dated baseline.",
+        },
+    }
+
+    blocks = call_claude_structured(api_key, prompt, schema)
+    print(
+        f"[CLAUDE] V2 baseline_return completed in "
+        f"{time.time() - start:.1f}s"
+    )
+    return blocks
+
+
+def _apply_v2_profile_output(
+    report_data: Dict[str, Any],
+    output: Dict[str, Any],
+) -> None:
+    signature_sentence = clean_narrative_text(
+        str(output.get("signature_sentence") or "")
+    )
+    combination_narrative = clean_narrative_text(
+        str(output.get("combination_narrative") or "")
+    )
+    pattern_narrative = clean_narrative_text(
+        str(output.get("pattern_narrative") or "")
+    )
+
+    lens = []
+    for item in output.get("human_capital_lens") or []:
+        if not isinstance(item, dict):
+            continue
+        title = clean_narrative_text(str(item.get("title") or ""))
+        body = clean_narrative_text(str(item.get("body") or ""))
+        if title and body:
+            lens.append({"title": title, "body": body})
+    lens = lens[:3]
+
+    report_data["signature"]["signature_sentence"] = signature_sentence
+    report_data["distinctive_pattern"]["narrative"] = combination_narrative
+    report_data["pattern_synthesis"]["pattern_narrative"] = pattern_narrative
+    report_data["human_capital_lens"] = lens
+
+    defining = report_data.get("defining_signals") or []
+    if defining and not report_data["pattern_synthesis"].get("organising_feature"):
+        report_data["pattern_synthesis"]["organising_feature"] = defining[0].get("label")
+
+    report_data["narrative_blocks"].update({
+        "signature_sentence": signature_sentence,
+        "combination_narrative": combination_narrative,
+        "pattern_narrative": pattern_narrative,
+        "human_capital_lens": deepcopy(lens),
+
+        # Transitional aliases keep the current renderer usable while the V2
+        # report_sections.py rebuild is completed. No new data is introduced.
+        "rare_combinations_narrative": combination_narrative,
+        "behaviour_story": pattern_narrative,
+    })
+
+
+def _apply_v2_baseline_output(
+    report_data: Dict[str, Any],
+    output: Dict[str, Any],
+) -> None:
+    question = clean_narrative_text(
+        str(output.get("return_question") or "")
+    )
+    closing = clean_narrative_text(
+        str(output.get("baseline_closing") or "")
+    )
+
+    report_data["baseline"]["return_question"] = question
+    report_data["baseline"]["baseline_closing"] = closing
+    report_data["narrative_blocks"].update({
+        "return_question": question,
+        "baseline_closing": closing,
+    })
+
+
+def _v2_profile_fallback(context: Dict[str, Any]) -> Dict[str, Any]:
+    defining = context.get("defining_signals") or []
+    labels = [
+        item.get("label")
+        for item in defining
+        if isinstance(item, dict) and item.get("label")
+    ]
+
+    if len(labels) >= 3:
+        signature = (
+            f"Your current responses are most strongly defined by {labels[0]}, "
+            f"{labels[1]} and {labels[2]}."
+        )
+    elif labels:
+        signature = (
+            "Your current responses are most strongly defined by "
+            + ", ".join(labels)
+            + "."
+        )
+    else:
+        signature = (
+            "Your current responses form a distinct pattern across the nine "
+            "areas measured in this assessment."
+        )
+
+    pattern = context.get("strongest_pattern") or {}
+    combo = pattern.get("combination") or {}
+    if combo.get("label_1") and combo.get("label_2"):
+        combination = (
+            f"The clearest interaction in your profile is between "
+            f"{combo.get('label_1')} and {combo.get('label_2')}. These two "
+            "positions provide more information together than either result "
+            "does alone.\n\nTaken together, they suggest that these aspects "
+            "of your current relationship with AI help organise the wider "
+            "response pattern."
+        )
+    else:
+        combination = (
+            "Your profile is not defined by one isolated result. Its clearest "
+            "feature is the way the defining signals combine into a coherent "
+            "overall shape.\n\nThat coherence makes the relationship between "
+            "the results more informative than any one dimension by itself."
+        )
+
+    signal_sentences = []
+    for item in defining:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("label")
+        percentile = item.get("overall_percentile")
+        if label and percentile is not None:
+            signal_sentences.append(
+                f"{label} sits at the {_v2_ordinal(percentile)} percentile"
+            )
+
+    opening = (
+        "The organising feature of your current profile is the relationship "
+        "between its defining signals."
+    )
+    if signal_sentences:
+        opening += " " + "; ".join(signal_sentences) + "."
+
+    perception = (context.get("perception") or {}).get("largest_difference") or {}
+    if perception.get("difference_available"):
+        perception_text = (
+            "Your self-estimate and assessment-based position provide two "
+            "different views of the same relationship with AI. The difference "
+            "adds a benchmark perspective that can be difficult to establish "
+            "from personal experience alone."
+        )
+    else:
+        perception_text = (
+            "Your self-estimates provide a second perspective on the profile. "
+            "The report keeps that view alongside the response-based benchmark "
+            "position without treating either as a complete account."
+        )
+
+    pattern_narrative = "\n\n".join([
+        opening,
+        (
+            "These positions do not operate independently. Read together, "
+            "they show which parts of your reported AI use carry the most "
+            "information within the HCI participant benchmark and which "
+            "responses give the profile its particular shape."
+        ),
+        perception_text,
+        (
+            "The main value of the pattern is therefore not a single high or "
+            "low result. It is the way the defining signals, selected evidence "
+            "and self-perception comparison combine into one current reference "
+            "point for understanding your relationship with AI."
+        ),
+    ])
+
+    lens = []
+    for theme in context.get("human_capital_candidates") or []:
+        title = theme.get("title") or "Human capability"
+        dimensions = [
+            item.get("label")
+            for item in theme.get("supporting_dimensions") or []
+            if isinstance(item, dict) and item.get("label")
+        ]
+        if dimensions:
+            body = (
+                f"This capability is relevant because your current "
+                f"{_join_v2_labels(dimensions)} results help shape the wider "
+                "response pattern."
+            )
+        else:
+            body = (
+                "This capability provides one useful lens for understanding "
+                "the current response pattern."
+            )
+        lens.append({"title": title, "body": body})
+
+    return {
+        "signature_sentence": signature,
+        "combination_narrative": combination,
+        "pattern_narrative": pattern_narrative,
+        "human_capital_lens": lens[:3],
+    }
+
+
+def _v2_baseline_fallback(context: Dict[str, Any]) -> Dict[str, str]:
+    priorities = context.get("comparison_priorities") or []
+    labels = [
+        item.get("label")
+        for item in priorities
+        if isinstance(item, dict) and item.get("label")
+    ]
+
+    if len(labels) >= 2:
+        question = (
+            f"When you reassess, will the relationship between {labels[0]} "
+            f"and {labels[1]} look similar to the pattern recorded today?"
+        )
+    elif labels:
+        question = (
+            f"When you reassess, will your reported {labels[0]} position look "
+            "similar to the pattern recorded today?"
+        )
+    else:
+        question = (
+            "When you reassess, which parts of your current AI-use pattern "
+            "will look similar and which will look different?"
+        )
+
+    baseline_date = (
+        (context.get("report_identity") or {}).get("baseline_date")
+        or "this assessment date"
+    )
+    closing = (
+        f"This report records your current response pattern as a dated "
+        f"baseline from {_display_v2_date(baseline_date)} for later comparison."
+    )
+    return {
+        "return_question": question,
+        "baseline_closing": closing,
+    }
+
+
+def _validate_v2_profile_output(
+    output: Dict[str, Any],
+    context: Dict[str, Any],
+) -> None:
+    if not isinstance(output, dict):
+        raise ValueError("V2 profile output must be a dictionary")
+    missing = V2_PROFILE_OUTPUT_FIELDS.difference(output.keys())
+    if missing:
+        raise ValueError(f"V2 profile output missing fields: {sorted(missing)}")
+
+    for key in ("signature_sentence", "combination_narrative", "pattern_narrative"):
+        if not isinstance(output.get(key), str) or not output[key].strip():
+            raise ValueError(f"{key} must be a non-empty string")
+
+    lens = output.get("human_capital_lens")
+    if not isinstance(lens, list) or len(lens) != 3:
+        raise ValueError("human_capital_lens must contain exactly 3 items")
+
+    expected_titles = [
+        item.get("title")
+        for item in context.get("human_capital_candidates") or []
+    ]
+    returned_titles = [
+        item.get("title") if isinstance(item, dict) else None
+        for item in lens
+    ]
+    if returned_titles != expected_titles:
+        raise ValueError("Claude changed the locked Human Capital theme titles")
+
+    _validate_v2_output_language(output)
+
+
+def _validate_v2_baseline_output(output: Dict[str, Any]) -> None:
+    if not isinstance(output, dict):
+        raise ValueError("V2 baseline output must be a dictionary")
+    missing = V2_BASELINE_OUTPUT_FIELDS.difference(output.keys())
+    if missing:
+        raise ValueError(f"V2 baseline output missing fields: {sorted(missing)}")
+
+    for key in V2_BASELINE_OUTPUT_FIELDS:
+        if not isinstance(output.get(key), str) or not output[key].strip():
+            raise ValueError(f"{key} must be a non-empty string")
+    if not output["return_question"].strip().endswith("?"):
+        raise ValueError("return_question must end with a question mark")
+
+    _validate_v2_output_language(output)
+
+
+def _validate_v2_output_language(output: Any) -> None:
+    import re
+
+    text = json.dumps(output, ensure_ascii=False).lower()
+    prohibited = {
+        "raw_variable_id": r"\b(?:rel|trust|ver|del|agency|emot|disc|thought|soc)_q\d+\b",
+        "diagnosis": r"\bdiagnos(?:e|ed|is|tic)\b",
+        "addiction": r"\baddict(?:ion|ed|ive)?\b",
+        "causal_certainty": r"\bcaused by\b|\bproves\b|\bconfirms that\b",
+        "prediction": r"\bwill inevitably\b|\bwill definitely\b|\bis certain to\b",
+        "coaching": r"\byou should\b|\btry to\b|\bmake sure\b",
+        "population_scope": r"\bgeneral population\b|\bpopulation norm\b",
+        "objective_claim": r"\bobjective reality\b|\bmeasured reality\b",
+    }
+    found = [
+        label for label, pattern in prohibited.items()
+        if re.search(pattern, text, flags=re.IGNORECASE)
+    ]
+    if found:
+        raise ValueError(
+            f"V2 narrative output contains prohibited content: {found}"
+        )
+
+
+def _v2_ordinal(value: Any) -> str:
+    try:
+        number = int(round(float(value)))
+    except Exception:
+        return "unavailable"
+    suffix = (
+        "th"
+        if 10 <= number % 100 <= 20
+        else {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+    )
+    return f"{number}{suffix}"
+
+
+def _join_v2_labels(values: List[str]) -> str:
+    values = [str(value) for value in values if value]
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    if len(values) == 2:
+        return f"{values[0]} and {values[1]}"
+    return ", ".join(values[:-1]) + f", and {values[-1]}"
+
+
+def _display_v2_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "this assessment date"
+    return text[:10] if "T" in text else text
 
 def compact_context(context: Any, max_chars: int = 26000) -> str:
     """
